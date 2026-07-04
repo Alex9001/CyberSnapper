@@ -22,15 +22,21 @@
 
 ## Features
 
-`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary`
+`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `📄 PDF` &nbsp; `🖼️ WebP/AVIF` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🎭 Hide elements` &nbsp; `⏳ Wait for selector` &nbsp; `🔄 Concurrency` &nbsp; `🔌 REST API` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary`
 
-Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (768×1024), and **Mobile** (375×812) — with configurable delays for optimal content loading, then preview thumbnails instantly in the browser.
+Capture, archive, and automate screenshots of websites in **PNG, WebP, AVIF, and PDF** formats — with advanced controls for delays, concurrency, and DOM manipulation. Perfect for portfolio archiving, legal records, and automation workflows.
 
 <p align="center">
   <img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" width="700">
 </p>
 
-This project was initially an internal at CYBER BRAND tool for taking full-height portfolio images of client sites for a website where the js lightbox has a scroll bar. It can also be used for other things such as archiving.
+CyberSnapper is a powerful tool for capturing, archiving, and automating website screenshots. Originally built as an internal tool at CYBER BRAND for portfolio archiving, it has evolved into a full-featured website archiver with advanced controls for precision capture.
+
+Use it for:
+- **Portfolio archiving** (client websites, case studies).
+- **Legal records** (save websites as PDFs for compliance).
+- **Automation** (integrate with Zapier, n8n, or CI/CD pipelines).
+- **Custom screenshots** (hide elements, wait for selectors, adjust delays).
 
 ---
 
@@ -68,11 +74,25 @@ node capture.js https://example.com ...  # inline URLs
 node capture.js [urls.txt | url1 url2 ...]
 ```
 
-The CLI loads settings from `config.json` (delays, popup blocking, presets, naming) and processes all URLs sequentially:
+The CLI loads settings from `config.json` and processes all URLs:
 
-- `initialDelay`: Wait before scrolling (default: 2000ms).
-- `scrollDelay`: Wait between scroll steps (default: 1000ms).
-- `blockPopups`: Block popups/modals (default: false).
+- **Delays**: `initialDelay`, `scrollDelay`, `finalDelay` (seconds).
+- **Concurrency**: Number of websites to capture in parallel.
+- **Formats**: Output formats (PNG, WebP, AVIF, PDF).
+- **Advanced**: `hideSelectors`, `waitForSelector`, `blockPopups`.
+
+## REST API
+
+Capture screenshots programmatically:
+
+```bash
+curl "http://localhost:3000/api/screenshot?url=https://example.com&token=YOUR_TOKEN"
+```
+
+**Parameters**:
+- `url`: Target website (required).
+- `format`: Output format (`png`, `webp`, `avif`, `pdf`).
+- `token`: API token from `config.json` (required).
 
 ```
 ============================================================
@@ -111,6 +131,11 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 | 📐 **Presets** | Add, remove, or toggle viewport sizes on the fly |
 | ⏱️ **Delays** | Adjust initial, scroll, and final delays for optimal loading |
 | 🚫 **Popup blocking** | Toggle to block popups/modals (checkbox) |
+| 🎭 **Hide elements** | Hide specific elements before capturing (CSS selectors) |
+| ⏳ **Wait for selector** | Wait for a specific element before capturing |
+| 🔄 **Concurrency** | Capture multiple websites in parallel |
+| 🖼️ **Formats** | Choose output formats (PNG, WebP, AVIF, PDF) |
+| 🔌 **REST API** | Integrate with Zapier, n8n, or CI/CD pipelines |
 | 🏷️ **Naming** | Custom output filenames with variables (`{hostname}`, `{preset}`, `{width}`, `{height}`, `{domain}`, `{date}`, `{time}`, `{index}`) |
 | 🖼️ **Gallery** | Thumbnail previews of every screenshot, click to open |
 | 📁 **Open folder** | Reveals screenshots in your file manager |
@@ -119,7 +144,7 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 
 ## Configuration
 
-Edit `config.json` to customize presets, delays, popup blocking, and naming:
+Edit `config.json` to customize presets, delays, formats, and advanced settings:
 
 ```json
 {
@@ -128,10 +153,22 @@ Edit `config.json` to customize presets, delays, popup blocking, and naming:
     { "name": "Tablet",  "width": 768,  "height": 1024 },
     { "name": "Mobile",  "width": 375,  "height": 812 }
   ],
-  "initialDelay": 2000,
-  "scrollDelay": 1000,
-  "finalDelay": 1000,
+  "initialDelay": 1.5,
+  "scrollDelay": 1.8,
+  "finalDelay": 1.0,
+  "concurrency": 1,
+  "formats": ["png"],
+  "webp": { "quality": 80 },
+  "avif": { "quality": 50 },
+  "pdf": {
+    "format": "A4",
+    "landscape": false,
+    "margin": "0"
+  },
+  "hideSelectors": [],
+  "waitForSelector": "",
   "blockPopups": false,
+  "apiToken": "generated_on_first_run",
   "naming": {
     "template": "{hostname}-{preset}"
   }
@@ -140,18 +177,41 @@ Edit `config.json` to customize presets, delays, popup blocking, and naming:
 
 Changes are saved automatically from the Web UI.
 
-### Delay Settings
+### Capture Settings
 
-| Setting         | Default | Purpose                                  |
-|-----------------|---------|------------------------------------------|
-| `initialDelay`  | 2000ms  | Wait before scrolling (above-the-fold).  |
-| `scrollDelay`   | 1000ms  | Wait between scroll steps.               |
-| `finalDelay`    | 1000ms  | Wait after scrolling back to top.        |
+| Setting            | Default | Purpose                                  |
+|--------------------|---------|------------------------------------------|
+| `initialDelay`     | 1.5s    | Wait before scrolling (above-the-fold).  |
+| `scrollDelay`      | 1.8s    | Wait between scroll steps.               |
+| `finalDelay`       | 1.0s    | Wait after scrolling back to top.        |
+| `concurrency`      | 1       | Number of websites to capture in parallel. |
 
-### Popup Blocking
+### Output Formats
 
-- Set `blockPopups` to `true` to block common popups/modals.
-- Blocks known ad/popup domains and hides overlay elements.
+- **PNG**: Lossless, high quality (default).
+- **WebP**: Smaller files, good quality (quality: 1-100).
+- **AVIF**: Even smaller files, modern format (quality: 1-100).
+- **PDF**: For archiving/legal records (A4/Letter, portrait/landscape).
+
+### Advanced Controls
+
+| Setting            | Purpose                                  |
+|--------------------|------------------------------------------|
+| `hideSelectors`    | CSS selectors to hide before capturing.  |
+| `waitForSelector`  | Wait for this selector before capturing. |
+| `blockPopups`      | Block popups/modals (checkbox).          |
+
+### REST API
+
+- **Endpoint**: `GET /api/screenshot?url=...&token=...`
+- **Authentication**: Requires `apiToken` from `config.json`.
+- **Parameters**:
+  - `url`: Target website.
+  - `format`: Output format (`png`, `webp`, `avif`, `pdf`).
+- **Example**:
+  ```bash
+  curl "http://localhost:3000/api/screenshot?url=https://example.com&token=YOUR_TOKEN"
+  ```
 
 ### Naming variables
 
