@@ -34,6 +34,13 @@ async function startServer(port = 0) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+    if (url.pathname === '/shutdown') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      server.close(() => process.exit(0));
+      return;
+    }
+
     if (url.pathname === '/' || url.pathname === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(UI_HTML);
@@ -248,7 +255,10 @@ const UI_HTML = `<!DOCTYPE html>
 <div class="container">
   <header>
     <h1><span>⌁</span> CyberSnapper</h1>
-    <button class="theme-toggle" id="theme-toggle" title="Toggle theme">☀ / ☾</button>
+    <div style="display:flex;gap:8px">
+      <button class="theme-toggle" id="theme-toggle" title="Toggle theme">☀ / ☾</button>
+      <button class="theme-toggle" id="stop-btn" title="Stop server" style="color:var(--error)">⏹ Stop</button>
+    </div>
   </header>
 
   <div class="card">
@@ -449,6 +459,11 @@ function handleEvent(e) {
 }
 
 openFolderBtn.addEventListener('click', () => fetch('/open-folder').catch(() => {}));
+document.getElementById('stop-btn').addEventListener('click', () => {
+  if (confirm('Stop the server and exit CyberSnapper?')) {
+    fetch('/shutdown').catch(() => {});
+  }
+});
 function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 function slug(s) { return s.replace(/[^a-z0-9]/gi,'_').toLowerCase(); }
 

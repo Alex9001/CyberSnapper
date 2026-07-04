@@ -17,10 +17,17 @@ if (args.length > 0) {
       const port = server.address().port;
       const url = `http://localhost:${port}`;
 
+      const shutdown = () => {
+        console.log('\n  Shutting down...');
+        server.close(() => process.exit(0));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+
       if (process.stdout.isTTY) {
         console.log(`\n  ⌁ CyberSnapper\n`);
         console.log(`  Web UI: ${url}\n`);
-        console.log('  Press Ctrl+C to stop.\n');
+        console.log('  Press Ctrl+C or click ⏹ Stop in the UI to exit.\n');
       } else {
         const cmd = process.platform === 'win32'
           ? `start "" "${url}"`
