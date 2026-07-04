@@ -1,53 +1,50 @@
 # Screenshot Bot
 
-A Node.js tool using Playwright to take full-page screenshots of a list of websites in three responsive resolutions (Desktop, Tablet, Mobile). The tool automatically scrolls down the page to trigger lazy-loaded images and waits for network idle before capturing the image.
+Take full-page screenshots of websites at Desktop (1920×1080), Tablet (768×1024), and Mobile (375×812) resolutions — with automatic lazy-load scrolling.
 
-## Requirements
-- Node.js
+## Quick Start
 
-## Installation
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Install Playwright browsers (if you haven't already):
-   ```bash
-   npx playwright install chromium
-   ```
-
-## Usage
-
-You can feed a list of websites to the script either by passing them as arguments or by using a text file.
-
-### 1. Using a text file (Recommended)
-Create a `.txt` file with one URL per line (e.g., the included `urls.txt`), and pass it to the script.
+**Double-click `run.sh`** (or run it from the terminal):
 
 ```bash
-node capture.js urls.txt
-```
-
-### 2. Passing URLs directly
-Pass URLs separated by spaces directly into the command.
-
-```bash
-node capture.js https://example.com https://google.com
-```
-
-### 3. Using the Shell Script
-A convenience script `run.sh` is provided. It installs dependencies and runs the bot against `urls.txt`.
-```bash
-# Make it executable first
-chmod +x run.sh
-
-# Run it
 ./run.sh
 ```
 
-## How it works
-For each URL, the script will:
-- Load the site at 3 different viewports (Desktop: 1920x1080, Tablet: 768x1024, Mobile: 375x812).
-- Scroll organically down the page to trigger lazy-loaded assets.
-- Wait for network idle.
-- Capture a full-height PNG.
-- Name the screenshots using the domain name (e.g., `example_com-desktop.png`).
+It will install dependencies automatically and capture every URL in `urls/urls.txt`.
+
+## Usage
+
+```bash
+node capture.js <url1> <url2> ...        # inline URLs
+node capture.js urls.txt                 # URLs from a file
+node capture.js                          # uses urls/urls.txt by default
+```
+
+Every URL is captured at all three viewports and saved as PNGs in the `screenshots/` folder.
+
+## Setup (manual)
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+## File Structure
+
+```
+screenshot-bot/
+  capture.js        ← the main script
+  run.sh            ← double-clickable shortcut
+  urls/
+    urls.txt        ← default URL list
+    example.txt     ← example URL list
+  screenshots/      ← output folder (gitignored)
+  package.json
+```
+
+## How It Works
+
+1. Loads each URL at three viewport sizes
+2. Scrolls down the page to trigger lazy-loaded images
+3. Waits for the network to settle
+4. Saves a full-page screenshot as `{domain}-{viewport}.png`
