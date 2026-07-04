@@ -22,7 +22,7 @@
 
 ## Features
 
-`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🔄 Lazy-load scroll` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `🎨 Dark/Light theme` &nbsp; `⚡ Live progress` &nbsp; `🏷️ Custom naming` &nbsp; `📁 One-click open folder` &nbsp; `📦 Standalone binary`
+`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `⚡ Live progress` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary`
 
 Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (768×1024), and **Mobile** (375×812) — with automatic lazy-load scrolling, then preview thumbnails instantly in the browser.
 
