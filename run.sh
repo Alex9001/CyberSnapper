@@ -4,8 +4,8 @@ set -e
 cd "$(dirname "$0")"
 
 echo ""
-echo "  Screenshot Bot"
-echo "  ——————————————"
+echo "  CyberSnapper"
+echo "  ————————————"
 echo ""
 
 if [ ! -d "node_modules" ]; then

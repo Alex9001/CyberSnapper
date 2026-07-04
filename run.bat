@@ -2,8 +2,8 @@
 cd /d "%~dp0"
 
 echo.
-echo   Screenshot Bot
-echo   -------------
+echo   CyberSnapper
+echo   ------------
 echo.
 
 if not exist "node_modules\" (

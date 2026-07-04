@@ -1,6 +1,6 @@
-# Screenshot Bot
+# CyberSnapper
 
-Take full-page screenshots of websites at Desktop (1920×1080), Tablet (768×1024), and Mobile (375×812) resolutions — with automatic lazy-load scrolling.
+Snap full-page screenshots of any website at Desktop (1920×1080), Tablet (768×1024), and Mobile (375×812) resolutions — with automatic lazy-load scrolling.
 
 ## Quick Start
 
@@ -34,7 +34,7 @@ npx playwright install chromium
 ## File Structure
 
 ```
-screenshot-bot/
+CyberSnapper/
   capture.js        ← the main script
   run.sh            ← shortcut (Linux/macOS)
   run.bat           ← shortcut (Windows)
