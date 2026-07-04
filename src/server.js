@@ -183,6 +183,37 @@ const UI_HTML = `<!DOCTYPE html>
     --glow: rgba(213,16,1,0.08);
     --font-display: 'Orbitron', sans-serif;
     --font-mono: 'Share Tech Mono', monospace;
+    --scan-color: rgba(213,16,1,0.015);
+    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.7) 100%);
+    --nv-color: rgba(255,235,214,0.6);
+    --hint-color: rgba(255,235,214,0.35);
+    --input-placeholder: rgba(255,235,214,0.25);
+    --dim-color: rgba(255,235,214,0.4);
+    --add-span: rgba(255,235,214,0.3);
+    --label-color: rgba(255,235,214,0.5);
+    --corner-color: rgba(255,199,52,0.35);
+  }
+  .light {
+    --black: #f0f0f0;
+    --darker: #e2e2e2;
+    --dark: #d4d4d4;
+    --red: #b00000;
+    --gold: #b8860b;
+    --white: #2d2d2d;
+    --gray: #b0b0b0;
+    --surface: rgba(200,200,200,0.55);
+    --border: rgba(176,0,0,0.12);
+    --border-hover: rgba(176,0,0,0.25);
+    --glow: rgba(176,0,0,0.04);
+    --scan-color: rgba(0,0,0,0.02);
+    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(200,200,200,0.4) 100%);
+    --nv-color: rgba(45,45,45,0.5);
+    --hint-color: rgba(45,45,45,0.35);
+    --input-placeholder: rgba(45,45,45,0.3);
+    --dim-color: rgba(45,45,45,0.45);
+    --add-span: rgba(45,45,45,0.35);
+    --label-color: rgba(45,45,45,0.5);
+    --corner-color: rgba(184,134,11,0.4);
   }
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   ::-webkit-scrollbar { width:6px; height:6px; }
@@ -203,14 +234,14 @@ const UI_HTML = `<!DOCTYPE html>
   body::before {
     content:'';
     position:fixed; inset:0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(213,16,1,0.015) 3px, rgba(213,16,1,0.015) 4px);
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, var(--scan-color) 3px, var(--scan-color) 4px);
     pointer-events:none;
     z-index:9999;
   }
   body::after {
     content:'';
     position:fixed; inset:0;
-    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.7) 100%);
+    background: var(--vignette);
     pointer-events:none;
     z-index:9998;
   }
@@ -236,7 +267,7 @@ const UI_HTML = `<!DOCTYPE html>
   }
 
   /* Corner brackets */
-  .corner { position:absolute; width:14px; height:14px; border-color:rgba(255,199,52,0.35); border-style:solid; }
+  .corner { position:absolute; width:14px; height:14px; border-color:var(--corner-color); border-style:solid; }
   .corner-tl { top:6px; left:6px; border-width:1px 0 0 1px; }
   .corner-tr { top:6px; right:6px; border-width:1px 1px 0 0; }
   .corner-bl { bottom:6px; left:6px; border-width:0 0 1px 1px; }
@@ -322,7 +353,7 @@ const UI_HTML = `<!DOCTYPE html>
     transition:border-color .2s;
   }
   textarea:focus { border-color:var(--border-hover); }
-  textarea::placeholder { color:rgba(255,235,214,0.25); }
+  textarea::placeholder { color:var(--input-placeholder); }
 
   input[type="text"], input[type="number"] {
     padding:6px 10px;
@@ -371,7 +402,7 @@ const UI_HTML = `<!DOCTYPE html>
   }
   .actions .hint {
     font-size:11px;
-    color:rgba(255,235,214,0.35);
+    color:var(--hint-color);
     letter-spacing:1px;
   }
 
@@ -388,14 +419,14 @@ const UI_HTML = `<!DOCTYPE html>
   .preset-chip:hover { border-color:var(--border-hover); }
   .preset-chip.selected { border-color:var(--red); background:rgba(213,16,1,0.06); }
   .preset-chip input { accent-color:var(--red); margin:0; }
-  .preset-chip .dim { color:rgba(255,235,214,0.4); font-size:10px; }
+  .preset-chip .dim { color:var(--dim-color); font-size:10px; }
   .preset-chip .del { cursor:pointer; opacity:0.3; font-size:13px; line-height:1; padding:0 2px; transition:opacity .2s; }
   .preset-chip .del:hover { opacity:1; color:var(--red); }
 
   .add-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .add-row input { width:80px; }
   .add-row input.name-input { width:100px; }
-  .add-row span { color:rgba(255,235,214,0.3); font-size:11px; }
+  .add-row span { color:var(--add-span); font-size:11px; }
 
   /* Naming */
   .nv {
@@ -406,7 +437,7 @@ const UI_HTML = `<!DOCTYPE html>
     font-size:10px;
     margin:2px 0;
     transition:all .2s;
-    color:rgba(255,235,214,0.6);
+    color:var(--nv-color);
   }
   .nv:hover { border-color:var(--gold); color:var(--gold); }
   .naming-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
@@ -458,7 +489,7 @@ const UI_HTML = `<!DOCTYPE html>
     display:flex; justify-content:space-between; align-items:center;
     flex-wrap:wrap; gap:12px;
   }
-  .summary .count { font-size:11px; color:rgba(255,235,214,0.5); }
+  .summary .count { font-size:11px; color:var(--label-color); }
   .summary .count strong { color:var(--white); }
   #snap-count { display:none; }
   #open-folder-btn { display:inline-flex; }
@@ -484,7 +515,7 @@ const UI_HTML = `<!DOCTYPE html>
   .gallery-item .label {
     padding:4px 8px;
     font-size:10px;
-    color:rgba(255,235,214,0.5);
+    color:var(--label-color);
     background:var(--darker);
     border-top:1px solid var(--border);
   }
@@ -591,10 +622,9 @@ let totalSnaps = 0;
 let urlIndex = 0;
 
 let theme = 'dark';
-const root = document.documentElement;
 function setTheme(t) {
   theme = t; localStorage.setItem('cybersnapper-theme', t);
-  root.style.filter = t === 'light' ? 'invert(1) hue-rotate(180deg)' : 'none';
+  document.documentElement.classList.toggle('light', t === 'light');
 }
 function getTheme() { return localStorage.getItem('cybersnapper-theme') || 'dark'; }
 setTheme(getTheme());
