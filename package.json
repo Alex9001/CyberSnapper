@@ -34,10 +34,10 @@
   "type": "commonjs",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/Alex9001/CyberSnapper.git"
   },
-  "homepage": "",
-  "bugs": "",
+  "homepage": "https://github.com/Alex9001/CyberSnapper",
+  "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
     "playwright": "^1.61.1"
   },
