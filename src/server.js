@@ -195,25 +195,25 @@ const UI_HTML = `<!DOCTYPE html>
   }
   .light {
     --black: #bab2a6;
-    --darker: #a89f92;
-    --dark: #978d7f;
-    --red: #7a3a30;
-    --gold: #7a6430;
-    --white: #2c2a27;
-    --gray: #9a9184;
-    --surface: rgba(150,142,130,0.4);
-    --border: rgba(122,58,48,0.09);
-    --border-hover: rgba(122,58,48,0.18);
-    --glow: rgba(122,58,48,0.02);
-    --scan-color: rgba(0,0,0,0.008);
-    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(160,152,140,0.25) 100%);
-    --nv-color: rgba(44,42,39,0.4);
-    --hint-color: rgba(44,42,39,0.25);
-    --input-placeholder: rgba(44,42,39,0.2);
-    --dim-color: rgba(44,42,39,0.35);
-    --add-span: rgba(44,42,39,0.25);
-    --label-color: rgba(44,42,39,0.4);
-    --corner-color: rgba(122,100,48,0.3);
+    --darker: #cec6ba;
+    --dark: #b8afa2;
+    --red: #aa4030;
+    --gold: #8a6e30;
+    --white: #1a1816;
+    --gray: #a2988a;
+    --surface: rgba(200,196,188,0.5);
+    --border: rgba(170,64,48,0.12);
+    --border-hover: rgba(170,64,48,0.22);
+    --glow: rgba(170,64,48,0.03);
+    --scan-color: rgba(0,0,0,0.006);
+    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(180,172,160,0.2) 100%);
+    --nv-color: rgba(26,24,22,0.45);
+    --hint-color: rgba(26,24,22,0.3);
+    --input-placeholder: rgba(26,24,22,0.25);
+    --dim-color: rgba(26,24,22,0.4);
+    --add-span: rgba(26,24,22,0.3);
+    --label-color: rgba(26,24,22,0.45);
+    --corner-color: rgba(138,110,48,0.35);
   }
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   ::-webkit-scrollbar { width:6px; height:6px; }
@@ -516,15 +516,18 @@ const UI_HTML = `<!DOCTYPE html>
   }
   .summary .count { font-size:11px; color:var(--label-color); }
   .summary .count strong { color:var(--white); }
+  .win-footer {
+    display:flex; align-items:center; justify-content:center;
+    padding:10px 20px;
+    border-top:1px solid var(--border);
+  }
   .byline {
-    position:absolute; bottom:10px; right:14px;
     font-family:var(--font-display);
-    font-size:9px;
-    letter-spacing:2px;
-    color:rgba(255,235,214,0.2);
+    font-size:8px;
+    letter-spacing:3px;
+    color:var(--hint-color);
     text-decoration:none;
     transition:color .2s;
-    z-index:2;
   }
   .byline:hover { color:var(--red); }
   #snap-count { display:none; }
@@ -633,7 +636,9 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
     <div id="gallery" class="gallery"></div>
   </div>
-  <a class="byline" href="https://cyberbrand.net" target="_blank" rel="noopener">BY CYBER BRAND</a>
+  <div class="win-footer">
+    <a class="byline" href="https://cyberbrand.net" target="_blank" rel="noopener">BY CYBER BRAND</a>
+  </div>
 </div>
 <script>
 const themeToggle = document.getElementById('theme-toggle');
