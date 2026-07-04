@@ -22,9 +22,9 @@
 
 ## Features
 
-`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `⚡ Live progress` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary`
+`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary`
 
-Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (768×1024), and **Mobile** (375×812) — with automatic lazy-load scrolling, then preview thumbnails instantly in the browser.
+Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (768×1024), and **Mobile** (375×812) — with configurable delays for optimal content loading, then preview thumbnails instantly in the browser.
 
 <p align="center">
   <img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" width="700">
@@ -68,7 +68,11 @@ node capture.js https://example.com ...  # inline URLs
 node capture.js [urls.txt | url1 url2 ...]
 ```
 
-The CLI processes all URLs sequentially and prints progress to the terminal:
+The CLI loads settings from `config.json` (delays, popup blocking, presets, naming) and processes all URLs sequentially:
+
+- `initialDelay`: Wait before scrolling (default: 2000ms).
+- `scrollDelay`: Wait between scroll steps (default: 1000ms).
+- `blockPopups`: Block popups/modals (default: false).
 
 ```
 ============================================================
@@ -105,6 +109,8 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 |---------|-------------|
 | 🎨 **Theme** | Auto-detects system preference (dark/light), toggle in header |
 | 📐 **Presets** | Add, remove, or toggle viewport sizes on the fly |
+| ⏱️ **Delays** | Adjust initial, scroll, and final delays for optimal loading |
+| 🚫 **Popup blocking** | Toggle to block popups/modals (checkbox) |
 | 🏷️ **Naming** | Custom output filenames with variables (`{hostname}`, `{preset}`, `{width}`, `{height}`, `{domain}`, `{date}`, `{time}`, `{index}`) |
 | 🖼️ **Gallery** | Thumbnail previews of every screenshot, click to open |
 | 📁 **Open folder** | Reveals screenshots in your file manager |
@@ -113,7 +119,7 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 
 ## Configuration
 
-Edit `config.json` to customize presets and naming:
+Edit `config.json` to customize presets, delays, popup blocking, and naming:
 
 ```json
 {
@@ -122,6 +128,10 @@ Edit `config.json` to customize presets and naming:
     { "name": "Tablet",  "width": 768,  "height": 1024 },
     { "name": "Mobile",  "width": 375,  "height": 812 }
   ],
+  "initialDelay": 2000,
+  "scrollDelay": 1000,
+  "finalDelay": 1000,
+  "blockPopups": false,
   "naming": {
     "template": "{hostname}-{preset}"
   }
@@ -129,6 +139,19 @@ Edit `config.json` to customize presets and naming:
 ```
 
 Changes are saved automatically from the Web UI.
+
+### Delay Settings
+
+| Setting         | Default | Purpose                                  |
+|-----------------|---------|------------------------------------------|
+| `initialDelay`  | 2000ms  | Wait before scrolling (above-the-fold).  |
+| `scrollDelay`   | 1000ms  | Wait between scroll steps.               |
+| `finalDelay`    | 1000ms  | Wait after scrolling back to top.        |
+
+### Popup Blocking
+
+- Set `blockPopups` to `true` to block common popups/modals.
+- Blocks known ad/popup domains and hides overlay elements.
 
 ### Naming variables
 
