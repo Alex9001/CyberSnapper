@@ -496,6 +496,17 @@ const UI_HTML = `<!DOCTYPE html>
   }
   .summary .count { font-size:11px; color:var(--label-color); }
   .summary .count strong { color:var(--white); }
+  .byline {
+    position:absolute; bottom:10px; right:14px;
+    font-family:var(--font-display);
+    font-size:9px;
+    letter-spacing:2px;
+    color:rgba(255,235,214,0.2);
+    text-decoration:none;
+    transition:color .2s;
+    z-index:2;
+  }
+  .byline:hover { color:var(--red); }
   #snap-count { display:none; }
   #open-folder-btn { display:inline-flex; }
   #open-folder-btn { display:none; }
@@ -602,6 +613,7 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
     <div id="gallery" class="gallery"></div>
   </div>
+  <a class="byline" href="https://cyberbrand.net" target="_blank" rel="noopener">BY CYBER BRAND</a>
 </div>
 <script>
 const themeToggle = document.getElementById('theme-toggle');
