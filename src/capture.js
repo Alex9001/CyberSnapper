@@ -1,19 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { generateFilename } = require('./naming');
 
 const OUT_DIR = 'screenshots';
 
 function ensureScheme(url) {
   if (!url.startsWith('http://') && !url.startsWith('https://')) return 'https://' + url;
   return url;
-}
-
-function safeFilename(url) {
-  const hostname = url.hostname.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  let pathname = url.pathname.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  if (pathname === '_' || pathname === '') pathname = '';
-  return hostname + pathname;
 }
 
 async function launchBrowser() {
@@ -36,8 +30,9 @@ async function launchBrowser() {
   }
 }
 
-async function capture(urls, viewports, onProgress) {
+async function capture(urls, viewports, onProgress, naming) {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
+  const template = (naming && naming.template) || '{hostname}-{preset}';
 
   const browser = await launchBrowser();
   const context = await browser.newContext();
@@ -55,8 +50,6 @@ async function capture(urls, viewports, onProgress) {
       onProgress?.({ type: 'url-error', url: targetUrl, message: 'Invalid URL' });
       continue;
     }
-
-    const prefix = safeFilename(urlObj);
 
     for (const vp of viewports) {
       onProgress?.({ type: 'viewport-start', index: i, url: targetUrl, viewport: vp.name });
@@ -89,7 +82,10 @@ async function capture(urls, viewports, onProgress) {
 
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-      const filePath = path.join(OUT_DIR, `${prefix}-${vp.name}.png`);
+      const { filename, subdir } = generateFilename(template, targetUrl, vp, i);
+      const fileDir = subdir ? path.join(OUT_DIR, subdir) : OUT_DIR;
+      if (!fs.existsSync(fileDir)) fs.mkdirSync(fileDir, { recursive: true });
+      const filePath = path.join(fileDir, filename);
       await page.screenshot({ path: filePath, fullPage: true, animations: 'disabled' });
 
       onProgress?.({ type: 'viewport-done', index: i, url: targetUrl, viewport: vp.name, file: filePath });

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { capture } = require('./capture');
+const { generateFilename } = require('./naming');
 const config = require('./config');
 
 const SCREENSHOTS_PATH = path.join(process.cwd(), 'screenshots');
@@ -64,11 +65,12 @@ async function startServer(port = 0) {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', async () => {
-        let urls, viewports;
+        let urls, viewports, naming;
         try {
           const parsed = JSON.parse(body);
           urls = parsed.urls;
           viewports = parsed.presets || config.getPresets();
+          naming = parsed.naming || config.getNaming();
           if (!Array.isArray(urls) || urls.length === 0) throw new Error();
         } catch {
           json(res, 400, { error: 'Invalid body — expected { urls: [...], presets: [...] }' });
@@ -85,7 +87,7 @@ async function startServer(port = 0) {
         try {
           await capture(urls, viewports, (event) => {
             res.write(`data: ${JSON.stringify(event)}\n\n`);
-          });
+          }, naming);
         } catch (err) {
           res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
         }
@@ -113,6 +115,22 @@ async function startServer(port = 0) {
         const ext = path.extname(filename).toLowerCase();
         res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
         res.end(data);
+      });
+      return;
+    }
+
+    if (url.pathname === '/preview' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { template, url: sampleUrl, preset } = JSON.parse(body);
+          const samplePreset = preset || { name: 'Desktop', width: 1920, height: 1080 };
+          const result = generateFilename(template || '{hostname}-{preset}', sampleUrl || 'https://example.com', samplePreset, 0);
+          json(res, 200, { preview: result.subdir ? result.subdir + '/' + result.filename : result.filename });
+        } catch {
+          json(res, 400, { error: 'Invalid preview request' });
+        }
       });
       return;
     }
@@ -222,6 +240,8 @@ const UI_HTML = `<!DOCTYPE html>
   .gallery-item:hover { transform:scale(1.03); }
   .gallery-item img { width:100%; display:block; }
   .gallery-item .label { padding:5px 8px; font-size:11px; color:var(--text-secondary); background:var(--surface); }
+  .nv { display:inline-block; padding:1px 6px; border-radius:4px; background:var(--border); cursor:pointer; font-family:'SF Mono','Fira Code',monospace; font-size:11px; margin:2px 0; transition:background .2s; }
+  .nv:hover { background:var(--primary); color:#fff; }
 </style>
 </head>
 <body>
@@ -246,6 +266,32 @@ const UI_HTML = `<!DOCTYPE html>
       <input type="number" id="new-height" placeholder="Height" min="1">
       <button class="btn btn-primary btn-sm" id="add-preset-btn">+ Add</button>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Naming</h2>
+    <div style="margin-bottom:10px;font-size:12px;color:var(--text-secondary)">Variables  —
+      <span class="nv" data-v="{hostname}">{hostname}</span>
+      <span class="nv" data-v="{preset}">{preset}</span>
+      <span class="nv" data-v="{width}">{width}</span>
+      <span class="nv" data-v="{height}">{height}</span>
+      <span class="nv" data-v="{domain}">{domain}</span>
+      <span class="nv" data-v="{date}">{date}</span>
+      <span class="nv" data-v="{time}">{time}</span>
+      <span class="nv" data-v="{index}">{index}</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="naming-template" value="{hostname}-{preset}" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;font-size:13px;outline:none">
+      <button class="btn btn-outline btn-sm" id="preview-btn">Preview</button>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" data-template="{hostname}-{preset}">Default</button>
+      <button class="btn btn-outline btn-sm" data-template="{hostname}-{width}x{height}">By size</button>
+      <button class="btn btn-outline btn-sm" data-template="{date}/{hostname}-{preset}">By date</button>
+      <button class="btn btn-outline btn-sm" data-template="{index}-{hostname}-{preset}">Indexed</button>
+      <button class="btn btn-outline btn-sm" data-template="{domain}/{preset}/{hostname}">By domain</button>
+    </div>
+    <div id="naming-preview" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
   </div>
 
   <div class="actions" style="margin-bottom:20px">
@@ -279,6 +325,9 @@ const newWidth = document.getElementById('new-width');
 const newHeight = document.getElementById('new-height');
 const addBtn = document.getElementById('add-preset-btn');
 const resetBtn = document.getElementById('reset-presets-btn');
+const namingInput = document.getElementById('naming-template');
+const previewDiv = document.getElementById('naming-preview');
+const previewBtn = document.getElementById('preview-btn');
 let presets = [];
 let totalSnaps = 0;
 let urlIndex = 0;
@@ -335,12 +384,10 @@ addBtn.addEventListener('click', async () => {
 });
 
 resetBtn.addEventListener('click', async () => {
-  const res = await fetch('/config');
-  const data = await res.json();
-  // Presets already loaded; just reset
-  presets = (await (await fetch('/config')).json()).presets || [];
-  // Force re-fetch from server to get defaults
-  const r2 = await fetch('/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ presets:[] }) });
+  await fetch('/config', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ presets:[], naming: { template: namingInput.value.trim() || '{hostname}-{preset}' } })
+  });
   await loadPresets();
 });
 
@@ -404,6 +451,63 @@ function handleEvent(e) {
 openFolderBtn.addEventListener('click', () => fetch('/open-folder').catch(() => {}));
 function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 function slug(s) { return s.replace(/[^a-z0-9]/gi,'_').toLowerCase(); }
+
+// — naming —
+document.querySelectorAll('.nv').forEach(el => el.addEventListener('click', () => {
+  const v = el.dataset.v;
+  const start = namingInput.selectionStart;
+  const end = namingInput.selectionEnd;
+  const val = namingInput.value;
+  namingInput.value = val.slice(0, start) + v + val.slice(end);
+  namingInput.selectionStart = namingInput.selectionEnd = start + v.length;
+  namingInput.focus();
+  updatePreview();
+}));
+
+document.querySelectorAll('[data-template]').forEach(el => el.addEventListener('click', () => {
+  namingInput.value = el.dataset.template;
+  updatePreview();
+}));
+
+async function updatePreview() {
+  const template = namingInput.value.trim() || '{hostname}-{preset}';
+  const sampleUrl = (urlInput.value.trim().split('\\n').filter(l => l.trim())[0]) || 'https://example.com';
+  const samplePreset = presets.length > 0 ? presets[0] : { name: 'Desktop', width: 1920, height: 1080 };
+  try {
+    const res = await fetch('/preview', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ template, url: sampleUrl, preset: samplePreset })
+    });
+    const data = await res.json();
+    previewDiv.textContent = 'Preview: screenshots/' + (data.preview || '');
+  } catch { previewDiv.textContent = ''; }
+}
+
+namingInput.addEventListener('input', updatePreview);
+
+// save naming when config is saved, load naming from config
+const origLoadPresets = loadPresets;
+loadPresets = async function() {
+  await origLoadPresets();
+  try {
+    const res = await fetch('/config');
+    const data = await res.json();
+    if (data.naming && data.naming.template) {
+      namingInput.value = data.naming.template;
+      updatePreview();
+    }
+  } catch {}
+};
+
+// also save naming when config is saved
+const origSavePresets = savePresets;
+savePresets = async function() {
+  const template = namingInput.value.trim() || '{hostname}-{preset}';
+  await fetch('/config', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ presets, naming: { template } })
+  });
+};
 
 loadPresets();
 </script>

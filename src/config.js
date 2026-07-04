@@ -7,7 +7,23 @@ const DEFAULTS = {
     { name: 'Tablet',   width: 768,  height: 1024 },
     { name: 'Mobile',   width: 375,  height: 812 },
   ],
+  naming: {
+    template: '{hostname}-{preset}',
+  },
 };
+
+const NAMING_PRESETS = [
+  { label: 'Default',  template: '{hostname}-{preset}' },
+  { label: 'By size',  template: '{hostname}-{width}x{height}' },
+  { label: 'By date',  template: '{date}/{hostname}-{preset}' },
+  { label: 'Indexed',  template: '{index}-{hostname}-{preset}' },
+  { label: 'By domain', template: '{domain}/{preset}/{hostname}' },
+];
+
+const NAMING_VARS = [
+  '{hostname}', '{preset}', '{width}', '{height}',
+  '{domain}', '{url}', '{date}', '{time}', '{index}',
+];
 
 function configDir() {
   if (process.pkg || fs.existsSync(path.join(path.dirname(process.execPath), 'package.json'))) {
@@ -25,15 +41,20 @@ function load() {
     const raw = fs.readFileSync(configPath(), 'utf-8');
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.presets) || parsed.presets.length === 0) {
-      return { presets: [...DEFAULTS.presets] };
+      parsed.presets = [...DEFAULTS.presets];
+    }
+    if (!parsed.naming || !parsed.naming.template) {
+      parsed.naming = { template: DEFAULTS.naming.template };
     }
     return parsed;
   } catch {
-    return { presets: [...DEFAULTS.presets] };
+    return { presets: [...DEFAULTS.presets], naming: { template: DEFAULTS.naming.template } };
   }
 }
 
 function save(data) {
+  if (!Array.isArray(data.presets)) data.presets = [...DEFAULTS.presets];
+  if (!data.naming || !data.naming.template) data.naming = { template: DEFAULTS.naming.template };
   fs.writeFileSync(configPath(), JSON.stringify(data, null, 2), 'utf-8');
 }
 
@@ -41,25 +62,8 @@ function getPresets() {
   return load().presets;
 }
 
-function addPreset(name, width, height) {
-  const cfg = load();
-  if (cfg.presets.some(p => p.name === name)) return false;
-  cfg.presets.push({ name, width, height });
-  save(cfg);
-  return true;
+function getNaming() {
+  return load().naming;
 }
 
-function removePreset(name) {
-  const cfg = load();
-  const idx = cfg.presets.findIndex(p => p.name === name);
-  if (idx === -1) return false;
-  cfg.presets.splice(idx, 1);
-  save(cfg);
-  return true;
-}
-
-function resetPresets() {
-  save({ presets: [...DEFAULTS.presets] });
-}
-
-module.exports = { load, save, getPresets, addPreset, removePreset, resetPresets, configPath };
+module.exports = { load, save, getPresets, getNaming, configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS };
