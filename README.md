@@ -4,7 +4,9 @@ Take full-page screenshots of websites at Desktop (1920×1080), Tablet (768×102
 
 ## Quick Start
 
-**Double-click `run.sh`** (or run it from the terminal):
+**Windows** — double-click `run.bat`
+
+**Linux / macOS** — double-click `run.sh` (or run from terminal):
 
 ```bash
 ./run.sh
@@ -34,7 +36,8 @@ npx playwright install chromium
 ```
 screenshot-bot/
   capture.js        ← the main script
-  run.sh            ← double-clickable shortcut
+  run.sh            ← shortcut (Linux/macOS)
+  run.bat           ← shortcut (Windows)
   urls/
     urls.txt        ← default URL list
     example.txt     ← example URL list

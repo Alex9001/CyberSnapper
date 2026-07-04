@@ -106,7 +106,7 @@ function safeFilename(url) {
 
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-      const filePath = `${OUT_DIR}/${prefix}-${vp.name}.png`;
+      const filePath = path.join(OUT_DIR, `${prefix}-${vp.name}.png`);
       await page.screenshot({ path: filePath, fullPage: true, animations: 'disabled' });
 
       console.log(`saved`);
