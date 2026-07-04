@@ -13,8 +13,5 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-node capture.js "$@"
+node src/index.js
 
-echo ""
-echo "Press Enter to close."
-read -r

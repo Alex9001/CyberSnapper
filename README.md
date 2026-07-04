@@ -1,53 +1,69 @@
-# CyberSnapper
+# ⌁ CyberSnapper
 
-Snap full-page screenshots of any website at Desktop (1920×1080), Tablet (768×1024), and Mobile (375×812) resolutions — with automatic lazy-load scrolling.
+Snap full-page screenshots of websites at Desktop (1920×1080), Tablet (768×1024), and Mobile (375×812) — with automatic lazy-load scrolling. Powered by Playwright.
 
 ## Quick Start
 
-**Windows** — double-click `run.bat`
-
-**Linux / macOS** — double-click `run.sh` (or run from terminal):
-
+**Standalone binary (if built):**
 ```bash
-./run.sh
+./dist/CyberSnapper          # opens web UI in browser
+./dist/CyberSnapper urls.txt # CLI mode
 ```
 
-It will install dependencies automatically and capture every URL in `urls/urls.txt`.
+**Or from source (double-click):**
+- **Windows** — `run.bat`
+- **Linux / macOS** — `run.sh`
 
-## Usage
+Auto-installs dependencies on first run, then opens the web UI.
 
+**Or from terminal (CLI):**
 ```bash
-node capture.js <url1> <url2> ...        # inline URLs
+node capture.js                          # uses urls/urls.txt
 node capture.js urls.txt                 # URLs from a file
-node capture.js                          # uses urls/urls.txt by default
+node capture.js https://example.com ...  # inline URLs
 ```
 
-Every URL is captured at all three viewports and saved as PNGs in the `screenshots/` folder.
+## Web UI
 
-## Setup (manual)
+When launched without arguments, CyberSnapper starts a web server and opens your browser. Paste URLs (one per line), hit **Snap!**, and watch the progress live — thumbnails appear as each viewport is captured.
+
+- Dark/light theme (auto-detects system preference, toggle button in header)
+- "Open folder" button to reveal screenshots in your file manager
+
+## Build Standalone Binary
 
 ```bash
-npm install
-npx playwright install chromium
+npm run build
+# Produces: dist/CyberSnapper (~90 MB, includes Playwright)
 ```
+
+The binary works on the platform it was built on. For distribution, ship it alongside `node_modules/` or run `npm install` in the target directory.
+
+## How It Works
+
+1. Loads each URL at three viewport sizes
+2. Scrolls down to trigger lazy-loaded images
+3. Waits for network to settle
+4. Saves full-page PNGs as `{domain}-{viewport}.png`
 
 ## File Structure
 
 ```
 CyberSnapper/
-  capture.js        ← the main script
-  run.sh            ← shortcut (Linux/macOS)
-  run.bat           ← shortcut (Windows)
+  capture.js        ← CLI entry point
+  run.sh / run.bat  ← clickable launchers (web UI)
+  src/
+    index.js        ← binary entry (CLI or server)
+    capture.js      ← core screenshot engine
+    server.js       ← web server + UI
+    cli.js          ← CLI output logic
   urls/
     urls.txt        ← default URL list
-    example.txt     ← example URL list
-  screenshots/      ← output folder (gitignored)
-  package.json
+    example.txt     ← example list
+  screenshots/      ← output (gitignored)
+  dist/             ← built binaries (gitignored)
 ```
 
-## How It Works
+## Cross-platform
 
-1. Loads each URL at three viewport sizes
-2. Scrolls down the page to trigger lazy-loaded images
-3. Waits for the network to settle
-4. Saves a full-page screenshot as `{domain}-{viewport}.png`
+Works on Windows, macOS, and Linux. The standalone binary must be built separately for each platform.

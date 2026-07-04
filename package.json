@@ -1,16 +1,30 @@
 {
   "name": "CyberSnapper",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Snap full-page screenshots at multiple viewports — CLI and web UI",
+  "main": "capture.js",
+  "bin": {
+    "cybersnapper": "./capture.js"
   },
-  "keywords": [],
+  "scripts": {
+    "start": "node src/index.js",
+    "build": "node build.js",
+    "pkg": "npx @yao-pkg/pkg src/index.js --targets node22-linux-x64 --output dist/CyberSnapper"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/playwright-core/browsers.json"
+    ]
+  },
+  "keywords": ["screenshot", "playwright", "web", "fullpage"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "playwright": "^1.61.1"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.21.0",
+    "esbuild": "^0.25.12"
   }
 }

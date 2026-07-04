@@ -11,7 +11,6 @@ if not exist "node_modules\" (
   call npm install
 )
 
-node capture.js %*
+node src/index.js
 
-echo.
 pause
