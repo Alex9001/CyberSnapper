@@ -623,26 +623,31 @@ const UI_HTML = `<!DOCTYPE html>
 
   <div class="win-header">
     <div class="win-title"><span class="dot"></span> ⌁ CyberSnapper</div>
-  <div class="win-controls">
-    <button class="win-btn" id="help-btn" title="Help" onclick="document.getElementById('help-modal').style.display='flex'">?</button>
-    <button class="win-btn" id="theme-toggle" title="Toggle theme" onclick="setTheme(theme === 'dark' ? 'light' : 'dark')">☀/☾</button>
-    <button class="win-btn stop" id="stop-btn" title="Stop server" onclick="if(confirm('Stop the server and exit CyberSnapper?')){fetch('/shutdown').catch(()=>{});}">⏹ Stop</button>
+    <div class="win-controls">
+      <button class="win-btn" id="help-btn" title="Help" onclick="document.getElementById('help-modal').style.display='flex'">?</button>
+      <button class="win-btn" id="theme-toggle" title="Toggle theme" onclick="setTheme(theme === 'dark' ? 'light' : 'dark')">☀/☾</button>
+      <button class="win-btn stop" id="stop-btn" title="Stop server" onclick="if(confirm('Stop the server and exit CyberSnapper?')){fetch('/shutdown').catch(()=>{});}">⏹ Stop</button>
+    </div>
   </div>
+  
+  <div style="padding:0 20px;">
   
   <!-- Help Modal -->
   <div id="help-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
-    <div style="background:var(--darker); border:1px solid var(--border); width:80%; max-width:600px; max-height:80vh; overflow:hidden; position:relative; box-shadow: 0 0 60px var(--glow), inset 0 0 60px var(--glow);">
+    <div class="app-window" style="width:80%; max-width:600px; max-height:80vh; margin:0;">
       <div class="corner corner-tl"></div>
       <div class="corner corner-tr"></div>
       <div class="corner corner-bl"></div>
       <div class="corner corner-br"></div>
-      <div style="position:absolute; top:0; left:0; right:0; background:var(--darker); border-bottom:1px solid var(--border); padding:14px 20px; z-index:1;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h2 style="font-family:var(--font-display); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--gold);">📚 HELP</h2>
-          <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px; cursor:pointer;" onclick="document.getElementById('help-modal').style.display='none'">✕</button>
+      
+      <div class="win-header">
+        <div class="win-title"><span class="dot"></span> 📚 HELP</div>
+        <div class="win-controls">
+          <button id="close-help" class="win-btn" style="font-size:14px;" onclick="document.getElementById('help-modal').style.display='none'">✕</button>
         </div>
       </div>
-      <div style="padding:16px; margin-top:50px; max-height:calc(80vh - 70px); overflow:auto;">
+      
+      <div style="padding:16px 20px; max-height:calc(80vh - 100px); overflow:auto;">
       <div style="padding:16px;">
         <div style="margin-bottom:16px;">
           <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">🖥️ CLI Usage</h3>
@@ -733,27 +738,28 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
-  <div style="display:flex; gap:20px;">
+  <div style="display:flex; gap:20px; margin-top:10px; padding:0 20px;">
     <!-- Left Column -->
     <div style="flex:1;">
       <div class="panel">
         <div class="panel-header"><h2>Capture Settings</h2></div>
-        <div style="margin-bottom:12px;">
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <div style="padding:16px 20px;">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; width:100%;">
             <label for="initial-delay" style="font-size:12px; color:var(--label-color);" title="Delay before scrolling (seconds)">Initial Delay:</label>
             <input type="text" id="initial-delay" value="1.5" style="width:60px; text-align:center;">
             <span style="font-size:12px; color:var(--label-color);">seconds</span>
           </div>
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="scroll-delay" style="font-size:12px; color:var(--label-color);" title="Delay between scroll steps (seconds)">Scroll Delay:</label>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; width:100%;">
+            <label for="scroll-delay" style="font-size:12px; color:var(--label-color); min-width:120px;" title="Delay between scroll steps (seconds)">Scroll Delay:</label>
             <input type="text" id="scroll-delay" value="1.8" style="width:60px; text-align:center;">
             <span style="font-size:12px; color:var(--label-color);">seconds</span>
           </div>
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="concurrency" style="font-size:12px; color:var(--label-color);" title="Number of websites to capture in parallel">Concurrency:</label>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; width:100%;">
+            <label for="concurrency" style="font-size:12px; color:var(--label-color); min-width:120px;" title="Number of websites to capture in parallel">Concurrency:</label>
             <input type="text" id="concurrency" value="1" style="width:40px; text-align:center;">
           </div>
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; width:100%;">
+            <label for="block-popups" style="font-size:12px; color:var(--label-color); min-width:120px;">Block popups:</label>
             <input type="checkbox" id="block-popups">
             <label for="block-popups" style="font-size:12px; color:var(--label-color);">Block popups/modals</label>
           </div>
@@ -762,7 +768,8 @@ const UI_HTML = `<!DOCTYPE html>
       
       <div class="panel">
         <div class="panel-header"><h2>Output Naming</h2></div>
-        <div style="margin-bottom:8px;font-size:10px;color:rgba(255,235,214,0.35);letter-spacing:1px">Variables —
+        <div style="padding:16px 20px;">
+          <div style="margin-bottom:8px;font-size:10px;color:rgba(255,235,214,0.35);letter-spacing:1px">Variables —
           <span class="nv" data-v="{hostname}">{hostname}</span>
           <span class="nv" data-v="{preset}">{preset}</span>
           <span class="nv" data-v="{width}">{width}</span>
@@ -791,35 +798,35 @@ const UI_HTML = `<!DOCTYPE html>
     <div style="flex:1;">
       <div class="panel">
         <div class="panel-header"><h2>Output Formats</h2></div>
-        <div style="margin-bottom:12px;">
-          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
-            <label style="display:flex; align-items:center; gap:4px;">
-              <input type="checkbox" id="format-png" checked>
-              <span style="font-size:12px;">PNG</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:4px;">
-              <input type="checkbox" id="format-webp">
-              <span style="font-size:12px;">WebP</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:4px;">
-              <input type="checkbox" id="format-avif">
-              <span style="font-size:12px;">AVIF</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:4px;">
-              <input type="checkbox" id="format-pdf">
-              <span style="font-size:12px;">PDF</span>
-            </label>
-          </div>
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="webp-quality" style="font-size:12px; color:var(--label-color);">WebP Quality:</label>
-            <input type="text" id="webp-quality" value="80" style="width:40px; text-align:center;">
-            <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="avif-quality" style="font-size:12px; color:var(--label-color);">AVIF Quality:</label>
-            <input type="text" id="avif-quality" value="50" style="width:40px; text-align:center;">
-            <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
-          </div>
+        <div style="padding:16px 20px;">
+      <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:8px;">
+        <label style="display:flex; align-items:center; gap:4px; min-width:80px;">
+          <input type="checkbox" id="format-png" checked>
+          <span style="font-size:12px;">PNG</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; min-width:80px;">
+          <input type="checkbox" id="format-webp">
+          <span style="font-size:12px;">WebP</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; min-width:80px;">
+          <input type="checkbox" id="format-avif">
+          <span style="font-size:12px;">AVIF</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; min-width:80px;">
+          <input type="checkbox" id="format-pdf">
+          <span style="font-size:12px;">PDF</span>
+        </label>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; width:100%;">
+        <label for="webp-quality" style="font-size:12px; color:var(--label-color); min-width:120px;">WebP Quality:</label>
+        <input type="text" id="webp-quality" value="80" style="width:40px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; width:100%;">
+        <label for="avif-quality" style="font-size:12px; color:var(--label-color); min-width:120px;">AVIF Quality:</label>
+        <input type="text" id="avif-quality" value="50" style="width:40px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+      </div>
           
           <details style="margin-top:12px;">
             <summary style="font-size:12px; color:var(--gold); cursor:pointer;">PDF Settings</summary>
@@ -847,7 +854,7 @@ const UI_HTML = `<!DOCTYPE html>
       
       <div class="panel">
         <div class="panel-header"><h2>Advanced</h2></div>
-        <div style="margin-bottom:12px;">
+        <div style="padding:16px 20px;">
           <div style="margin-bottom:8px;">
             <label for="hide-selectors" style="font-size:12px; color:var(--label-color);" title="CSS selectors to hide before capturing (one per line)">Hide Selectors:</label>
             <textarea id="hide-selectors" style="width:100%; min-height:60px; margin-top:4px; font-family:var(--font-mono); font-size:12px;" placeholder="#intercom-widget\n.sticky-header\n.announcement-bar"></textarea>
@@ -859,6 +866,7 @@ const UI_HTML = `<!DOCTYPE html>
         </div>
       </div>
     </div>
+  </div>
   </div>
 
   <div class="actions">
