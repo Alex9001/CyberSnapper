@@ -623,10 +623,87 @@ const UI_HTML = `<!DOCTYPE html>
 
   <div class="win-header">
     <div class="win-title"><span class="dot"></span> ⌁ CyberSnapper</div>
-    <div class="win-controls">
-      <button class="win-btn" id="theme-toggle" title="Toggle theme">☀/☾</button>
-      <button class="win-btn stop" id="stop-btn" title="Stop server">⏹ Stop</button>
+  <div class="win-controls">
+    <button class="win-btn" id="help-btn" title="Help">?</button>
+    <button class="win-btn" id="theme-toggle" title="Toggle theme">☀/☾</button>
+    <button class="win-btn stop" id="stop-btn" title="Stop server">⏹ Stop</button>
+  </div>
+  
+  <!-- Help Modal -->
+  <div id="help-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
+    <div style="background:var(--darker); border:1px solid var(--border); width:80%; max-width:600px; max-height:80vh; overflow:auto; position:relative;">
+      <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="font-family:var(--font-display); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:2px;">📚 Help</h2>
+        <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px;">✕</button>
+      </div>
+      <div style="padding:16px;">
+        <div style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">🖥️ CLI Usage</h3>
+          <pre style="background:var(--black); padding:8px; font-family:var(--font-mono); font-size:12px; border:1px solid var(--border);">node capture.js [urls.txt | url1 url2 ...]</pre>
+          <p style="font-size:12px; margin-top:8px;">Settings are loaded from <code>config.json</code>.</p>
+        </div>
+        
+        <div style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">🔌 REST API</h3>
+          <pre style="background:var(--black); padding:8px; font-family:var(--font-mono); font-size:12px; border:1px solid var(--border);">GET /api/screenshot?url=...&token=...</pre>
+          <p style="font-size:12px; margin-top:8px;">
+            <strong>Parameters:</strong>
+            <ul style="margin-top:4px;">
+              <li><code>url</code>: Target website (required).</li>
+              <li><code>format</code>: Output format (<code>png</code>, <code>webp</code>, <code>avif</code>, <code>pdf</code>).</li>
+              <li><code>token</code>: API token from <code>config.json</code> (required).</li>
+            </ul>
+          </p>
+        </div>
+        
+        <div style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">🔧 Settings</h3>
+          <p style="font-size:12px;">
+            <strong>Capture Settings:</strong>
+            <ul style="margin-top:4px;">
+              <li><code>Initial Delay</code>: Wait before scrolling (above-the-fold content).</li>
+              <li><code>Scroll Delay</code>: Wait between scroll steps (lazy-loaded content).</li>
+              <li><code>Concurrency</code>: Number of websites to capture in parallel.</li>
+              <li><code>Block Popups</code>: Block popups/modals (checkbox).</li>
+            </ul>
+          </p>
+          <p style="font-size:12px; margin-top:8px;">
+            <strong>Output Formats:</strong>
+            <ul style="margin-top:4px;">
+              <li><code>PNG</code>: Lossless, high quality.</li>
+              <li><code>WebP/AVIF</code>: Smaller files, adjustable quality.</li>
+              <li><code>PDF</code>: For archiving/legal records (A4/Letter, portrait/landscape).</li>
+            </ul>
+          </p>
+          <p style="font-size:12px; margin-top:8px;">
+            <strong>Advanced:</strong>
+            <ul style="margin-top:4px;">
+              <li><code>Hide Selectors</code>: CSS selectors to hide before capturing (one per line).</li>
+              <li><code>Wait For Selector</code>: Wait for this selector before capturing.</li>
+            </ul>
+          </p>
+        </div>
+        
+        <div>
+          <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">📝 Variables</h3>
+          <table style="width:100%; font-size:12px; border-collapse:collapse;">
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="text-align:left; padding:4px;">Variable</th>
+              <th style="text-align:left; padding:4px;">Example</th>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{hostname}</code></td><td style="padding:4px;"><code>example_com</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{preset}</code></td><td style="padding:4px;"><code>desktop</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{width}</code></td><td style="padding:4px;"><code>1920</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{height}</code></td><td style="padding:4px;"><code>1080</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{domain}</code></td><td style="padding:4px;"><code>example.com</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{date}</code></td><td style="padding:4px;"><code>2026-07-04</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{time}</code></td><td style="padding:4px;"><code>14-30-00</code></td></tr>
+            <tr style="border-bottom:1px solid var(--border);"><td style="padding:4px;"><code>{index}</code></td><td style="padding:4px;"><code>01</code></td></tr>
+          </table>
+        </div>
+      </div>
     </div>
+  </div>
   </div>
 
   <div class="panel">
@@ -649,122 +726,130 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header"><h2>Capture Settings</h2></div>
-    <div style="margin-bottom:12px;">
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="initial-delay" style="font-size:12px; color:var(--label-color);" title="Delay before scrolling (seconds)">Initial Delay:</label>
-        <input type="text" id="initial-delay" value="1.5" style="width:60px; text-align:center;">
-        <span style="font-size:12px; color:var(--label-color);">seconds</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="scroll-delay" style="font-size:12px; color:var(--label-color);" title="Delay between scroll steps (seconds)">Scroll Delay:</label>
-        <input type="text" id="scroll-delay" value="1.8" style="width:60px; text-align:center;">
-        <span style="font-size:12px; color:var(--label-color);">seconds</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="concurrency" style="font-size:12px; color:var(--label-color);" title="Number of websites to capture in parallel">Concurrency:</label>
-        <input type="text" id="concurrency" value="1" style="width:40px; text-align:center;">
-      </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="checkbox" id="block-popups">
-        <label for="block-popups" style="font-size:12px; color:var(--label-color);">Block popups/modals</label>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header"><h2>Output Formats</h2></div>
-    <div style="margin-bottom:12px;">
-      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
-        <label style="display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="format-png" checked>
-          <span style="font-size:12px;">PNG</span>
-        </label>
-        <label style="display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="format-webp">
-          <span style="font-size:12px;">WebP</span>
-        </label>
-        <label style="display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="format-avif">
-          <span style="font-size:12px;">AVIF</span>
-        </label>
-        <label style="display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="format-pdf">
-          <span style="font-size:12px;">PDF</span>
-        </label>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="webp-quality" style="font-size:12px; color:var(--label-color);">WebP Quality:</label>
-        <input type="text" id="webp-quality" value="80" style="width:40px; text-align:center;">
-        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="avif-quality" style="font-size:12px; color:var(--label-color);">AVIF Quality:</label>
-        <input type="text" id="avif-quality" value="50" style="width:40px; text-align:center;">
-        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
-      </div>
-      
-      <details style="margin-top:12px;">
-        <summary style="font-size:12px; color:var(--gold); cursor:pointer;">▼ PDF Settings</summary>
-        <div style="margin-top:8px; padding-left:12px;">
+  <div style="display:flex; gap:20px;">
+    <!-- Left Column -->
+    <div style="flex:1;">
+      <div class="panel">
+        <div class="panel-header"><h2>Capture Settings</h2></div>
+        <div style="margin-bottom:12px;">
           <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="pdf-format" style="font-size:12px; color:var(--label-color);">Format:</label>
-            <select id="pdf-format" style="background:var(--black); border:1px solid var(--border); color:var(--white); font-size:12px; padding:4px;">
-              <option value="A4" selected>A4</option>
-              <option value="Letter">Letter</option>
-            </select>
+            <label for="initial-delay" style="font-size:12px; color:var(--label-color);" title="Delay before scrolling (seconds)">Initial Delay:</label>
+            <input type="text" id="initial-delay" value="1.5" style="width:60px; text-align:center;">
+            <span style="font-size:12px; color:var(--label-color);">seconds</span>
           </div>
           <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="pdf-landscape" style="font-size:12px; color:var(--label-color);">Landscape:</label>
-            <input type="checkbox" id="pdf-landscape">
+            <label for="scroll-delay" style="font-size:12px; color:var(--label-color);" title="Delay between scroll steps (seconds)">Scroll Delay:</label>
+            <input type="text" id="scroll-delay" value="1.8" style="width:60px; text-align:center;">
+            <span style="font-size:12px; color:var(--label-color);">seconds</span>
           </div>
           <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-            <label for="pdf-margin" style="font-size:12px; color:var(--label-color);">Margin:</label>
-            <input type="text" id="pdf-margin" value="0" style="width:40px; text-align:center;">
-            <span style="font-size:12px; color:var(--label-color);">mm</span>
+            <label for="concurrency" style="font-size:12px; color:var(--label-color);" title="Number of websites to capture in parallel">Concurrency:</label>
+            <input type="text" id="concurrency" value="1" style="width:40px; text-align:center;">
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="block-popups">
+            <label for="block-popups" style="font-size:12px; color:var(--label-color);">Block popups/modals</label>
           </div>
         </div>
-      </details>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header"><h2>Output Naming</h2></div>
-    <div style="margin-bottom:8px;font-size:10px;color:rgba(255,235,214,0.35);letter-spacing:1px">Variables —
-      <span class="nv" data-v="{hostname}">{hostname}</span>
-      <span class="nv" data-v="{preset}">{preset}</span>
-      <span class="nv" data-v="{width}">{width}</span>
-      <span class="nv" data-v="{height}">{height}</span>
-      <span class="nv" data-v="{domain}">{domain}</span>
-      <span class="nv" data-v="{date}">{date}</span>
-      <span class="nv" data-v="{time}">{time}</span>
-      <span class="nv" data-v="{index}">{index}</span>
-    </div>
-    <div class="naming-bar">
-      <input type="text" id="naming-template" value="{hostname}-{preset}">
-      <button class="btn btn-sm" id="preview-btn">Preview</button>
-    </div>
-    <div class="naming-presets">
-      <button class="btn btn-sm" data-template="{hostname}-{preset}">Default</button>
-      <button class="btn btn-sm" data-template="{hostname}-{width}x{height}">By Size</button>
-      <button class="btn btn-sm" data-template="{date}/{hostname}-{preset}">By Date</button>
-      <button class="btn btn-sm" data-template="{index}-{hostname}-{preset}">Indexed</button>
-      <button class="btn btn-sm" data-template="{domain}/{preset}/{hostname}">By Domain</button>
-    </div>
-    <div id="naming-preview"></div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header"><h2>Advanced</h2></div>
-    <div style="margin-bottom:12px;">
-      <div style="margin-bottom:8px;">
-        <label for="hide-selectors" style="font-size:12px; color:var(--label-color);" title="CSS selectors to hide before capturing (one per line)">Hide Selectors:</label>
-        <textarea id="hide-selectors" style="width:100%; min-height:60px; margin-top:4px; font-family:var(--font-mono); font-size:12px;" placeholder="#intercom-widget\n.sticky-header\n.announcement-bar"></textarea>
       </div>
-      <div style="margin-bottom:8px;">
-        <label for="wait-for-selector" style="font-size:12px; color:var(--label-color);" title="Wait for this selector to appear before capturing (e.g., .dashboard-loaded-flag)">Wait For Selector:</label>
-        <input type="text" id="wait-for-selector" style="width:100%; margin-top:4px;">
+      
+      <div class="panel">
+        <div class="panel-header"><h2>Output Naming</h2></div>
+        <div style="margin-bottom:8px;font-size:10px;color:rgba(255,235,214,0.35);letter-spacing:1px">Variables —
+          <span class="nv" data-v="{hostname}">{hostname}</span>
+          <span class="nv" data-v="{preset}">{preset}</span>
+          <span class="nv" data-v="{width}">{width}</span>
+          <span class="nv" data-v="{height}">{height}</span>
+          <span class="nv" data-v="{domain}">{domain}</span>
+          <span class="nv" data-v="{date}">{date}</span>
+          <span class="nv" data-v="{time}">{time}</span>
+          <span class="nv" data-v="{index}">{index}</span>
+        </div>
+        <div class="naming-bar">
+          <input type="text" id="naming-template" value="{hostname}-{preset}">
+          <button class="btn btn-sm" id="preview-btn">Preview</button>
+        </div>
+        <div class="naming-presets">
+          <button class="btn btn-sm" data-template="{hostname}-{preset}">Default</button>
+          <button class="btn btn-sm" data-template="{hostname}-{width}x{height}">By Size</button>
+          <button class="btn btn-sm" data-template="{date}/{hostname}-{preset}">By Date</button>
+          <button class="btn btn-sm" data-template="{index}-{hostname}-{preset}">Indexed</button>
+          <button class="btn btn-sm" data-template="{domain}/{preset}/{hostname}">By Domain</button>
+        </div>
+        <div id="naming-preview"></div>
+      </div>
+    </div>
+    
+    <!-- Right Column -->
+    <div style="flex:1;">
+      <div class="panel">
+        <div class="panel-header"><h2>Output Formats</h2></div>
+        <div style="margin-bottom:12px;">
+          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
+            <label style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" id="format-png" checked>
+              <span style="font-size:12px;">PNG</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" id="format-webp">
+              <span style="font-size:12px;">WebP</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" id="format-avif">
+              <span style="font-size:12px;">AVIF</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" id="format-pdf">
+              <span style="font-size:12px;">PDF</span>
+            </label>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <label for="webp-quality" style="font-size:12px; color:var(--label-color);">WebP Quality:</label>
+            <input type="text" id="webp-quality" value="80" style="width:40px; text-align:center;">
+            <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <label for="avif-quality" style="font-size:12px; color:var(--label-color);">AVIF Quality:</label>
+            <input type="text" id="avif-quality" value="50" style="width:40px; text-align:center;">
+            <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+          </div>
+          
+          <details style="margin-top:12px;">
+            <summary style="font-size:12px; color:var(--gold); cursor:pointer;">▼ PDF Settings</summary>
+            <div style="margin-top:8px; padding-left:12px;">
+              <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                <label for="pdf-format" style="font-size:12px; color:var(--label-color);">Format:</label>
+                <select id="pdf-format" style="background:var(--black); border:1px solid var(--border); color:var(--white); font-size:12px; padding:4px;">
+                  <option value="A4" selected>A4</option>
+                  <option value="Letter">Letter</option>
+                </select>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                <label for="pdf-landscape" style="font-size:12px; color:var(--label-color);">Landscape:</label>
+                <input type="checkbox" id="pdf-landscape">
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                <label for="pdf-margin" style="font-size:12px; color:var(--label-color);">Margin:</label>
+                <input type="text" id="pdf-margin" value="0" style="width:40px; text-align:center;">
+                <span style="font-size:12px; color:var(--label-color);">mm</span>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+      
+      <div class="panel">
+        <div class="panel-header"><h2>Advanced</h2></div>
+        <div style="margin-bottom:12px;">
+          <div style="margin-bottom:8px;">
+            <label for="hide-selectors" style="font-size:12px; color:var(--label-color);" title="CSS selectors to hide before capturing (one per line)">Hide Selectors:</label>
+            <textarea id="hide-selectors" style="width:100%; min-height:60px; margin-top:4px; font-family:var(--font-mono); font-size:12px;" placeholder="#intercom-widget\n.sticky-header\n.announcement-bar"></textarea>
+          </div>
+          <div style="margin-bottom:8px;">
+            <label for="wait-for-selector" style="font-size:12px; color:var(--label-color);" title="Wait for this selector to appear before capturing (e.g., .dashboard-loaded-flag)">Wait For Selector:</label>
+            <input type="text" id="wait-for-selector" style="width:100%; margin-top:4px;">
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -791,6 +876,9 @@ const UI_HTML = `<!DOCTYPE html>
 const themeToggle = document.getElementById('theme-toggle');
 const urlInput = document.getElementById('urls-input');
 const snapBtn = document.getElementById('snap-btn');
+const helpBtn = document.getElementById('help-btn');
+const helpModal = document.getElementById('help-modal');
+const closeHelp = document.getElementById('close-help');
 const progressEl = document.getElementById('progress');
 const resultsEl = document.getElementById('results');
 const doneCount = document.getElementById('done-count');
@@ -1192,6 +1280,22 @@ savePresets = async function() {
 };
 
 loadPresets();
+
+// Help Modal
+closeHelp.addEventListener('click', () => {
+  helpModal.style.display = 'none';
+});
+
+helpBtn.addEventListener('click', () => {
+  helpModal.style.display = 'flex';
+});
+
+// Close modal when clicking outside
+helpModal.addEventListener('click', (e) => {
+  if (e.target === helpModal) {
+    helpModal.style.display = 'none';
+  }
+});
 </script>
 </body>
 </html>`;
