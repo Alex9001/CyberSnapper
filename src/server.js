@@ -366,6 +366,9 @@ const UI_HTML = `<!DOCTYPE html>
     transition:border-color .2s;
   }
   input[type="text"]:focus, input[type="number"]:focus { border-color:var(--border-hover); }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  input[type="number"] { -moz-appearance:textfield; appearance:textfield; }
 
   .btn {
     font-family:var(--font-mono);
@@ -549,7 +552,7 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
     <div id="preset-list" class="preset-grid"></div>
     <div class="add-row">
-      <input class="name-input" id="new-name" placeholder="Name" maxlength="30">
+      <input type="text" class="name-input" id="new-name" placeholder="Name" maxlength="30" autocomplete="off">
       <input type="number" id="new-width" placeholder="Width" min="1">
       <span>×</span>
       <input type="number" id="new-height" placeholder="Height" min="1">
