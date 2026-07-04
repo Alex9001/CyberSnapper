@@ -364,11 +364,13 @@ const UI_HTML = `<!DOCTYPE html>
     font-size:12px;
     outline:none;
     transition:border-color .2s;
+    -webkit-appearance:none;
+    appearance:none;
+    border-radius:0;
   }
   input[type="text"]:focus, input[type="number"]:focus { border-color:var(--border-hover); }
   input[type="number"]::-webkit-inner-spin-button,
-  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
-  input[type="number"] { -moz-appearance:textfield; appearance:textfield; }
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; display:none; }
 
   .btn {
     font-family:var(--font-mono);
