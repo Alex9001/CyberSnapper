@@ -72,17 +72,19 @@ async function startServer(port = 0) {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', async () => {
-        let urls, viewports, naming, delay, blockPopups;
+        let urls, viewports, naming, initialDelay, scrollDelay, finalDelay, blockPopups;
         try {
           const parsed = JSON.parse(body);
           urls = parsed.urls;
           viewports = parsed.presets || config.getPresets();
           naming = parsed.naming || config.getNaming();
-          delay = parsed.delay || config.getDelay();
+          initialDelay = parsed.initialDelay || config.getInitialDelay();
+          scrollDelay = parsed.scrollDelay || config.getScrollDelay();
+          finalDelay = parsed.finalDelay || config.getFinalDelay();
           blockPopups = parsed.blockPopups || config.getBlockPopups();
           if (!Array.isArray(urls) || urls.length === 0) throw new Error();
         } catch {
-          json(res, 400, { error: 'Invalid body — expected { urls: [...], presets: [...], delay?: number, blockPopups?: boolean }' });
+          json(res, 400, { error: 'Invalid body — expected { urls: [...], presets: [...], initialDelay?: number, scrollDelay?: number, finalDelay?: number, blockPopups?: boolean }' });
           return;
         }
 
@@ -96,7 +98,7 @@ async function startServer(port = 0) {
         try {
           await capture(urls, viewports, (event) => {
             res.write(`data: ${JSON.stringify(event)}\n\n`);
-          }, naming, { delay, blockPopups });
+          }, naming, { initialDelay, scrollDelay, finalDelay, blockPopups });
         } catch (err) {
           res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
         }
@@ -602,8 +604,12 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="panel-header"><h2>Capture Settings</h2></div>
     <div style="margin-bottom:12px;">
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="delay-slider" style="font-size:12px; color:var(--label-color);">Delay: <span id="delay-value">1000</span>ms</label>
-        <input type="range" id="delay-slider" min="0" max="10000" step="100" value="1000" style="flex:1;">
+        <label for="initial-delay-slider" style="font-size:12px; color:var(--label-color);">Initial Delay: <span id="initial-delay-value">2000</span>ms</label>
+        <input type="range" id="initial-delay-slider" min="0" max="10000" step="100" value="2000" style="flex:1;">
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <label for="scroll-delay-slider" style="font-size:12px; color:var(--label-color);">Scroll Delay: <span id="scroll-delay-value">1000</span>ms</label>
+        <input type="range" id="scroll-delay-slider" min="0" max="10000" step="100" value="1000" style="flex:1;">
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="block-popups">
@@ -675,8 +681,10 @@ const resetBtn = document.getElementById('reset-presets-btn');
 const namingInput = document.getElementById('naming-template');
 const previewDiv = document.getElementById('naming-preview');
 const previewBtn = document.getElementById('preview-btn');
-const delaySlider = document.getElementById('delay-slider');
-const delayValue = document.getElementById('delay-value');
+const initialDelaySlider = document.getElementById('initial-delay-slider');
+const initialDelayValue = document.getElementById('initial-delay-value');
+const scrollDelaySlider = document.getElementById('scroll-delay-slider');
+const scrollDelayValue = document.getElementById('scroll-delay-value');
 const blockPopups = document.getElementById('block-popups');
 let presets = [];
 let totalSnaps = 0;
@@ -696,8 +704,10 @@ async function loadPresets() {
     const res = await fetch('/config');
     const data = await res.json();
     presets = data.presets || [];
-    delaySlider.value = data.delay || 1000;
-    delayValue.textContent = delaySlider.value;
+    initialDelaySlider.value = data.initialDelay || 2000;
+    initialDelayValue.textContent = initialDelaySlider.value;
+    scrollDelaySlider.value = data.scrollDelay || 1000;
+    scrollDelayValue.textContent = scrollDelaySlider.value;
     blockPopups.checked = data.blockPopups || false;
     renderPresets();
   } catch {}
@@ -750,8 +760,13 @@ resetBtn.addEventListener('click', async () => {
 
 [newName, newWidth, newHeight].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); }));
 
-delaySlider.addEventListener('input', () => {
-  delayValue.textContent = delaySlider.value;
+initialDelaySlider.addEventListener('input', () => {
+  initialDelayValue.textContent = initialDelaySlider.value;
+  savePresets();
+});
+
+scrollDelaySlider.addEventListener('input', () => {
+  scrollDelayValue.textContent = scrollDelaySlider.value;
   savePresets();
 });
 
@@ -781,7 +796,8 @@ async function startCapture() {
       body: JSON.stringify({
         urls,
         presets: selected,
-        delay: +delaySlider.value,
+        initialDelay: +initialDelaySlider.value,
+        scrollDelay: +scrollDelaySlider.value,
         blockPopups: blockPopups.checked
       })
     });
@@ -873,9 +889,13 @@ loadPresets = async function() {
       namingInput.value = data.naming.template;
       updatePreview();
     }
-    if (data.delay != null) {
-      delaySlider.value = data.delay;
-      delayValue.textContent = data.delay;
+    if (data.initialDelay != null) {
+      initialDelaySlider.value = data.initialDelay;
+      initialDelayValue.textContent = data.initialDelay;
+    }
+    if (data.scrollDelay != null) {
+      scrollDelaySlider.value = data.scrollDelay;
+      scrollDelayValue.textContent = data.scrollDelay;
     }
     if (data.blockPopups != null) {
       blockPopups.checked = data.blockPopups;
@@ -891,7 +911,9 @@ savePresets = async function() {
     body:JSON.stringify({
       presets,
       naming: { template },
-      delay: +delaySlider.value,
+      initialDelay: +initialDelaySlider.value,
+      scrollDelay: +scrollDelaySlider.value,
+      finalDelay: 1000, // Hardcoded for now, can add UI later
       blockPopups: blockPopups.checked
     })
   });

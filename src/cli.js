@@ -40,10 +40,11 @@ async function runCLI(urls) {
     process.exit(1);
   }
 
-  const { presets, naming, delay, blockPopups } = config.load();
+  const { presets, naming, initialDelay, scrollDelay, finalDelay, blockPopups } = config.load();
   console.log(`Launching browser (${presets.length} presets)...\n`);
   console.log(`  Naming template: ${naming.template}`);
-  console.log(`  Delay: ${delay}ms, Popup blocking: ${blockPopups ? 'ON' : 'OFF'}\n`);
+  console.log(`  Delays: initial=${initialDelay}ms, scroll=${scrollDelay}ms, final=${finalDelay}ms`);
+  console.log(`  Popup blocking: ${blockPopups ? 'ON' : 'OFF'}\n`);
 
   await capture(urls, presets, (event) => {
     switch (event.type) {
@@ -68,7 +69,7 @@ async function runCLI(urls) {
         console.log(`\nDone! All screenshots saved to the "${OUT_DIR}" folder.\n`);
         break;
     }
-  }, naming);
+  }, naming, { initialDelay, scrollDelay, finalDelay, blockPopups });
 }
 
 module.exports = { runCLI, readUrls };

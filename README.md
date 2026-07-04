@@ -30,7 +30,7 @@ Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (
   <img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" width="700">
 </p>
 
-I needed a free way to take full-page screenshots of websites for my portfolio. I couldn't find a tool that did exactly what I wanted, so I built this. After using it internally for a while I decided to polish it up and release it — hopefully others find it useful too.
+This project was initially an internal at CYBER BRAND tool for taking full-height portfolio images of client sites for a website where the js lightbox has a scroll bar. It can also be used for other things such as archiving.
 
 ---
 

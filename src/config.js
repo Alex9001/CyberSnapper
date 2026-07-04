@@ -7,7 +7,9 @@ const DEFAULTS = {
     { name: 'Tablet',   width: 768,  height: 1024 },
     { name: 'Mobile',   width: 375,  height: 812 },
   ],
-  delay: 1000,
+  initialDelay: 2000,
+  scrollDelay: 1000,
+  finalDelay: 1000,
   blockPopups: false,
   naming: {
     template: '{hostname}-{preset}',
@@ -45,8 +47,14 @@ function load() {
     if (!Array.isArray(parsed.presets) || parsed.presets.length === 0) {
       parsed.presets = [...DEFAULTS.presets];
     }
-    if (parsed.delay == null || typeof parsed.delay !== 'number' || parsed.delay < 0) {
-      parsed.delay = DEFAULTS.delay;
+    if (parsed.initialDelay == null || typeof parsed.initialDelay !== 'number' || parsed.initialDelay < 0) {
+      parsed.initialDelay = DEFAULTS.initialDelay;
+    }
+    if (parsed.scrollDelay == null || typeof parsed.scrollDelay !== 'number' || parsed.scrollDelay < 0) {
+      parsed.scrollDelay = DEFAULTS.scrollDelay;
+    }
+    if (parsed.finalDelay == null || typeof parsed.finalDelay !== 'number' || parsed.finalDelay < 0) {
+      parsed.finalDelay = DEFAULTS.finalDelay;
     }
     if (parsed.blockPopups == null) {
       parsed.blockPopups = DEFAULTS.blockPopups;
@@ -56,13 +64,22 @@ function load() {
     }
     return parsed;
   } catch {
-    return { presets: [...DEFAULTS.presets], delay: DEFAULTS.delay, blockPopups: DEFAULTS.blockPopups, naming: { template: DEFAULTS.naming.template } };
+    return {
+      presets: [...DEFAULTS.presets], 
+      initialDelay: DEFAULTS.initialDelay,
+      scrollDelay: DEFAULTS.scrollDelay,
+      finalDelay: DEFAULTS.finalDelay,
+      blockPopups: DEFAULTS.blockPopups,
+      naming: { template: DEFAULTS.naming.template }
+    };
   }
 }
 
 function save(data) {
   if (!Array.isArray(data.presets)) data.presets = [...DEFAULTS.presets];
-  if (data.delay == null || typeof data.delay !== 'number' || data.delay < 0) data.delay = DEFAULTS.delay;
+  if (data.initialDelay == null || typeof data.initialDelay !== 'number' || data.initialDelay < 0) data.initialDelay = DEFAULTS.initialDelay;
+  if (data.scrollDelay == null || typeof data.scrollDelay !== 'number' || data.scrollDelay < 0) data.scrollDelay = DEFAULTS.scrollDelay;
+  if (data.finalDelay == null || typeof data.finalDelay !== 'number' || data.finalDelay < 0) data.finalDelay = DEFAULTS.finalDelay;
   if (data.blockPopups == null) data.blockPopups = DEFAULTS.blockPopups;
   if (!data.naming || !data.naming.template) data.naming = { template: DEFAULTS.naming.template };
   fs.writeFileSync(configPath(), JSON.stringify(data, null, 2), 'utf-8');
@@ -76,12 +93,24 @@ function getNaming() {
   return load().naming;
 }
 
-function getDelay() {
-  return load().delay;
+function getInitialDelay() {
+  return load().initialDelay;
+}
+
+function getScrollDelay() {
+  return load().scrollDelay;
+}
+
+function getFinalDelay() {
+  return load().finalDelay;
 }
 
 function getBlockPopups() {
   return load().blockPopups;
 }
 
-module.exports = { load, save, getPresets, getNaming, getDelay, getBlockPopups, configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS };
+module.exports = {
+  load, save, getPresets, getNaming, 
+  getInitialDelay, getScrollDelay, getFinalDelay, getBlockPopups, 
+  configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS
+};

@@ -33,7 +33,9 @@ async function launchBrowser() {
 async function capture(urls, viewports, onProgress, naming, opts = {}) {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   const template = (naming && naming.template) || '{hostname}-{preset}';
-  const delay = opts.delay || 1000;
+  const initialDelay = opts.initialDelay || 2000;
+  const scrollDelay = opts.scrollDelay || 1000;
+  const finalDelay = opts.finalDelay || 1000;
   const blockPopups = opts.blockPopups || false;
 
   const browser = await launchBrowser();
@@ -119,18 +121,21 @@ async function capture(urls, viewports, onProgress, naming, opts = {}) {
         continue;
       }
 
-      await page.evaluate(async (delay) => {
+      // Initial delay before scrolling
+      await page.waitForTimeout(initialDelay);
+
+      await page.evaluate(async (scrollDelay, finalDelay) => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
         const step = window.innerHeight;
         let pos = 0;
         while (pos < document.body.scrollHeight) {
           window.scrollBy(0, step);
           pos += step;
-          await wait(delay);
+          await wait(scrollDelay);
         }
         window.scrollTo(0, 0);
-        await wait(delay);
-      }, delay);
+        await wait(finalDelay);
+      }, scrollDelay, finalDelay);
 
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
