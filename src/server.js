@@ -152,6 +152,55 @@ async function startServer(port = 0) {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
+    
+    if (url.pathname === '/api/screenshot' && req.method === 'GET') {
+      const token = url.searchParams.get('token');
+      const configToken = config.getApiToken();
+      
+      if (token !== configToken) {
+        json(res, 403, { error: 'Unauthorized: Invalid API token' });
+        return;
+      }
+      
+      const targetUrl = url.searchParams.get('url');
+      const format = url.searchParams.get('format') || 'png';
+      
+      if (!targetUrl) {
+        json(res, 400, { error: 'Missing URL parameter' });
+        return;
+      }
+      
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      
+      (async () => {
+        try {
+          const cfg = config.load();
+          await capture([targetUrl], cfg.presets, (event) => {
+            res.write(`data: ${JSON.stringify(event)}\n\n`);
+          }, cfg.naming, {
+            initialDelay: cfg.initialDelay * 1000,
+            scrollDelay: cfg.scrollDelay * 1000,
+            finalDelay: cfg.finalDelay * 1000,
+            concurrency: 1, // API is single URL
+            formats: [format],
+            webp: cfg.webp,
+            avif: cfg.avif,
+            pdf: cfg.pdf,
+            hideSelectors: cfg.hideSelectors,
+            waitForSelector: cfg.waitForSelector,
+            blockPopups: cfg.blockPopups
+          });
+        } catch (err) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+        }
+        res.end();
+      })();
+      return;
+    }
 
     res.writeHead(404);
     res.end('Not found');
@@ -604,17 +653,79 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="panel-header"><h2>Capture Settings</h2></div>
     <div style="margin-bottom:12px;">
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="initial-delay-slider" style="font-size:12px; color:var(--label-color);">Initial Delay: <span id="initial-delay-value">2000</span>ms</label>
-        <input type="range" id="initial-delay-slider" min="0" max="10000" step="100" value="2000" style="flex:1;">
+        <label for="initial-delay" style="font-size:12px; color:var(--label-color);" title="Delay before scrolling (seconds)">Initial Delay:</label>
+        <input type="text" id="initial-delay" value="1.5" style="width:60px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">seconds</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-        <label for="scroll-delay-slider" style="font-size:12px; color:var(--label-color);">Scroll Delay: <span id="scroll-delay-value">1000</span>ms</label>
-        <input type="range" id="scroll-delay-slider" min="0" max="10000" step="100" value="1000" style="flex:1;">
+        <label for="scroll-delay" style="font-size:12px; color:var(--label-color);" title="Delay between scroll steps (seconds)">Scroll Delay:</label>
+        <input type="text" id="scroll-delay" value="1.8" style="width:60px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">seconds</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <label for="concurrency" style="font-size:12px; color:var(--label-color);" title="Number of websites to capture in parallel">Concurrency:</label>
+        <input type="text" id="concurrency" value="1" style="width:40px; text-align:center;">
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="block-popups">
         <label for="block-popups" style="font-size:12px; color:var(--label-color);">Block popups/modals</label>
       </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><h2>Output Formats</h2></div>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
+        <label style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="format-png" checked>
+          <span style="font-size:12px;">PNG</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="format-webp">
+          <span style="font-size:12px;">WebP</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="format-avif">
+          <span style="font-size:12px;">AVIF</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="format-pdf">
+          <span style="font-size:12px;">PDF</span>
+        </label>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <label for="webp-quality" style="font-size:12px; color:var(--label-color);">WebP Quality:</label>
+        <input type="text" id="webp-quality" value="80" style="width:40px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <label for="avif-quality" style="font-size:12px; color:var(--label-color);">AVIF Quality:</label>
+        <input type="text" id="avif-quality" value="50" style="width:40px; text-align:center;">
+        <span style="font-size:12px; color:var(--label-color);">(1-100)</span>
+      </div>
+      
+      <details style="margin-top:12px;">
+        <summary style="font-size:12px; color:var(--gold); cursor:pointer;">▼ PDF Settings</summary>
+        <div style="margin-top:8px; padding-left:12px;">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <label for="pdf-format" style="font-size:12px; color:var(--label-color);">Format:</label>
+            <select id="pdf-format" style="background:var(--black); border:1px solid var(--border); color:var(--white); font-size:12px; padding:4px;">
+              <option value="A4" selected>A4</option>
+              <option value="Letter">Letter</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <label for="pdf-landscape" style="font-size:12px; color:var(--label-color);">Landscape:</label>
+            <input type="checkbox" id="pdf-landscape">
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <label for="pdf-margin" style="font-size:12px; color:var(--label-color);">Margin:</label>
+            <input type="text" id="pdf-margin" value="0" style="width:40px; text-align:center;">
+            <span style="font-size:12px; color:var(--label-color);">mm</span>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -642,6 +753,20 @@ const UI_HTML = `<!DOCTYPE html>
       <button class="btn btn-sm" data-template="{domain}/{preset}/{hostname}">By Domain</button>
     </div>
     <div id="naming-preview"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><h2>Advanced</h2></div>
+    <div style="margin-bottom:12px;">
+      <div style="margin-bottom:8px;">
+        <label for="hide-selectors" style="font-size:12px; color:var(--label-color);" title="CSS selectors to hide before capturing (one per line)">Hide Selectors:</label>
+        <textarea id="hide-selectors" style="width:100%; min-height:60px; margin-top:4px; font-family:var(--font-mono); font-size:12px;" placeholder="#intercom-widget\n.sticky-header\n.announcement-bar"></textarea>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label for="wait-for-selector" style="font-size:12px; color:var(--label-color);" title="Wait for this selector to appear before capturing (e.g., .dashboard-loaded-flag)">Wait For Selector:</label>
+        <input type="text" id="wait-for-selector" style="width:100%; margin-top:4px;">
+      </div>
+    </div>
   </div>
 
   <div class="actions">
@@ -681,11 +806,21 @@ const resetBtn = document.getElementById('reset-presets-btn');
 const namingInput = document.getElementById('naming-template');
 const previewDiv = document.getElementById('naming-preview');
 const previewBtn = document.getElementById('preview-btn');
-const initialDelaySlider = document.getElementById('initial-delay-slider');
-const initialDelayValue = document.getElementById('initial-delay-value');
-const scrollDelaySlider = document.getElementById('scroll-delay-slider');
-const scrollDelayValue = document.getElementById('scroll-delay-value');
+const initialDelayInput = document.getElementById('initial-delay');
+const scrollDelayInput = document.getElementById('scroll-delay');
+const concurrencyInput = document.getElementById('concurrency');
 const blockPopups = document.getElementById('block-popups');
+const formatPng = document.getElementById('format-png');
+const formatWebp = document.getElementById('format-webp');
+const formatAvif = document.getElementById('format-avif');
+const formatPdf = document.getElementById('format-pdf');
+const webpQualityInput = document.getElementById('webp-quality');
+const avifQualityInput = document.getElementById('avif-quality');
+const pdfFormatSelect = document.getElementById('pdf-format');
+const pdfLandscape = document.getElementById('pdf-landscape');
+const pdfMarginInput = document.getElementById('pdf-margin');
+const hideSelectorsTextarea = document.getElementById('hide-selectors');
+const waitForSelectorInput = document.getElementById('wait-for-selector');
 let presets = [];
 let totalSnaps = 0;
 let urlIndex = 0;
@@ -704,11 +839,30 @@ async function loadPresets() {
     const res = await fetch('/config');
     const data = await res.json();
     presets = data.presets || [];
-    initialDelaySlider.value = data.initialDelay || 2000;
-    initialDelayValue.textContent = initialDelaySlider.value;
-    scrollDelaySlider.value = data.scrollDelay || 1000;
-    scrollDelayValue.textContent = scrollDelaySlider.value;
+    initialDelayInput.value = data.initialDelay || 1.5;
+    scrollDelayInput.value = data.scrollDelay || 1.8;
+    concurrencyInput.value = data.concurrency || 1;
     blockPopups.checked = data.blockPopups || false;
+    
+    // Formats
+    formatPng.checked = data.formats.includes('png');
+    formatWebp.checked = data.formats.includes('webp');
+    formatAvif.checked = data.formats.includes('avif');
+    formatPdf.checked = data.formats.includes('pdf');
+    
+    // Quality
+    webpQualityInput.value = data.webp?.quality || 80;
+    avifQualityInput.value = data.avif?.quality || 50;
+    
+    // PDF
+    pdfFormatSelect.value = data.pdf?.format || 'A4';
+    pdfLandscape.checked = data.pdf?.landscape || false;
+    pdfMarginInput.value = data.pdf?.margin || '0';
+    
+    // Advanced
+    hideSelectorsTextarea.value = data.hideSelectors?.join('\n') || '';
+    waitForSelectorInput.value = data.waitForSelector || '';
+    
     renderPresets();
   } catch {}
 }
@@ -768,19 +922,62 @@ resetBtn.addEventListener('click', async () => {
   });
 });
 
-initialDelaySlider.addEventListener('input', () => {
-  initialDelayValue.textContent = initialDelaySlider.value;
+// Helper to validate number inputs
+function validateNumberInput(input, min, max, defaultValue) {
+  const value = parseFloat(input.value);
+  if (isNaN(value) || value < min || value > max) {
+    input.value = defaultValue;
+    return defaultValue;
+  }
+  return value;
+}
+
+initialDelayInput.addEventListener('change', () => {
+  validateNumberInput(initialDelayInput, 0.1, 60, 1.5);
   savePresets();
 });
 
-scrollDelaySlider.addEventListener('input', () => {
-  scrollDelayValue.textContent = scrollDelaySlider.value;
+scrollDelayInput.addEventListener('change', () => {
+  validateNumberInput(scrollDelayInput, 0.1, 60, 1.8);
   savePresets();
 });
 
-blockPopups.addEventListener('change', () => {
+concurrencyInput.addEventListener('change', () => {
+  const value = parseInt(concurrencyInput.value, 10);
+  if (isNaN(value) || value < 1 || value > 10) {
+    concurrencyInput.value = 1;
+  }
   savePresets();
 });
+
+[formatPng, formatWebp, formatAvif, formatPdf].forEach(checkbox => {
+  checkbox.addEventListener('change', () => {
+    // Ensure at least one format is selected
+    if (!formatPng.checked && !formatWebp.checked && !formatAvif.checked && !formatPdf.checked) {
+      formatPng.checked = true;
+    }
+    savePresets();
+  });
+});
+
+[webpQualityInput, avifQualityInput].forEach(input => {
+  input.addEventListener('change', () => {
+    const value = parseInt(input.value, 10);
+    if (isNaN(value) || value < 1 || value > 100) {
+      input.value = input.id === 'webp-quality' ? 80 : 50;
+    }
+    savePresets();
+  });
+});
+
+[pdfFormatSelect, pdfLandscape, pdfMarginInput].forEach(input => {
+  input.addEventListener('change', savePresets);
+});
+
+hideSelectorsTextarea.addEventListener('change', savePresets);
+waitForSelectorInput.addEventListener('change', savePresets);
+
+blockPopups.addEventListener('change', savePresets);
 
 snapBtn.addEventListener('click', startCapture);
 
@@ -801,13 +998,35 @@ async function startCapture() {
     const res = await fetch('/capture', {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        urls,
-        presets: selected,
-        initialDelay: +initialDelaySlider.value,
-        scrollDelay: +scrollDelaySlider.value,
-        blockPopups: blockPopups.checked
-      })
+      const formats = [];
+    if (formatPng.checked) formats.push('png');
+    if (formatWebp.checked) formats.push('webp');
+    if (formatAvif.checked) formats.push('avif');
+    if (formatPdf.checked) formats.push('pdf');
+    
+    const hideSelectors = hideSelectorsTextarea.value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    body: JSON.stringify({
+      urls,
+      presets: selected,
+      initialDelay: validateNumberInput(initialDelayInput, 0.1, 60, 1.5),
+      scrollDelay: validateNumberInput(scrollDelayInput, 0.1, 60, 1.8),
+      concurrency: parseInt(concurrencyInput.value, 10) || 1,
+      formats,
+      webp: { quality: parseInt(webpQualityInput.value, 10) || 80 },
+      avif: { quality: parseInt(avifQualityInput.value, 10) || 50 },
+      pdf: {
+        format: pdfFormatSelect.value,
+        landscape: pdfLandscape.checked,
+        margin: pdfMarginInput.value
+      },
+      hideSelectors,
+      waitForSelector: waitForSelectorInput.value.trim(),
+      blockPopups: blockPopups.checked
+    })
     });
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     while (true) {
@@ -898,15 +1117,39 @@ loadPresets = async function() {
       updatePreview();
     }
     if (data.initialDelay != null) {
-      initialDelaySlider.value = data.initialDelay;
-      initialDelayValue.textContent = data.initialDelay;
+      initialDelayInput.value = data.initialDelay;
     }
     if (data.scrollDelay != null) {
-      scrollDelaySlider.value = data.scrollDelay;
-      scrollDelayValue.textContent = data.scrollDelay;
+      scrollDelayInput.value = data.scrollDelay;
+    }
+    if (data.concurrency != null) {
+      concurrencyInput.value = data.concurrency;
     }
     if (data.blockPopups != null) {
       blockPopups.checked = data.blockPopups;
+    }
+    if (data.formats) {
+      formatPng.checked = data.formats.includes('png');
+      formatWebp.checked = data.formats.includes('webp');
+      formatAvif.checked = data.formats.includes('avif');
+      formatPdf.checked = data.formats.includes('pdf');
+    }
+    if (data.webp) {
+      webpQualityInput.value = data.webp.quality;
+    }
+    if (data.avif) {
+      avifQualityInput.value = data.avif.quality;
+    }
+    if (data.pdf) {
+      pdfFormatSelect.value = data.pdf.format;
+      pdfLandscape.checked = data.pdf.landscape;
+      pdfMarginInput.value = data.pdf.margin;
+    }
+    if (data.hideSelectors) {
+      hideSelectorsTextarea.value = data.hideSelectors.join('\n');
+    }
+    if (data.waitForSelector != null) {
+      waitForSelectorInput.value = data.waitForSelector;
     }
   } catch {}
 };
@@ -914,14 +1157,35 @@ loadPresets = async function() {
 const origSavePresets = savePresets;
 savePresets = async function() {
   const template = namingInput.value.trim() || '{hostname}-{preset}';
+  const formats = [];
+  if (formatPng.checked) formats.push('png');
+  if (formatWebp.checked) formats.push('webp');
+  if (formatAvif.checked) formats.push('avif');
+  if (formatPdf.checked) formats.push('pdf');
+  
+  const hideSelectors = hideSelectorsTextarea.value
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  
   await fetch('/config', {
     method:'PUT', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       presets,
       naming: { template },
-      initialDelay: +initialDelaySlider.value,
-      scrollDelay: +scrollDelaySlider.value,
-      finalDelay: 1000, // Hardcoded for now, can add UI later
+      initialDelay: validateNumberInput(initialDelayInput, 0.1, 60, 1.5),
+      scrollDelay: validateNumberInput(scrollDelayInput, 0.1, 60, 1.8),
+      concurrency: parseInt(concurrencyInput.value, 10) || 1,
+      formats,
+      webp: { quality: parseInt(webpQualityInput.value, 10) || 80 },
+      avif: { quality: parseInt(avifQualityInput.value, 10) || 50 },
+      pdf: {
+        format: pdfFormatSelect.value,
+        landscape: pdfLandscape.checked,
+        margin: pdfMarginInput.value
+      },
+      hideSelectors,
+      waitForSelector: waitForSelectorInput.value.trim(),
       blockPopups: blockPopups.checked
     })
   });

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const DEFAULTS = {
   presets: [
@@ -7,9 +8,20 @@ const DEFAULTS = {
     { name: 'Tablet',   width: 768,  height: 1024 },
     { name: 'Mobile',   width: 375,  height: 812 },
   ],
-  initialDelay: 2000,
-  scrollDelay: 1000,
-  finalDelay: 1000,
+  initialDelay: 1.5,
+  scrollDelay: 1.8,
+  finalDelay: 1.0,
+  concurrency: 1,
+  formats: ['png'],
+  webp: { quality: 80 },
+  avif: { quality: 50 },
+  pdf: {
+    format: 'A4',
+    landscape: false,
+    margin: '0'
+  },
+  hideSelectors: [],
+  waitForSelector: '',
   blockPopups: false,
   naming: {
     template: '{hostname}-{preset}',
@@ -40,6 +52,10 @@ function configPath() {
   return path.join(configDir(), 'config.json');
 }
 
+function generateToken() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
 function load() {
   try {
     const raw = fs.readFileSync(configPath(), 'utf-8');
@@ -56,22 +72,61 @@ function load() {
     if (parsed.finalDelay == null || typeof parsed.finalDelay !== 'number' || parsed.finalDelay < 0) {
       parsed.finalDelay = DEFAULTS.finalDelay;
     }
+    if (parsed.concurrency == null || typeof parsed.concurrency !== 'number' || parsed.concurrency < 1) {
+      parsed.concurrency = DEFAULTS.concurrency;
+    }
+    if (parsed.formats == null || !Array.isArray(parsed.formats)) {
+      parsed.formats = DEFAULTS.formats;
+    }
+    if (parsed.webp == null || typeof parsed.webp.quality !== 'number') {
+      parsed.webp = DEFAULTS.webp;
+    }
+    if (parsed.avif == null || typeof parsed.avif.quality !== 'number') {
+      parsed.avif = DEFAULTS.avif;
+    }
+    if (parsed.pdf == null) {
+      parsed.pdf = DEFAULTS.pdf;
+    }
+    if (parsed.hideSelectors == null || !Array.isArray(parsed.hideSelectors)) {
+      parsed.hideSelectors = DEFAULTS.hideSelectors;
+    }
+    if (parsed.waitForSelector == null) {
+      parsed.waitForSelector = DEFAULTS.waitForSelector;
+    }
     if (parsed.blockPopups == null) {
       parsed.blockPopups = DEFAULTS.blockPopups;
+    }
+    if (!parsed.apiToken) {
+      parsed.apiToken = generateToken();
+      save(parsed); // Save the generated token
+      console.log(`\n🔑 API Token: ${parsed.apiToken}`);
+      console.log(`🔗 API Endpoint: http://localhost:${process.env.PORT || 3000}/api/screenshot?url=...&token=${parsed.apiToken}\n`);
     }
     if (!parsed.naming || !parsed.naming.template) {
       parsed.naming = { template: DEFAULTS.naming.template };
     }
     return parsed;
   } catch {
-    return {
+    const config = {
       presets: [...DEFAULTS.presets], 
       initialDelay: DEFAULTS.initialDelay,
       scrollDelay: DEFAULTS.scrollDelay,
       finalDelay: DEFAULTS.finalDelay,
+      concurrency: DEFAULTS.concurrency,
+      formats: DEFAULTS.formats,
+      webp: DEFAULTS.webp,
+      avif: DEFAULTS.avif,
+      pdf: DEFAULTS.pdf,
+      hideSelectors: DEFAULTS.hideSelectors,
+      waitForSelector: DEFAULTS.waitForSelector,
       blockPopups: DEFAULTS.blockPopups,
+      apiToken: generateToken(),
       naming: { template: DEFAULTS.naming.template }
     };
+    save(config); // Save the new config with token
+    console.log(`\n🔑 API Token: ${config.apiToken}`);
+    console.log(`🔗 API Endpoint: http://localhost:${process.env.PORT || 3000}/api/screenshot?url=...&token=${config.apiToken}\n`);
+    return config;
   }
 }
 
@@ -94,15 +149,47 @@ function getNaming() {
 }
 
 function getInitialDelay() {
-  return load().initialDelay;
+  return load().initialDelay * 1000; // Convert seconds to ms
 }
 
 function getScrollDelay() {
-  return load().scrollDelay;
+  return load().scrollDelay * 1000; // Convert seconds to ms
 }
 
 function getFinalDelay() {
-  return load().finalDelay;
+  return load().finalDelay * 1000; // Convert seconds to ms
+}
+
+function getConcurrency() {
+  return load().concurrency;
+}
+
+function getFormats() {
+  return load().formats;
+}
+
+function getWebpQuality() {
+  return load().webp.quality;
+}
+
+function getAvifQuality() {
+  return load().avif.quality;
+}
+
+function getPdfOptions() {
+  return load().pdf;
+}
+
+function getHideSelectors() {
+  return load().hideSelectors;
+}
+
+function getWaitForSelector() {
+  return load().waitForSelector;
+}
+
+function getApiToken() {
+  return load().apiToken;
 }
 
 function getBlockPopups() {
@@ -111,6 +198,10 @@ function getBlockPopups() {
 
 module.exports = {
   load, save, getPresets, getNaming, 
-  getInitialDelay, getScrollDelay, getFinalDelay, getBlockPopups, 
+  getInitialDelay, getScrollDelay, getFinalDelay, 
+  getConcurrency, getFormats, 
+  getWebpQuality, getAvifQuality, getPdfOptions, 
+  getHideSelectors, getWaitForSelector, 
+  getApiToken, getBlockPopups, 
   configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS
 };

@@ -16,9 +16,20 @@
       "height": 812
     }
   ],
-  "initialDelay": 2000,
-  "scrollDelay": 1000,
-  "finalDelay": 1000,
+  "initialDelay": 1.5,
+  "scrollDelay": 1.8,
+  "finalDelay": 1.0,
+  "concurrency": 1,
+  "formats": ["png"],
+  "webp": { "quality": 80 },
+  "avif": { "quality": 50 },
+  "pdf": {
+    "format": "A4",
+    "landscape": false,
+    "margin": "0"
+  },
+  "hideSelectors": [],
+  "waitForSelector": "",
   "blockPopups": false,
   "naming": {
     "template": "{hostname}-{preset}"

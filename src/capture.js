@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const sharp = require('sharp');
 const { generateFilename } = require('./naming');
 
 const OUT_DIR = 'screenshots';
@@ -31,29 +32,46 @@ async function launchBrowser() {
 }
 
 async function capture(urls, viewports, onProgress, naming, opts = {}) {
+  const concurrency = opts.concurrency || 1;
+  if (concurrency < 1) throw new Error('Concurrency must be at least 1');
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   const template = (naming && naming.template) || '{hostname}-{preset}';
-  const initialDelay = opts.initialDelay || 2000;
-  const scrollDelay = opts.scrollDelay || 1000;
+  const initialDelay = opts.initialDelay || 1500;
+  const scrollDelay = opts.scrollDelay || 1800;
   const finalDelay = opts.finalDelay || 1000;
   const blockPopups = opts.blockPopups || false;
+  const formats = opts.formats || ['png'];
+  const webpQuality = opts.webp?.quality || 80;
+  const avifQuality = opts.avif?.quality || 50;
+  const pdfOptions = opts.pdf || { format: 'A4', landscape: false, margin: '0' };
+  const hideSelectors = opts.hideSelectors || [];
+  const waitForSelector = opts.waitForSelector || '';
 
   const browser = await launchBrowser();
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  for (let i = 0; i < urls.length; i++) {
-    const targetUrl = ensureScheme(urls[i]);
+  // Process URLs in chunks for concurrency control
+  const chunks = [];
+  for (let i = 0; i < urls.length; i += concurrency) {
+    chunks.push(urls.slice(i, i + concurrency));
+  }
+  
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    await Promise.all(chunk.map(async (url, chunkUrlIndex) => {
+      const i = chunkIndex * concurrency + chunkUrlIndex;
+      const targetUrl = ensureScheme(url);
 
-    onProgress?.({ type: 'url-start', index: i, total: urls.length, url: targetUrl });
+      onProgress?.({ type: 'url-start', index: i, total: urls.length, url: targetUrl });
 
-    let urlObj;
-    try {
-      urlObj = new URL(targetUrl);
-    } catch {
-      onProgress?.({ type: 'url-error', url: targetUrl, message: 'Invalid URL' });
-      continue;
-    }
+      let urlObj;
+      try {
+        urlObj = new URL(targetUrl);
+      } catch {
+        onProgress?.({ type: 'url-error', index: i, url: targetUrl, message: 'Invalid URL' });
+        return;
+      }
 
     for (const vp of viewports) {
       onProgress?.({ type: 'viewport-start', index: i, url: targetUrl, viewport: vp.name });
@@ -116,13 +134,29 @@ async function capture(urls, viewports, onProgress, naming, opts = {}) {
             }
           `});
         }
+        
+        // CSS Selector Hiding
+        if (opts.hideSelectors && opts.hideSelectors.length > 0) {
+          for (const selector of opts.hideSelectors) {
+            await page.$eval(selector, el => el.style.display = 'none').catch(() => {});
+          }
+        }
       } catch (err) {
         onProgress?.({ type: 'viewport-error', index: i, url: targetUrl, viewport: vp.name, message: err.message });
         continue;
       }
 
-      // Initial delay before scrolling
-      await page.waitForTimeout(initialDelay);
+      // Wait for selector or fall back to initialDelay
+      if (opts.waitForSelector) {
+        try {
+          await page.waitForSelector(opts.waitForSelector, { timeout: 30000 });
+        } catch (err) {
+          onProgress?.({ type: 'warning', message: `Selector "${opts.waitForSelector}" not found. Falling back to initialDelay.` });
+          await page.waitForTimeout(initialDelay);
+        }
+      } else {
+        await page.waitForTimeout(initialDelay);
+      }
 
       await page.evaluate(async (scrollDelay, finalDelay) => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -142,13 +176,42 @@ async function capture(urls, viewports, onProgress, naming, opts = {}) {
       const { filename, subdir } = generateFilename(template, targetUrl, vp, i);
       const fileDir = subdir ? path.join(OUT_DIR, subdir) : OUT_DIR;
       if (!fs.existsSync(fileDir)) fs.mkdirSync(fileDir, { recursive: true });
-      const filePath = path.join(fileDir, filename);
-      await page.screenshot({ path: filePath, fullPage: true, animations: 'disabled' });
-
-      onProgress?.({ type: 'viewport-done', index: i, url: targetUrl, viewport: vp.name, file: filePath });
+      const basePath = path.join(fileDir, filename.replace('.png', ''));
+      
+      // Capture PNG buffer
+      const buffer = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      
+      // Save all requested formats
+      for (const format of formats) {
+        try {
+          const outputPath = `${basePath}.${format}`;
+          if (format === 'png') {
+            fs.writeFileSync(outputPath, buffer);
+          } else if (format === 'webp') {
+            await sharp(buffer)
+              .webp({ quality: webpQuality })
+              .toFile(outputPath);
+          } else if (format === 'avif') {
+            await sharp(buffer)
+              .avif({ quality: avifQuality })
+              .toFile(outputPath);
+          } else if (format === 'pdf') {
+            await page.pdf({
+              path: outputPath,
+              format: pdfOptions.format,
+              landscape: pdfOptions.landscape,
+              margin: pdfOptions.margin
+            });
+          }
+          onProgress?.({ type: 'viewport-done', index: i, url: targetUrl, viewport: vp.name, file: outputPath });
+        } catch (err) {
+          onProgress?.({ type: 'warning', message: `Failed to save ${format.toUpperCase()}: ${err.message}` });
+        }
+      }
     }
 
-    onProgress?.({ type: 'url-done', url: targetUrl });
+      onProgress?.({ type: 'url-done', url: targetUrl });
+    }));
   }
 
   await browser.close();

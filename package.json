@@ -39,7 +39,8 @@
   "homepage": "https://github.com/Alex9001/CyberSnapper",
   "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.21.0",
