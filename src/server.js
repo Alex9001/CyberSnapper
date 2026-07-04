@@ -625,17 +625,24 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="win-title"><span class="dot"></span> ⌁ CyberSnapper</div>
   <div class="win-controls">
     <button class="win-btn" id="help-btn" title="Help" onclick="document.getElementById('help-modal').style.display='flex'">?</button>
-    <button class="win-btn" id="theme-toggle" title="Toggle theme">☀/☾</button>
-    <button class="win-btn stop" id="stop-btn" title="Stop server">⏹ Stop</button>
+    <button class="win-btn" id="theme-toggle" title="Toggle theme" onclick="setTheme(theme === 'dark' ? 'light' : 'dark')">☀/☾</button>
+    <button class="win-btn stop" id="stop-btn" title="Stop server" onclick="if(confirm('Stop the server and exit CyberSnapper?')){fetch('/shutdown').catch(()=>{});}">⏹ Stop</button>
   </div>
   
   <!-- Help Modal -->
   <div id="help-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
-    <div style="background:var(--darker); border:1px solid var(--border); width:80%; max-width:600px; max-height:80vh; overflow:auto; position:relative;">
-      <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-        <h2 style="font-family:var(--font-display); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:2px;">📚 Help</h2>
-        <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px;" onclick="document.getElementById('help-modal').style.display='none'">✕</button>
+    <div style="background:var(--darker); border:1px solid var(--border); width:80%; max-width:600px; max-height:80vh; overflow:hidden; position:relative; box-shadow: 0 0 60px var(--glow), inset 0 0 60px var(--glow);">
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="corner corner-bl"></div>
+      <div class="corner corner-br"></div>
+      <div style="position:absolute; top:0; left:0; right:0; background:var(--darker); border-bottom:1px solid var(--border); padding:14px 20px; z-index:1;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="font-family:var(--font-display); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--gold);">📚 HELP</h2>
+          <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px; cursor:pointer;" onclick="document.getElementById('help-modal').style.display='none'">✕</button>
+        </div>
       </div>
+      <div style="padding:16px; margin-top:50px; max-height:calc(80vh - 70px); overflow:auto;">
       <div style="padding:16px;">
         <div style="margin-bottom:16px;">
           <h3 style="font-family:var(--font-display); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">🖥️ CLI Usage</h3>
@@ -815,7 +822,7 @@ const UI_HTML = `<!DOCTYPE html>
           </div>
           
           <details style="margin-top:12px;">
-            <summary style="font-size:12px; color:var(--gold); cursor:pointer;">▼ PDF Settings</summary>
+            <summary style="font-size:12px; color:var(--gold); cursor:pointer;">PDF Settings</summary>
             <div style="margin-top:8px; padding-left:12px;">
               <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
                 <label for="pdf-format" style="font-size:12px; color:var(--label-color);">Format:</label>
