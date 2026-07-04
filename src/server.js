@@ -624,7 +624,7 @@ const UI_HTML = `<!DOCTYPE html>
   <div class="win-header">
     <div class="win-title"><span class="dot"></span> ⌁ CyberSnapper</div>
   <div class="win-controls">
-    <button class="win-btn" id="help-btn" title="Help">?</button>
+    <button class="win-btn" id="help-btn" title="Help" onclick="document.getElementById('help-modal').style.display='flex'">?</button>
     <button class="win-btn" id="theme-toggle" title="Toggle theme">☀/☾</button>
     <button class="win-btn stop" id="stop-btn" title="Stop server">⏹ Stop</button>
   </div>
@@ -634,7 +634,7 @@ const UI_HTML = `<!DOCTYPE html>
     <div style="background:var(--darker); border:1px solid var(--border); width:80%; max-width:600px; max-height:80vh; overflow:auto; position:relative;">
       <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h2 style="font-family:var(--font-display); font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:2px;">📚 Help</h2>
-        <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px;">✕</button>
+        <button id="close-help" style="background:none; border:1px solid var(--border); color:var(--white); font-size:16px; padding:2px 8px;" onclick="document.getElementById('help-modal').style.display='none'">✕</button>
       </div>
       <div style="padding:16px;">
         <div style="margin-bottom:16px;">
@@ -923,6 +923,7 @@ setTheme(getTheme());
 themeToggle.addEventListener('click', () => setTheme(theme === 'dark' ? 'light' : 'dark'));
 
 async function loadPresets() {
+  console.log('loadPresets called'); // Debug
   try {
     const res = await fetch('/config');
     const data = await res.json();
@@ -1279,22 +1280,23 @@ savePresets = async function() {
   });
 };
 
-loadPresets();
-
-// Help Modal
-closeHelp.addEventListener('click', () => {
-  helpModal.style.display = 'none';
-});
-
-helpBtn.addEventListener('click', () => {
-  helpModal.style.display = 'flex';
-});
-
-// Close modal when clicking outside
-helpModal.addEventListener('click', (e) => {
-  if (e.target === helpModal) {
+loadPresets().then(() => {
+  // Help Modal
+  closeHelp.addEventListener('click', () => {
     helpModal.style.display = 'none';
-  }
+  });
+
+  helpBtn.addEventListener('click', () => {
+    console.log('Help button clicked'); // Debug
+    helpModal.style.display = 'flex';
+  });
+
+  // Close modal when clicking outside
+  helpModal.addEventListener('click', (e) => {
+    if (e.target === helpModal) {
+      helpModal.style.display = 'none';
+    }
+  });
 });
 </script>
 </body>
