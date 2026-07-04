@@ -593,9 +593,9 @@ const UI_HTML = `<!DOCTYPE html>
     <div id="preset-list" class="preset-grid"></div>
     <div class="add-row">
       <input type="text" class="name-input" id="new-name" placeholder="Name" maxlength="30" autocomplete="off">
-      <input type="number" id="new-width" placeholder="Width" min="1">
+      <input type="text" id="new-width" placeholder="Width" inputmode="numeric" pattern="[0-9]*">
       <span>×</span>
-      <input type="number" id="new-height" placeholder="Height" min="1">
+      <input type="text" id="new-height" placeholder="Height" inputmode="numeric" pattern="[0-9]*">
       <button class="btn btn-sm" id="add-preset-btn">+ Add</button>
     </div>
   </div>
@@ -740,9 +740,9 @@ async function savePresets() {
 
 addBtn.addEventListener('click', async () => {
   const name = newName.value.trim();
-  const w = +newWidth.value;
-  const h = +newHeight.value;
-  if (!name || !w || !h) return;
+  const w = parseInt(newWidth.value, 10);
+  const h = parseInt(newHeight.value, 10);
+  if (!name || isNaN(w) || w <= 0 || isNaN(h) || h <= 0) return;
   if (presets.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
   presets.push({ name, width:w, height:h });
   await savePresets();
@@ -758,7 +758,15 @@ resetBtn.addEventListener('click', async () => {
   await loadPresets();
 });
 
-[newName, newWidth, newHeight].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); }));
+[newName, newWidth, newHeight].forEach(el => {
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addBtn.click();
+    // Prevent non-numeric input for width/height
+    if (el.id !== 'new-name' && !/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Tab') {
+      e.preventDefault();
+    }
+  });
+});
 
 initialDelaySlider.addEventListener('input', () => {
   initialDelayValue.textContent = initialDelaySlider.value;
