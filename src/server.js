@@ -544,7 +544,7 @@ const UI_HTML = `<!DOCTYPE html>
 
   <div class="panel">
     <div class="panel-header"><h2>Target URLs</h2></div>
-    <textarea id="urls-input" placeholder="https://example.com&#10;https://google.com&#10;one-per-line" spellcheck="false"></textarea>
+    <textarea id="urls-input" placeholder="example.com&#10;https://google.com&#10;one-per-line  (https:// is optional)" spellcheck="false"></textarea>
   </div>
 
   <div class="panel">
