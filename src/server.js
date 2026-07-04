@@ -194,26 +194,26 @@ const UI_HTML = `<!DOCTYPE html>
     --corner-color: rgba(255,199,52,0.35);
   }
   .light {
-    --black: #e8e6e3;
-    --darker: #d6d3cf;
-    --dark: #c4c0bb;
-    --red: #9c3a2b;
-    --gold: #8a7220;
-    --white: #3a3835;
-    --gray: #b2ada8;
-    --surface: rgba(180,176,170,0.45);
-    --border: rgba(156,58,43,0.10);
-    --border-hover: rgba(156,58,43,0.20);
-    --glow: rgba(156,58,43,0.03);
-    --scan-color: rgba(0,0,0,0.01);
-    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(200,195,185,0.35) 100%);
-    --nv-color: rgba(58,56,53,0.45);
-    --hint-color: rgba(58,56,53,0.3);
-    --input-placeholder: rgba(58,56,53,0.25);
-    --dim-color: rgba(58,56,53,0.4);
-    --add-span: rgba(58,56,53,0.3);
-    --label-color: rgba(58,56,53,0.45);
-    --corner-color: rgba(138,114,32,0.35);
+    --black: #bab2a6;
+    --darker: #a89f92;
+    --dark: #978d7f;
+    --red: #7a3a30;
+    --gold: #7a6430;
+    --white: #2c2a27;
+    --gray: #9a9184;
+    --surface: rgba(150,142,130,0.4);
+    --border: rgba(122,58,48,0.09);
+    --border-hover: rgba(122,58,48,0.18);
+    --glow: rgba(122,58,48,0.02);
+    --scan-color: rgba(0,0,0,0.008);
+    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(160,152,140,0.25) 100%);
+    --nv-color: rgba(44,42,39,0.4);
+    --hint-color: rgba(44,42,39,0.25);
+    --input-placeholder: rgba(44,42,39,0.2);
+    --dim-color: rgba(44,42,39,0.35);
+    --add-span: rgba(44,42,39,0.25);
+    --label-color: rgba(44,42,39,0.4);
+    --corner-color: rgba(122,100,48,0.3);
   }
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   ::-webkit-scrollbar { width:6px; height:6px; }
