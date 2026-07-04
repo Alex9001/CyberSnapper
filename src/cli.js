@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { capture, OUT_DIR } = require('./capture');
+const config = require('./config');
 
 function findDefaultUrlsFile() {
   const candidates = [
@@ -38,9 +39,10 @@ async function runCLI(urls) {
     process.exit(1);
   }
 
-  console.log('Launching browser...\n');
+  const presets = config.getPresets();
+  console.log(`Launching browser (${presets.length} presets)...\n`);
 
-  await capture(urls, (event) => {
+  await capture(urls, presets, (event) => {
     switch (event.type) {
       case 'url-start':
         console.log(`${'='.repeat(60)}`);

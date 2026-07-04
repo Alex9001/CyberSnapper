@@ -2,12 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const VIEWPORTS = [
-  { name: 'desktop', width: 1920, height: 1080 },
-  { name: 'tablet',  width: 768,  height: 1024 },
-  { name: 'mobile',  width: 375,  height: 812 },
-];
-
 const OUT_DIR = 'screenshots';
 
 function ensureScheme(url) {
@@ -42,7 +36,7 @@ async function launchBrowser() {
   }
 }
 
-async function capture(urls, onProgress) {
+async function capture(urls, viewports, onProgress) {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const browser = await launchBrowser();
@@ -64,8 +58,8 @@ async function capture(urls, onProgress) {
 
     const prefix = safeFilename(urlObj);
 
-    for (const vp of VIEWPORTS) {
-      onProgress?.({ type: 'viewport-start', url: targetUrl, viewport: vp.name });
+    for (const vp of viewports) {
+      onProgress?.({ type: 'viewport-start', index: i, url: targetUrl, viewport: vp.name });
 
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
@@ -76,7 +70,7 @@ async function capture(urls, onProgress) {
           * { scrollbar-width: none !important; }
         `});
       } catch (err) {
-        onProgress?.({ type: 'viewport-error', url: targetUrl, viewport: vp.name, message: err.message });
+        onProgress?.({ type: 'viewport-error', index: i, url: targetUrl, viewport: vp.name, message: err.message });
         continue;
       }
 
@@ -98,7 +92,7 @@ async function capture(urls, onProgress) {
       const filePath = path.join(OUT_DIR, `${prefix}-${vp.name}.png`);
       await page.screenshot({ path: filePath, fullPage: true, animations: 'disabled' });
 
-      onProgress?.({ type: 'viewport-done', url: targetUrl, viewport: vp.name, file: filePath });
+      onProgress?.({ type: 'viewport-done', index: i, url: targetUrl, viewport: vp.name, file: filePath });
     }
 
     onProgress?.({ type: 'url-done', url: targetUrl });
@@ -108,4 +102,4 @@ async function capture(urls, onProgress) {
   onProgress?.({ type: 'done' });
 }
 
-module.exports = { capture, VIEWPORTS, OUT_DIR };
+module.exports = { capture, OUT_DIR };
