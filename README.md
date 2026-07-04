@@ -26,6 +26,10 @@
 
 Snap full-page screenshots of websites at **Desktop** (1920×1080), **Tablet** (768×1024), and **Mobile** (375×812) — with automatic lazy-load scrolling, then preview thumbnails instantly in the browser.
 
+<p align="center">
+  <img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" width="700">
+</p>
+
 ---
 
 ## Quick Start
