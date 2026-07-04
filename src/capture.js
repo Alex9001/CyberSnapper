@@ -30,9 +30,11 @@ async function launchBrowser() {
   }
 }
 
-async function capture(urls, viewports, onProgress, naming) {
+async function capture(urls, viewports, onProgress, naming, opts = {}) {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   const template = (naming && naming.template) || '{hostname}-{preset}';
+  const delay = opts.delay || 1000;
+  const blockPopups = opts.blockPopups || false;
 
   const browser = await launchBrowser();
   const context = await browser.newContext();
@@ -62,23 +64,73 @@ async function capture(urls, viewports, onProgress, naming) {
           ::-webkit-scrollbar { display: none !important; }
           * { scrollbar-width: none !important; }
         `});
+        
+        // Popup blocking
+        if (blockPopups) {
+          await page.route('**/*', route => {
+            const url = route.request().url();
+            const blocked = [
+              'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+              'facebook.com/tr', 'connect.facebook.net', 'intercom.io',
+              'cookiebot.com', 'onetrust.com', 'hotjar.com',
+              'optanon.com', 'trustarc.com', 'cookielaw.org',
+              'hubspot.com', 'pardot.com', 'marketo.com',
+              'adservice.google.com', 'pagead2.googlesyndication.com',
+              'cdn.onesignal.com', 'pushcrew.com', 'pushwoosh.com',
+              'crazyegg.com', 'mouseflow.com', 'fullstory.com',
+              'tawk.to', 'livechatinc.com', 'olark.com',
+              'popup', 'affiliate'
+            ];
+            if (blocked.some(d => url.includes(d))) {
+              route.abort();
+            } else {
+              route.continue();
+            }
+          });
+          
+          await page.addStyleTag({ content: `
+            [class*="modal"], [class*="popup"], [class*="overlay"],
+            [class*="cookie"], [id*="cookie"], [class*="banner"],
+            [class*="newsletter"], [class*="subscribe"],
+            [class*="gdpr"], [id*="gdpr"],
+            [class*="consent"], [id*="consent"],
+            [class*="notification"], [class*="announcement"],
+            [class*="interstitial"], [class*="layer"],
+            [class*="lightbox"], [class*="fancybox"],
+            iframe[src*="intercom"], iframe[src*="tawk"],
+            #intercom, .intercom, #hubspot-messages,
+            .fc-consent-root, .cookie-consent, .cc-window,
+            .mailmunch-forms, .pum-overlay, .mfp-wrap,
+            [aria-modal="true"], [role="dialog"]:not([role="dialog"] form) {
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+              height: 0 !important;
+              width: 0 !important;
+              overflow: hidden !important;
+              clip: rect(0,0,0,0) !important;
+              position: absolute !important;
+            }
+          `});
+        }
       } catch (err) {
         onProgress?.({ type: 'viewport-error', index: i, url: targetUrl, viewport: vp.name, message: err.message });
         continue;
       }
 
-      await page.evaluate(async () => {
+      await page.evaluate(async (delay) => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
         const step = window.innerHeight;
         let pos = 0;
         while (pos < document.body.scrollHeight) {
           window.scrollBy(0, step);
           pos += step;
-          await wait(1000);
+          await wait(delay);
         }
         window.scrollTo(0, 0);
-        await wait(1000);
-      });
+        await wait(delay);
+      }, delay);
 
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 

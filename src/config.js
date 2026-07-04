@@ -7,6 +7,8 @@ const DEFAULTS = {
     { name: 'Tablet',   width: 768,  height: 1024 },
     { name: 'Mobile',   width: 375,  height: 812 },
   ],
+  delay: 1000,
+  blockPopups: false,
   naming: {
     template: '{hostname}-{preset}',
   },
@@ -43,17 +45,25 @@ function load() {
     if (!Array.isArray(parsed.presets) || parsed.presets.length === 0) {
       parsed.presets = [...DEFAULTS.presets];
     }
+    if (parsed.delay == null || typeof parsed.delay !== 'number' || parsed.delay < 0) {
+      parsed.delay = DEFAULTS.delay;
+    }
+    if (parsed.blockPopups == null) {
+      parsed.blockPopups = DEFAULTS.blockPopups;
+    }
     if (!parsed.naming || !parsed.naming.template) {
       parsed.naming = { template: DEFAULTS.naming.template };
     }
     return parsed;
   } catch {
-    return { presets: [...DEFAULTS.presets], naming: { template: DEFAULTS.naming.template } };
+    return { presets: [...DEFAULTS.presets], delay: DEFAULTS.delay, blockPopups: DEFAULTS.blockPopups, naming: { template: DEFAULTS.naming.template } };
   }
 }
 
 function save(data) {
   if (!Array.isArray(data.presets)) data.presets = [...DEFAULTS.presets];
+  if (data.delay == null || typeof data.delay !== 'number' || data.delay < 0) data.delay = DEFAULTS.delay;
+  if (data.blockPopups == null) data.blockPopups = DEFAULTS.blockPopups;
   if (!data.naming || !data.naming.template) data.naming = { template: DEFAULTS.naming.template };
   fs.writeFileSync(configPath(), JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -66,4 +76,12 @@ function getNaming() {
   return load().naming;
 }
 
-module.exports = { load, save, getPresets, getNaming, configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS };
+function getDelay() {
+  return load().delay;
+}
+
+function getBlockPopups() {
+  return load().blockPopups;
+}
+
+module.exports = { load, save, getPresets, getNaming, getDelay, getBlockPopups, configPath, NAMING_PRESETS, NAMING_VARS, DEFAULTS };

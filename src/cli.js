@@ -40,9 +40,10 @@ async function runCLI(urls) {
     process.exit(1);
   }
 
-  const { presets, naming } = config.load();
+  const { presets, naming, delay, blockPopups } = config.load();
   console.log(`Launching browser (${presets.length} presets)...\n`);
-  console.log(`  Naming template: ${naming.template}\n`);
+  console.log(`  Naming template: ${naming.template}`);
+  console.log(`  Delay: ${delay}ms, Popup blocking: ${blockPopups ? 'ON' : 'OFF'}\n`);
 
   await capture(urls, presets, (event) => {
     switch (event.type) {

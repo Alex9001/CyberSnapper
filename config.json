@@ -16,6 +16,8 @@
       "height": 812
     }
   ],
+  "delay": 1000,
+  "blockPopups": false,
   "naming": {
     "template": "{hostname}-{preset}"
   }

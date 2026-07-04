@@ -72,15 +72,17 @@ async function startServer(port = 0) {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', async () => {
-        let urls, viewports, naming;
+        let urls, viewports, naming, delay, blockPopups;
         try {
           const parsed = JSON.parse(body);
           urls = parsed.urls;
           viewports = parsed.presets || config.getPresets();
           naming = parsed.naming || config.getNaming();
+          delay = parsed.delay || config.getDelay();
+          blockPopups = parsed.blockPopups || config.getBlockPopups();
           if (!Array.isArray(urls) || urls.length === 0) throw new Error();
         } catch {
-          json(res, 400, { error: 'Invalid body — expected { urls: [...], presets: [...] }' });
+          json(res, 400, { error: 'Invalid body — expected { urls: [...], presets: [...], delay?: number, blockPopups?: boolean }' });
           return;
         }
 
@@ -94,7 +96,7 @@ async function startServer(port = 0) {
         try {
           await capture(urls, viewports, (event) => {
             res.write(`data: ${JSON.stringify(event)}\n\n`);
-          }, naming);
+          }, naming, { delay, blockPopups });
         } catch (err) {
           res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
         }
@@ -597,6 +599,20 @@ const UI_HTML = `<!DOCTYPE html>
   </div>
 
   <div class="panel">
+    <div class="panel-header"><h2>Capture Settings</h2></div>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <label for="delay-slider" style="font-size:12px; color:var(--label-color);">Delay: <span id="delay-value">1000</span>ms</label>
+        <input type="range" id="delay-slider" min="0" max="10000" step="100" value="1000" style="flex:1;">
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="block-popups">
+        <label for="block-popups" style="font-size:12px; color:var(--label-color);">Block popups/modals</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
     <div class="panel-header"><h2>Output Naming</h2></div>
     <div style="margin-bottom:8px;font-size:10px;color:rgba(255,235,214,0.35);letter-spacing:1px">Variables —
       <span class="nv" data-v="{hostname}">{hostname}</span>
@@ -659,6 +675,9 @@ const resetBtn = document.getElementById('reset-presets-btn');
 const namingInput = document.getElementById('naming-template');
 const previewDiv = document.getElementById('naming-preview');
 const previewBtn = document.getElementById('preview-btn');
+const delaySlider = document.getElementById('delay-slider');
+const delayValue = document.getElementById('delay-value');
+const blockPopups = document.getElementById('block-popups');
 let presets = [];
 let totalSnaps = 0;
 let urlIndex = 0;
@@ -677,6 +696,9 @@ async function loadPresets() {
     const res = await fetch('/config');
     const data = await res.json();
     presets = data.presets || [];
+    delaySlider.value = data.delay || 1000;
+    delayValue.textContent = delaySlider.value;
+    blockPopups.checked = data.blockPopups || false;
     renderPresets();
   } catch {}
 }
@@ -728,6 +750,15 @@ resetBtn.addEventListener('click', async () => {
 
 [newName, newWidth, newHeight].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); }));
 
+delaySlider.addEventListener('input', () => {
+  delayValue.textContent = delaySlider.value;
+  savePresets();
+});
+
+blockPopups.addEventListener('change', () => {
+  savePresets();
+});
+
 snapBtn.addEventListener('click', startCapture);
 
 async function startCapture() {
@@ -744,7 +775,16 @@ async function startCapture() {
   totalSnaps = 0; urlIndex = 0;
   snapCount.style.display = 'none'; openFolderBtn.classList.remove('visible'); doneCount.textContent = '0';
   try {
-    const res = await fetch('/capture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls, presets: selected }) });
+    const res = await fetch('/capture', {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        urls,
+        presets: selected,
+        delay: +delaySlider.value,
+        blockPopups: blockPopups.checked
+      })
+    });
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     while (true) {
       const { done, value } = await reader.read();
@@ -833,6 +873,13 @@ loadPresets = async function() {
       namingInput.value = data.naming.template;
       updatePreview();
     }
+    if (data.delay != null) {
+      delaySlider.value = data.delay;
+      delayValue.textContent = data.delay;
+    }
+    if (data.blockPopups != null) {
+      blockPopups.checked = data.blockPopups;
+    }
   } catch {}
 };
 
@@ -841,7 +888,12 @@ savePresets = async function() {
   const template = namingInput.value.trim() || '{hostname}-{preset}';
   await fetch('/config', {
     method:'PUT', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ presets, naming: { template } })
+    body:JSON.stringify({
+      presets,
+      naming: { template },
+      delay: +delaySlider.value,
+      blockPopups: blockPopups.checked
+    })
   });
 };
 
