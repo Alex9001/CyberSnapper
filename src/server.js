@@ -194,26 +194,26 @@ const UI_HTML = `<!DOCTYPE html>
     --corner-color: rgba(255,199,52,0.35);
   }
   .light {
-    --black: #f0f0f0;
-    --darker: #e2e2e2;
-    --dark: #d4d4d4;
-    --red: #b00000;
-    --gold: #b8860b;
-    --white: #2d2d2d;
-    --gray: #b0b0b0;
-    --surface: rgba(200,200,200,0.55);
-    --border: rgba(176,0,0,0.12);
-    --border-hover: rgba(176,0,0,0.25);
-    --glow: rgba(176,0,0,0.04);
-    --scan-color: rgba(0,0,0,0.02);
-    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(200,200,200,0.4) 100%);
-    --nv-color: rgba(45,45,45,0.5);
-    --hint-color: rgba(45,45,45,0.35);
-    --input-placeholder: rgba(45,45,45,0.3);
-    --dim-color: rgba(45,45,45,0.45);
-    --add-span: rgba(45,45,45,0.35);
-    --label-color: rgba(45,45,45,0.5);
-    --corner-color: rgba(184,134,11,0.4);
+    --black: #e8e6e3;
+    --darker: #d6d3cf;
+    --dark: #c4c0bb;
+    --red: #9c3a2b;
+    --gold: #8a7220;
+    --white: #3a3835;
+    --gray: #b2ada8;
+    --surface: rgba(180,176,170,0.45);
+    --border: rgba(156,58,43,0.10);
+    --border-hover: rgba(156,58,43,0.20);
+    --glow: rgba(156,58,43,0.03);
+    --scan-color: rgba(0,0,0,0.01);
+    --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(200,195,185,0.35) 100%);
+    --nv-color: rgba(58,56,53,0.45);
+    --hint-color: rgba(58,56,53,0.3);
+    --input-placeholder: rgba(58,56,53,0.25);
+    --dim-color: rgba(58,56,53,0.4);
+    --add-span: rgba(58,56,53,0.3);
+    --label-color: rgba(58,56,53,0.45);
+    --corner-color: rgba(138,114,32,0.35);
   }
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   ::-webkit-scrollbar { width:6px; height:6px; }
@@ -394,8 +394,28 @@ const UI_HTML = `<!DOCTYPE html>
     padding:10px 32px;
     font-size:13px;
     font-weight:700;
+    letter-spacing:3px;
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
   }
-  .btn-primary:hover { background:transparent; color:var(--red); box-shadow: 0 0 30px rgba(213,16,1,0.15); }
+  .btn-primary::before {
+    content:'';
+    display:inline-block;
+    width:6px; height:6px;
+    background:currentColor;
+    animation:pulse-dot 2s infinite;
+  }
+  .btn-primary::after {
+    content:'';
+    position:absolute; inset:0;
+    background:repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.06) 3px, rgba(255,255,255,0.06) 4px);
+    opacity:0;
+    transition:opacity .2s;
+    pointer-events:none;
+  }
+  .btn-primary:hover { background:transparent; color:var(--red); box-shadow: 0 0 40px rgba(213,16,1,0.2), inset 0 0 40px rgba(213,16,1,0.05); }
+  .btn-primary:hover::after { opacity:1; }
   .btn-primary:disabled { opacity:0.4; cursor:not-allowed; border-color:var(--border); color:var(--white); background:var(--red); }
   .btn-sm { padding:4px 12px; font-size:10px; }
 
@@ -600,7 +620,7 @@ const UI_HTML = `<!DOCTYPE html>
   </div>
 
   <div class="actions">
-    <button class="btn btn-primary" id="snap-btn">📸 Snap!</button>
+    <button class="btn btn-primary" id="snap-btn">SNAP</button>
     <span class="hint">CLI: node capture.js urls.txt</span>
   </div>
 
@@ -714,7 +734,7 @@ async function startCapture() {
   });
   if (selected.length === 0) return;
 
-  snapBtn.disabled = true; snapBtn.textContent = '⏳ Capturing...';
+  snapBtn.disabled = true; snapBtn.textContent = '⌁ CAPTURING';
   progressEl.classList.add('active'); resultsEl.innerHTML = ''; gallery.innerHTML = '';
   totalSnaps = 0; urlIndex = 0;
   snapCount.style.display = 'none'; openFolderBtn.classList.remove('visible'); doneCount.textContent = '0';
@@ -729,7 +749,7 @@ async function startCapture() {
       for (const l of lines) { if (l.startsWith('data: ')) { try { handleEvent(JSON.parse(l.slice(6))); } catch {} } }
     }
   } catch (err) { resultsEl.innerHTML += '<div class="url-result">Connection error: ' + esc(err.message) + '</div>'; }
-  finally { snapBtn.disabled = false; snapBtn.textContent = '📸 Snap!'; }
+  finally { snapBtn.disabled = false; snapBtn.textContent = 'SNAP'; }
 }
 
 function handleEvent(e) {
