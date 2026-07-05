@@ -68,8 +68,17 @@ if ! command -v npm &>/dev/null; then
 fi
 
 if [ ! -d "node_modules" ]; then
-  echo "Installing dependencies..."
-  npm install
+  echo ""
+  echo "  Downloading and installing npm packages (may take a minute)..."
+  echo ""
+  if ! npm install --no-audit --no-fund; then
+    echo ""
+    echo "  [ERROR] npm install failed. Try running: npm install"
+    echo ""
+    exit 1
+  fi
+  echo ""
+  echo "  Dependencies installed."
 fi
 
-node src/index.js
+node src/index.js --open

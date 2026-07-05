@@ -1,5 +1,6 @@
 @echo off
 cd /d "%~dp0"
+setlocal enabledelayedexpansion
 
 echo.
 echo   CyberSnapper
@@ -15,13 +16,67 @@ where npm >nul 2>nul
 if %errorlevel% neq 0 goto :noNpm
 
 if not exist "node_modules\" (
-  echo Installing dependencies...
-  call npm install
+  echo.
+  echo   Installing npm packages...
+  call npm install --no-audit --no-fund
+  if %errorlevel% neq 0 (
+    echo.
+    echo   [ERROR] npm install failed. Try running: npm install
+    pause
+    exit /b
+  )
+  echo.
+  echo   Dependencies installed.
 )
 
-node src/index.js
+:: Remove stale files
+del /f /q .cybersnapper.url 2>nul
+del /f /q .cybersnapper.pid 2>nul
 
-pause
+:: Start server in background
+start "CyberSnapper" /B node src/index.js
+
+:: Wait for the server to write the URL file (max 15 seconds)
+echo.
+echo   Waiting for server to start...
+set WAIT_COUNT=0
+:waiturl
+if not exist ".cybersnapper.url" (
+  set /a WAIT_COUNT+=1
+  if !WAIT_COUNT! geq 15 (
+    echo.
+    echo   [ERROR] Server failed to start. Check the output above for errors.
+    pause
+    exit /b
+  )
+  timeout /t 1 /nobreak >nul
+  goto waiturl
+)
+
+:: Read the URL and open the browser
+set /p SERVER_URL=<.cybersnapper.url
+echo.
+echo   Server ready at %SERVER_URL%
+echo.
+start "" "%SERVER_URL%"
+
+:: Keep the window open so the user can see the server output
+echo.
+echo   Close this window to stop CyberSnapper.
+echo.
+
+:: Read the server PID and wait for that specific process
+if exist ".cybersnapper.pid" (
+  set /p SERVER_PID=<.cybersnapper.pid
+  :waitpid
+  timeout /t 2 /nobreak >nul
+  tasklist /FI "PID eq !SERVER_PID!" 2>nul | find /I "!SERVER_PID!" >nul
+  if !errorlevel! equ 0 goto waitpid
+) else (
+  :: Fallback: wait for any key
+  pause >nul
+)
+
 exit /b
 
 
@@ -121,11 +176,64 @@ if %errorlevel% neq 0 (
 )
 
 if not exist "node_modules\" (
-  echo Installing dependencies...
-  call npm install
+  echo.
+  echo   Installing npm packages...
+  call npm install --no-audit --no-fund
+  if %errorlevel% neq 0 (
+    echo.
+    echo   [ERROR] npm install failed. Try running: npm install
+    pause
+    exit /b
+  )
+  echo.
+  echo   Dependencies installed.
 )
 
-node src/index.js
+:: Remove stale files
+del /f /q .cybersnapper.url 2>nul
+del /f /q .cybersnapper.pid 2>nul
 
-pause
+:: Start server in background
+start "CyberSnapper" /B node src/index.js
+
+:: Wait for the URL file (max 15 seconds)
+echo.
+echo   Waiting for server to start...
+set WAIT_COUNT=0
+:waiturl2
+if not exist ".cybersnapper.url" (
+  set /a WAIT_COUNT+=1
+  if !WAIT_COUNT! geq 15 (
+    echo.
+    echo   [ERROR] Server failed to start. Check the output above for errors.
+    pause
+    exit /b
+  )
+  timeout /t 1 /nobreak >nul
+  goto waiturl2
+)
+
+:: Read the URL and open the browser
+set /p SERVER_URL=<.cybersnapper.url
+echo.
+echo   Server ready at %SERVER_URL%
+echo.
+start "" "%SERVER_URL%"
+
+:: Keep the window open
+echo.
+echo   Close this window to stop CyberSnapper.
+echo.
+
+:: Wait for the specific PID
+if exist ".cybersnapper.pid" (
+  set /p SERVER_PID=<.cybersnapper.pid
+  :waitpid2
+  timeout /t 2 /nobreak >nul
+  tasklist /FI "PID eq !SERVER_PID!" 2>nul | find /I "!SERVER_PID!" >nul
+  if !errorlevel! equ 0 goto waitpid2
+) else (
+  pause >nul
+)
+
 exit /b

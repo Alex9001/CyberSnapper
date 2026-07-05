@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
+    "test": "node test/browser.test.js",
     "build": "node build.js",
     "pkg": "npx @yao-pkg/pkg src/index.js --targets node22-linux-x64 --output dist/CyberSnapper"
   },

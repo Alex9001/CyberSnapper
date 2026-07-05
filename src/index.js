@@ -12,7 +12,7 @@ function openInBrowser(url) {
   exec(cmd, () => {});
 }
 
-async function runServer() {
+async function runServer(shouldOpenBrowser) {
   const server = await startServer(0);
   const url = `http://localhost:${server.address().port}`;
 
@@ -21,7 +21,7 @@ async function runServer() {
   console.log('  Press Ctrl+C or click ⏹ Stop in the UI to exit.');
   console.log('  Idles: auto-stop after 15 minutes of inactivity.\n');
 
-  if (!process.stdout.isTTY) {
+  if (shouldOpenBrowser || !process.stdout.isTTY) {
     openInBrowser(url);
   }
 }
@@ -33,11 +33,16 @@ async function main() {
     stopRunningInstance();
     return;
   }
+
+  const openFlagIdx = args.indexOf('--open');
+  const shouldOpen = openFlagIdx !== -1;
+  if (openFlagIdx !== -1) args.splice(openFlagIdx, 1);
+
   if (args.length > 0) {
     const urls = readUrls(args);
     await runCLI(urls);
   } else {
-    await runServer();
+    await runServer(shouldOpen);
   }
 }
 

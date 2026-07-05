@@ -82,4 +82,4 @@ async function launchBrowser(onStatus) {
   }
 }
 
-module.exports = { launchBrowser };
+module.exports = { launchBrowser, runInstall };

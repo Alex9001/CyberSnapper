@@ -3,6 +3,21 @@ const fs = require('fs');
 const path = require('path');
 const { createRouter } = require('./routes');
 const { acquirePidFile, removePidFile } = require('./pid');
+const config = require('../config');
+
+const URL_FILENAME = '.cybersnapper.url';
+
+function urlFilePath() {
+  return path.join(path.dirname(config.configPath()), URL_FILENAME);
+}
+
+function writeUrlFile(url) {
+  try { fs.writeFileSync(urlFilePath(), url); } catch {}
+}
+
+function removeUrlFile() {
+  try { fs.unlinkSync(urlFilePath()); } catch {}
+}
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const WARNING_LEAD_MS = 60 * 1000;
@@ -144,6 +159,7 @@ async function startServer(port = 0) {
   const cleanup = (cb) => {
     watchdog.stop();
     removePidFile();
+    removeUrlFile();
     cb?.();
   };
   const shutdownAndExit = () => {
@@ -160,6 +176,8 @@ async function startServer(port = 0) {
       reject(err);
     });
     server.listen(port, () => {
+      const url = `http://localhost:${server.address().port}`;
+      writeUrlFile(url);
       console.log(`  (PID ${process.pid}, pid file: ${pidFile})`);
       resolve(server);
     });
