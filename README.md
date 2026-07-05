@@ -59,7 +59,11 @@ Use it for:
 | Windows  | `run.bat` |
 | Linux / macOS | `run.sh` |
 
-Auto-installs dependencies on first run, then opens the web UI.
+Auto-installs npm dependencies on first run, then opens the web UI.
+
+> If Node.js is not installed, the launcher will detect it and either:
+> - **Windows (10 1809+ / 11)**: Prompt to install Node.js automatically via `winget`
+> - **Linux / macOS**: Show the exact install command for your package manager
 
 ### From source — terminal
 
@@ -303,6 +307,57 @@ CyberSnapper/
 - **Node.js** 18+ (when running from source)
 - **npm** (for `npm install` / `npm run build`)
 - The standalone binary has no dependencies beyond the bundled `node_modules/`.
+
+### Installing Node.js
+
+If you don't have Node.js installed, run the appropriate launcher (`run.bat` on Windows, `run.sh` on Linux/macOS) — it will detect the missing dependency and guide you through installation.
+
+#### Windows
+
+On Windows 10 (1809+) and Windows 11, `run.bat` can install Node.js automatically using the built-in **winget** package manager. It will prompt you with:
+
+```
+  Install Node.js LTS now? (Y/N):
+```
+
+Press **Y** to install silently (a UAC prompt may appear). After installation, the launcher continues automatically.
+
+If winget is unavailable (older Windows), you'll be directed to [nodejs.org](https://nodejs.org/) with step-by-step instructions.
+
+#### Linux
+
+The launcher detects your package manager and shows the appropriate command:
+
+| Distribution | Command |
+|--------------|---------|
+| Debian / Ubuntu | `sudo apt update && sudo apt install nodejs npm` |
+| Fedora | `sudo dnf install nodejs npm` |
+| Arch Linux | `sudo pacman -S nodejs npm` |
+| Alpine | `apk add nodejs npm` |
+
+> **Note**: On older Debian/Ubuntu (< 20.04 / < 11), the `nodejs` package installs the binary as `nodejs`. If `node` is not found after install, create a symlink:
+> ```bash
+> sudo ln -s /usr/bin/nodejs /usr/bin/node
+> ```
+
+#### macOS
+
+If you have [Homebrew](https://brew.sh/) installed:
+
+```bash
+brew install node
+```
+
+Otherwise, download the macOS installer from [nodejs.org](https://nodejs.org/).
+
+#### Alternative: nvm (all platforms)
+
+[nvm](https://github.com/nvm-sh/nvm) lets you manage multiple Node.js versions without sudo:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+nvm install --lts
+```
 
 ---
 
