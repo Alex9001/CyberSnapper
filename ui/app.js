@@ -518,11 +518,19 @@ function handleEvent(ev) {
       if (!statusEl) {
         statusEl = document.createElement('div');
         statusEl.id = 'install-status';
-        statusEl.style.cssText = 'color:var(--gold);font-size:11px;margin-bottom:12px;padding:10px 14px;border:1px solid var(--border);background:var(--black);display:flex;align-items:center;gap:10px';
-        statusEl.innerHTML = '<span style="animation:pulse-dot 1.5s infinite;color:var(--gold)">⟳</span><span id="install-status-msg"></span>';
+        statusEl.className = 'install-status';
+        statusEl.innerHTML =
+          '<div class="install-status-spinner"></div>' +
+          '<span class="install-status-text" id="install-status-msg"></span>' +
+          '<div class="install-status-bar"><div class="install-status-fill" id="install-status-fill"></div></div>';
         els.results.prepend(statusEl);
       }
-      document.getElementById('install-status-msg').textContent = ev.message;
+      const msg = document.getElementById('install-status-msg');
+      const fill = document.getElementById('install-status-fill');
+      msg.textContent = ev.message;
+      if (ev.percent != null) {
+        fill.style.width = Math.min(100, Math.max(0, ev.percent)) + '%';
+      }
       break;
     }
     case 'done': {

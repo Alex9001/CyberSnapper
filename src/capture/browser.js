@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 
 async function launchBrowser(onStatus) {
   try {
@@ -11,12 +11,38 @@ async function launchBrowser(onStatus) {
     console.log('\n  Chromium not found. Installing browser engine...\n');
     try {
       await new Promise((resolve, reject) => {
-        const child = exec('npx playwright install chromium', (err) => {
-          if (err) reject(err);
-          else resolve();
+        const child = spawn('npx', ['playwright', 'install', 'chromium'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
-        child.stdout.pipe(process.stdout);
-        child.stderr.pipe(process.stderr);
+
+        let buf = '';
+        const onData = (chunk) => {
+          process.stdout.write(chunk);
+          buf += chunk.toString();
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            const match = line.match(/(\d+)%/);
+            if (match) {
+              const pct = parseInt(match[1], 10);
+              if (onStatus) {
+                onStatus({
+                  type: 'status',
+                  message: `Installing Chromium browser engine... ${pct}%`,
+                  percent: pct,
+                });
+              }
+            }
+          }
+        };
+
+        child.stdout.on('data', onData);
+        child.stderr.on('data', onData);
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`playwright install exited with code ${code}`));
+        });
+        child.on('error', reject);
       });
     } catch {
       if (onStatus) onStatus({ type: 'error', message: 'Failed to install Chromium. Run: npx playwright install chromium' });
