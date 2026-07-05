@@ -6,7 +6,7 @@
     Powered by Playwright
   </p>
   <p align="center">
-    <a href="https://cyberbrand.net/cybersnapper/">🌐 Plugins Homepage</a>
+    <a href="https://cyberbrand.net/cybersnapper/">🌐 Plugin's Homepage</a>
     •
     <a href="#features">Features</a>
     •
