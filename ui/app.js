@@ -513,7 +513,23 @@ function handleEvent(ev) {
       els.results.appendChild(line);
       break;
     }
-    case 'done': break;
+    case 'status': {
+      let statusEl = document.getElementById('install-status');
+      if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'install-status';
+        statusEl.style.cssText = 'color:var(--gold);font-size:11px;margin-bottom:12px;padding:10px 14px;border:1px solid var(--border);background:var(--black);display:flex;align-items:center;gap:10px';
+        statusEl.innerHTML = '<span style="animation:pulse-dot 1.5s infinite;color:var(--gold)">⟳</span><span id="install-status-msg"></span>';
+        els.results.prepend(statusEl);
+      }
+      document.getElementById('install-status-msg').textContent = ev.message;
+      break;
+    }
+    case 'done': {
+      const statusEl = document.getElementById('install-status');
+      if (statusEl) statusEl.remove();
+      break;
+    }
   }
 }
 

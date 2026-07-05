@@ -169,7 +169,7 @@ async function capture(urls, viewports, onProgress, naming, rawOpts = {}) {
 
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  const browser = await launchBrowser();
+  const browser = await launchBrowser(onProgress);
 
   try {
     const total = urls.length;

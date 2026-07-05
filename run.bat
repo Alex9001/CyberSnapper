@@ -42,7 +42,7 @@ if errorlevel 2 goto :manualNode
 
 echo.
 echo   Installing Node.js LTS via winget...
-echo   (A UAC prompt may appear — click Yes to allow)
+echo   (A UAC prompt may appear - click Yes to allow)
 echo.
 
 winget install --id OpenJS.NodeJS.LTS --source winget --silent --accept-package-agreements
