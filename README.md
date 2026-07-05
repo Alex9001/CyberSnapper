@@ -152,6 +152,7 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 | 🏷️ **Naming** | Custom output filenames with variables (`{hostname}`, `{preset}`, `{width}`, `{height}`, `{domain}`, `{date}`, `{time}`, `{index}`) |
 | 🖼️ **Viewport frames** | Framed cards with viewport name label and thumbnail, grouped under each URL — click for lightbox with full-res image and styled scrollbar |
 | 🖼️ **No-image placeholder** | Pending frames show ⊘ icon + "NO IMAGE"; active frame has cyber glow pulse + scanning line animation |
+| ⚙️ **Auto-setup status** | On first run, a live status bar with spinner and progress bar shows Chromium install and system deps progress in real time |
 | 📁 **Open folder** | Reveals screenshots in your file manager |
 | 🛑 **Auto-stop** | Server shuts down after 15 min idle (toast countdown at 60s); `--stop` from CLI; single-instance lock |
 

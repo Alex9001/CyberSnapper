@@ -529,7 +529,11 @@ function handleEvent(ev) {
       const fill = document.getElementById('install-status-fill');
       msg.textContent = ev.message;
       if (ev.percent != null) {
+        fill.classList.remove('indeterminate');
         fill.style.width = Math.min(100, Math.max(0, ev.percent)) + '%';
+      } else {
+        fill.classList.add('indeterminate');
+        fill.style.width = '';
       }
       break;
     }

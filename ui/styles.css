@@ -416,6 +416,16 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   background: var(--gold);
   transition: width .3s ease;
 }
+/* Indeterminate state - sliding shimmer when no percentage yet */
+.install-status-fill.indeterminate {
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation: install-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes install-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
 
 .url-result {
   margin-bottom: 12px;
