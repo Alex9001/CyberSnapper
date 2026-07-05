@@ -5,6 +5,7 @@ const { launchBrowser } = require('./browser');
 const { HIDE_POPUPS_CSS, attachPopupBlocker } = require('./popupBlocker');
 const { SCROLLBAR_HIDE_CSS, scrollThrough, waitForContent } = require('./scrolling');
 const { normalizeFormats, writeFormat } = require('./formats');
+const sharp = require('sharp');
 
 const OUT_DIR = 'screenshots';
 
@@ -105,11 +106,8 @@ async function captureViewport(page, targetUrl, vp, index, total, template, opts
   const baseName = filename.replace(/\.png$/, '');
   const basePath = path.join(fileDir, baseName);
 
-  const fullHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight));
-  await page.setViewportSize({ width: vp.width, height: fullHeight });
-  await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
-  const pngBuffer = await page.screenshot({ type: 'png', animations: 'disabled' });
-  await page.setViewportSize({ width: vp.width, height: vp.height });
+  const pngBuffer = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' })
+    .then(buf => stripTopWhitespace(buf));
 
   for (const format of opts.formats) {
     try {
@@ -125,6 +123,31 @@ async function captureViewport(page, targetUrl, vp, index, total, template, opts
 function toMs(value, defaultSec) {
   if (value == null) return Math.round(defaultSec * 1000);
   return value >= 100 ? Math.round(value) : Math.round(value * 1000);
+}
+
+async function stripTopWhitespace(buf) {
+  const meta = await sharp(buf).metadata();
+  if (!meta.width || !meta.height) return buf;
+  const { width, height } = meta;
+  const raw = await sharp(buf).ensureAlpha().raw().toBuffer();
+  const ch = 4;
+  const left = Math.floor(width * 0.25);
+  const right = Math.ceil(width * 0.75);
+  const regionWidth = right - left;
+  const samples = Math.min(30, regionWidth);
+  const step = Math.max(1, Math.floor((regionWidth - 1) / samples));
+  let firstContent = -1;
+  for (let y = 0; y < height; y++) {
+    const row = y * width * ch;
+    let nonWhite = 0;
+    for (let x = left; x < right; x += step) {
+      const i = row + x * ch;
+      if (raw[i] < 250 || raw[i + 1] < 250 || raw[i + 2] < 250) nonWhite++;
+    }
+    if (nonWhite >= 3) { firstContent = y; break; }
+  }
+  if (firstContent < 2) return buf;
+  return sharp(buf).extract({ left: 0, top: firstContent, width, height: height - firstContent }).png().toBuffer();
 }
 
 async function capture(urls, viewports, onProgress, naming, rawOpts = {}) {
