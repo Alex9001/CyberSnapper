@@ -241,7 +241,7 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 
 .add-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .add-row input { width: 80px; }
-.add-row input.name-input { width: 110px; }
+.add-row input.name-input { width: 80px; }
 .add-row span { color: var(--dim); font-size: 12px; }
 
 /* Buttons */
@@ -262,21 +262,22 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   background: var(--red);
   border-color: var(--red);
   color: var(--white);
-  padding: 10px 32px;
-  font-size: 13px;
+  padding: 12px 40px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 3px;
+  letter-spacing: 4px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 0 24px rgba(213,16,1,0.25);
 }
 .btn-primary::before {
   content: '';
-  display: inline-block; width: 6px; height: 6px;
+  display: inline-block; width: 7px; height: 7px;
   background: currentColor;
-  animation: pulse-dot 2s infinite;
+  animation: pulse-dot 1.5s infinite;
 }
 .btn-primary::after {
   content: '';
@@ -336,11 +337,16 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 /* Naming */
 .vars-list {
   margin-bottom: 10px;
-  display: flex; flex-wrap: wrap; gap: 4px;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 3px;
   font-size: 10px; letter-spacing: 1px;
 }
-.hint-label { color: var(--hint); margin-right: 4px; }
+.hint-label {
+  color: var(--hint);
+  grid-column: 1 / -1;
+  margin-bottom: 1px;
+}
 .nv {
   display: inline-block;
   padding: 1px 6px;
@@ -356,15 +362,16 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .naming-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .naming-preview { margin-top: 8px; font-size: 11px; color: var(--gold); min-height: 16px; }
 
-/* Actions */
-.actions {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px 20px;
+/* Snap button panel */
+.snap-panel {
   border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
 }
-.actions .hint {
-  font-size: 11px; color: var(--hint); letter-spacing: 1px;
+.snap-panel .btn-primary {
+  width: 100%;
+  justify-content: center;
+  padding: 14px 40px;
+  font-size: 15px;
 }
 
 /* Progress / log */

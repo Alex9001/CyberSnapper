@@ -102,6 +102,7 @@ async function handleCapture(req, res) {
       concurrency: parsed.concurrency ?? cfg.concurrency,
       formats: parsed.formats || cfg.formats,
       blockPopups: !!parsed.blockPopups,
+      blocklist: parsed.blocklist || cfg.blocklist,
       hideSelectors: parsed.hideSelectors || cfg.hideSelectors,
       waitForSelector: parsed.waitForSelector || cfg.waitForSelector,
       webp: parsed.webp || cfg.webp,
@@ -117,10 +118,12 @@ async function handleCapture(req, res) {
 async function handlePreview(req, res) {
   try {
     const { template, url: sampleUrl, preset } = JSON.parse(await readBody(req));
+    const safeUrl = sampleUrl && !sampleUrl.startsWith('http://') && !sampleUrl.startsWith('https://')
+      ? 'https://' + sampleUrl : sampleUrl;
     const samplePreset = preset || { name: 'Desktop', width: 1920, height: 1080 };
     const result = generateFilename(
       template || '{hostname}-{preset}',
-      sampleUrl || 'https://example.com',
+      safeUrl || 'https://example.com',
       samplePreset,
       0
     );
@@ -180,6 +183,7 @@ async function handleApiScreenshot(url, res) {
         concurrency: 1,
         formats: [format],
         blockPopups: cfg.blockPopups,
+        blocklist: cfg.blocklist,
         hideSelectors: cfg.hideSelectors,
         waitForSelector: cfg.waitForSelector,
         webp: cfg.webp,

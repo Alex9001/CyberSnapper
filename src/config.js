@@ -19,6 +19,7 @@ const DEFAULTS = {
   hideSelectors: [],
   waitForSelector: '',
   blockPopups: false,
+  blocklist: [],
   naming: { template: '{hostname}-{preset}' },
   theme: 'dark',
 };
@@ -81,6 +82,7 @@ function normalize(data) {
   if (!Array.isArray(out.hideSelectors)) out.hideSelectors = [...DEFAULTS.hideSelectors];
   if (out.waitForSelector == null) out.waitForSelector = DEFAULTS.waitForSelector;
   if (out.blockPopups == null) out.blockPopups = DEFAULTS.blockPopups;
+  if (!Array.isArray(out.blocklist)) out.blocklist = [...DEFAULTS.blocklist];
 
   if (!out.naming || !out.naming.template) {
     out.naming = { template: DEFAULTS.naming.template };

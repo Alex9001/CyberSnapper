@@ -62,41 +62,30 @@
           </div>
           <div class="field-row">
             <label for="concurrency" title="Number of websites to capture in parallel">Concurrency</label>
-            <input type="text" id="concurrency" value="1" class="num-input narrow">
-          </div>
-          <div class="field-row checkbox-row">
-            <input type="checkbox" id="block-popups">
-            <label for="block-popups">Block popups & modals</label>
+            <input type="text" id="concurrency" value="1" class="num-input">
           </div>
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-header"><h2>Output Naming</h2></div>
+      <div class="panel" style="flex:1">
+        <div class="panel-header"><h2>Advanced</h2></div>
         <div class="panel-body">
-          <div class="vars-list">
-            <span class="hint-label">Variables —</span>
-            <span class="nv" data-v="{hostname}">{hostname}</span>
-            <span class="nv" data-v="{preset}">{preset}</span>
-            <span class="nv" data-v="{width}">{width}</span>
-            <span class="nv" data-v="{height}">{height}</span>
-            <span class="nv" data-v="{domain}">{domain}</span>
-            <span class="nv" data-v="{date}">{date}</span>
-            <span class="nv" data-v="{time}">{time}</span>
-            <span class="nv" data-v="{index}">{index}</span>
+          <div class="field-row checkbox-row" style="margin-bottom:14px">
+            <input type="checkbox" id="block-popups">
+            <label for="block-popups">Block popups & modals</label>
           </div>
-          <div class="naming-bar">
-            <input type="text" id="naming-template" value="{hostname}-{preset}">
-            <button class="btn btn-sm" id="preview-btn">Preview</button>
+          <div class="field-block">
+            <label for="blocklist-textarea" title="URL substrings to block (one per line, merged with built-in blocklist when popup blocking is on)">Blocklist Domains</label>
+            <textarea id="blocklist-textarea" class="mono-text" placeholder="doubleclick.net&#10;facebook.com/tr&#10;cookiebot.com" spellcheck="false" style="min-height:80px"></textarea>
           </div>
-          <div class="naming-presets">
-            <button class="btn btn-sm" data-template="{hostname}-{preset}">Default</button>
-            <button class="btn btn-sm" data-template="{hostname}-{width}x{height}">By Size</button>
-            <button class="btn btn-sm" data-template="{date}/{hostname}-{preset}">By Date</button>
-            <button class="btn btn-sm" data-template="{index}-{hostname}-{preset}">Indexed</button>
-            <button class="btn btn-sm" data-template="{domain}/{preset}/{hostname}">By Domain</button>
+          <div class="field-block">
+            <label for="hide-selectors" title="CSS selectors to hide before capture (one per line)">Hide Selectors</label>
+            <textarea id="hide-selectors" class="mono-text" placeholder="#intercom-widget&#10;.sticky-header&#10;.announcement-bar"></textarea>
           </div>
-          <div id="naming-preview" class="naming-preview"></div>
+          <div class="field-block">
+            <label for="wait-for-selector" title="Wait for this selector to appear before capture">Wait For Selector</label>
+            <input type="text" id="wait-for-selector" class="full-width">
+          </div>
         </div>
       </div>
     </div>
@@ -145,25 +134,39 @@
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-header"><h2>Advanced</h2></div>
+      <div class="panel" style="flex:1">
+        <div class="panel-header"><h2>Output Naming</h2></div>
         <div class="panel-body">
-          <div class="field-block">
-            <label for="hide-selectors" title="CSS selectors to hide before capture (one per line)">Hide Selectors</label>
-            <textarea id="hide-selectors" class="mono-text" placeholder="#intercom-widget&#10;.sticky-header&#10;.announcement-bar"></textarea>
+          <div class="vars-list">
+            <span class="hint-label">Variables —</span>
+            <span class="nv" data-v="{hostname}">{hostname}</span>
+            <span class="nv" data-v="{preset}">{preset}</span>
+            <span class="nv" data-v="{width}">{width}</span>
+            <span class="nv" data-v="{height}">{height}</span>
+            <span class="nv" data-v="{domain}">{domain}</span>
+            <span class="nv" data-v="{date}">{date}</span>
+            <span class="nv" data-v="{time}">{time}</span>
+            <span class="nv" data-v="{index}">{index}</span>
           </div>
-          <div class="field-block">
-            <label for="wait-for-selector" title="Wait for this selector to appear before capture">Wait For Selector</label>
-            <input type="text" id="wait-for-selector" class="full-width">
+          <div class="naming-bar">
+            <input type="text" id="naming-template" value="{hostname}-{preset}">
+            <button class="btn btn-sm" id="preview-btn">Preview</button>
           </div>
+          <div class="naming-presets">
+            <button class="btn btn-sm" data-template="{hostname}-{preset}">Default</button>
+            <button class="btn btn-sm" data-template="{hostname}-{width}x{height}">By Size</button>
+            <button class="btn btn-sm" data-template="{date}/{hostname}-{preset}">By Date</button>
+            <button class="btn btn-sm" data-template="{index}-{hostname}-{preset}">Indexed</button>
+            <button class="btn btn-sm" data-template="{domain}/{preset}/{hostname}">By Domain</button>
+          </div>
+          <div id="naming-preview" class="naming-preview"></div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <div class="actions">
-    <button class="btn btn-primary" id="snap-btn">SNAP</button>
-    <span class="hint">CLI: node capture.js urls.txt</span>
+      <div class="panel snap-panel">
+        <button class="btn btn-primary" id="snap-btn">⌁ SNAP</button>
+      </div>
+    </div>
   </div>
 
   <div class="panel" id="progress">

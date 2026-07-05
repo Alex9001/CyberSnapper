@@ -42,6 +42,7 @@ const els = {
   pdfMargin: $('pdf-margin'),
   hideSelectors: $('hide-selectors'),
   waitForSelector: $('wait-for-selector'),
+  blocklistTextarea: $('blocklist-textarea'),
 };
 
 let presets = [];
@@ -96,6 +97,11 @@ function collectConfig() {
     .map(s => s.trim())
     .filter(s => s.length > 0);
 
+  const blocklist = els.blocklistTextarea.value
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
   return {
     presets,
     naming: { template: els.namingInput.value.trim() || '{hostname}-{preset}' },
@@ -113,6 +119,7 @@ function collectConfig() {
     hideSelectors,
     waitForSelector: els.waitForSelector.value.trim(),
     blockPopups: els.blockPopups.checked,
+    blocklist,
     theme: state.theme,
   };
 }
@@ -147,6 +154,9 @@ function applyConfig(data) {
   }
   if (Array.isArray(data.hideSelectors)) {
     els.hideSelectors.value = data.hideSelectors.join('\n');
+  }
+  if (Array.isArray(data.blocklist)) {
+    els.blocklistTextarea.value = data.blocklist.join('\n');
   }
   if (data.waitForSelector != null) {
     els.waitForSelector.value = data.waitForSelector;
@@ -504,6 +514,8 @@ els.helpModal.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') els.helpModal.classList.remove('visible');
 });
+
+els.blocklistTextarea.addEventListener('change', saveConfig);
 
 /* ---------- Auto-stop toast + lifecycle hooks ----------
    Server auto-stops after 15 min idle. We poll /keepalive to detect the

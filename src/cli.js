@@ -48,6 +48,7 @@ async function runCLI(urls) {
     concurrency, formats,
     blockPopups,
     hideSelectors, waitForSelector,
+    blocklist,
     webp, avif, pdf,
   } = cfg;
 
@@ -93,6 +94,7 @@ async function runCLI(urls) {
     blockPopups,
     hideSelectors,
     waitForSelector,
+    blocklist,
     webp,
     avif,
     pdf,

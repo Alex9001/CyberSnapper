@@ -54,14 +54,18 @@ const HIDE_POPUPS_CSS = `
   }
 `;
 
-function isBlocked(url) {
-  return BLOCKED_DOMAINS.some(d => url.includes(d)) ||
-    BLOCKED_SUBSTRINGS.some(s => url.includes(s));
+function isBlocked(url, userBlocklist) {
+  const combined = [
+    ...BLOCKED_DOMAINS,
+    ...BLOCKED_SUBSTRINGS,
+    ...(Array.isArray(userBlocklist) ? userBlocklist.filter(Boolean) : []),
+  ];
+  return combined.some(d => url.includes(d));
 }
 
-function attachPopupBlocker(page) {
+function attachPopupBlocker(page, userBlocklist) {
   return page.route('**/*', route => {
-    if (isBlocked(route.request().url())) {
+    if (isBlocked(route.request().url(), userBlocklist)) {
       route.abort();
     } else {
       route.continue();

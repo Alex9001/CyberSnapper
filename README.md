@@ -22,7 +22,7 @@
 
 ## Features
 
-`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `📄 PDF` &nbsp; `🖼️ WebP/AVIF` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🎭 Hide elements` &nbsp; `⏳ Wait for selector` &nbsp; `🔄 Concurrency` &nbsp; `🔌 REST API` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary` &nbsp; `🛑 Auto-stop`
+`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `📄 PDF` &nbsp; `🖼️ WebP/AVIF` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🎭 Hide elements` &nbsp; `⏳ Wait for selector` &nbsp; `🚫 Domain blocklist` &nbsp; `🔄 Concurrency` &nbsp; `🔌 REST API` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary` &nbsp; `🛑 Auto-stop`
 
 Capture, archive, and automate screenshots of websites in **PNG, WebP, AVIF, and PDF** formats — with advanced controls for delays, concurrency, and DOM manipulation. Perfect for portfolio archiving, legal records, and automation workflows.
 
@@ -80,7 +80,7 @@ The CLI loads settings from `config.json` and processes all URLs:
 - **Delays**: `initialDelay`, `scrollDelay`, `finalDelay` (seconds).
 - **Concurrency**: Number of websites to capture in parallel.
 - **Formats**: Output formats (PNG, WebP, AVIF, PDF).
-- **Advanced**: `hideSelectors`, `waitForSelector`, `blockPopups`.
+- **Advanced**: `hideSelectors`, `waitForSelector`, `blockPopups`, `blocklist`.
 
 ### Stopping the web-UI server
 
@@ -134,7 +134,8 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 | 🎨 **Theme** | Dark by default; toggle in header persists choice to `config.json` (`theme: "dark"` \| `"light"`) |
 | 📐 **Presets** | Add, remove, or toggle viewport sizes on the fly |
 | ⏱️ **Delays** | Adjust initial, scroll, and final delays for optimal loading |
-| 🚫 **Popup blocking** | Toggle to block popups/modals (checkbox) |
+| 🚫 **Popup blocking** | Toggle to block popups/modals (checkbox in Advanced panel) |
+| 🚫 **Domain blocklist** | URL substrings to block (one per line, merged with built-in blocklist) |
 | 🎭 **Hide elements** | Hide specific elements before capturing (CSS selectors) |
 | ⏳ **Wait for selector** | Wait for a specific element before capturing |
 | 🔄 **Concurrency** | Capture multiple websites in parallel |
@@ -173,6 +174,7 @@ Edit `config.json` to customize presets, delays, formats, and advanced settings:
   "hideSelectors": [],
   "waitForSelector": "",
   "blockPopups": false,
+  "blocklist": [],
   "apiToken": "generated_on_first_run",
   "naming": {
     "template": "{hostname}-{preset}"
@@ -205,9 +207,10 @@ the server keeps the existing token on disk).
 
 | Setting            | Purpose                                  |
 |--------------------|------------------------------------------|
+| `blockPopups`      | Block popups/modals (checkbox). Merges a built-in CMP/analytics domain blocklist + the user `blocklist` + hide-popup CSS. |
+| `blocklist`        | Custom URL substrings to block (one per line). Merged with the built-in domain list when `blockPopups` is enabled. |
 | `hideSelectors`    | CSS selectors to hide before capturing.  |
 | `waitForSelector`  | Wait for this selector before capturing. |
-| `blockPopups`      | Block popups/modals (checkbox).          |
 
 ### Theme
 

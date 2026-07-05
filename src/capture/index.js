@@ -20,6 +20,7 @@ const DEFAULTS = {
   blockPopups: false,
   hideSelectors: [],
   waitForSelector: '',
+  blocklist: [],
 };
 
 function ensureScheme(url) {
@@ -34,6 +35,7 @@ function resolveOpts(opts) {
     pdf: { ...DEFAULTS.pdf, ...(opts.pdf || {}) },
     formats: normalizeFormats(opts.formats || DEFAULTS.formats),
     hideSelectors: opts.hideSelectors || [],
+    blocklist: opts.blocklist || [],
     webpQuality: opts.webp?.quality || DEFAULTS.webpQuality,
     avifQuality: opts.avif?.quality || DEFAULTS.avifQuality,
   };
@@ -94,13 +96,20 @@ async function captureViewport(page, targetUrl, vp, index, total, template, opts
   await scrollThrough(page, opts.scrollDelayMs, opts.finalDelayMs);
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
+  /* Reset scroll to true origin and settle a frame for rendering */
+  await page.evaluate(() => new Promise(r => { requestAnimationFrame(() => { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; requestAnimationFrame(r); }); }));
+
   const { filename, subdir } = generateFilename(template, targetUrl, vp, index);
   const fileDir = subdir ? path.join(OUT_DIR, subdir) : OUT_DIR;
   if (!fs.existsSync(fileDir)) fs.mkdirSync(fileDir, { recursive: true });
   const baseName = filename.replace(/\.png$/, '');
   const basePath = path.join(fileDir, baseName);
 
-  const pngBuffer = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+  const fullHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight));
+  await page.setViewportSize({ width: vp.width, height: fullHeight });
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+  const pngBuffer = await page.screenshot({ type: 'png', animations: 'disabled' });
+  await page.setViewportSize({ width: vp.width, height: vp.height });
 
   for (const format of opts.formats) {
     try {
@@ -153,7 +162,7 @@ async function capture(urls, viewports, onProgress, naming, rawOpts = {}) {
         const context = await browser.newContext();
         const page = await context.newPage();
         try {
-          if (opts.blockPopups) await attachPopupBlocker(page);
+          if (opts.blockPopups) await attachPopupBlocker(page, opts.blocklist);
           await captureOneUrl(page, url, viewports, index, total, naming, opts, onProgress);
         } finally {
           await context.close();
