@@ -181,12 +181,11 @@
         <div class="count" id="snap-count">Captured <strong id="done-count">0</strong> screenshots</div>
         <div><button class="btn btn-sm" id="open-folder-btn">📁 Open</button></div>
       </div>
-      <div id="gallery" class="gallery"></div>
     </div>
   </div>
 
   <div class="win-footer">
-    <a class="byline" href="https://cyberbrand.net" target="_blank" rel="noopener">BY CYBER BRAND</a>
+    <a class="byline" href="https://cyberbrand.net/services/white-label/" target="_blank" rel="noopener">You sell it, we build it. Invisible white-label web dev by CYBER BRAND</a>
   </div>
 </div>
 
@@ -243,6 +242,24 @@
           <tr><td><code>{index}</code></td><td><code>01</code></td></tr>
         </table>
       </section>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox" class="modal">
+  <div class="app-window modal-window lightbox-window">
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+    <div class="win-header">
+      <div class="win-title"><span class="dot"></span>&thinsp;<span id="lightbox-filename"></span></div>
+      <div class="win-controls">
+        <button id="lightbox-close" class="win-btn close-btn">✕</button>
+      </div>
+    </div>
+    <div class="modal-body lightbox-body">
+      <img id="lightbox-img" src="" alt="">
     </div>
   </div>
 </div>

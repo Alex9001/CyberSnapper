@@ -127,7 +127,7 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 1. Paste URLs (one per line)
 2. Select viewport presets
 3. Hit **📸 Snap!**
-4. Watch live progress — thumbnails appear as each viewport is captured
+4. Watch live progress — viewport frames populate with thumbnails grouped under each URL
 
 | Feature | Description |
 |---------|-------------|
@@ -143,7 +143,8 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 | 🖼️ **Formats** | Choose output formats (PNG, WebP, AVIF, PDF) |
 | 🔌 **REST API** | Integrate with Zapier, n8n, or CI/CD pipelines |
 | 🏷️ **Naming** | Custom output filenames with variables (`{hostname}`, `{preset}`, `{width}`, `{height}`, `{domain}`, `{date}`, `{time}`, `{index}`) |
-| 🖼️ **Gallery** | Thumbnail previews of every screenshot, click to open |
+| 🖼️ **Viewport frames** | Framed cards with viewport name label and thumbnail, grouped under each URL — click for lightbox with full-res image and styled scrollbar |
+| 🖼️ **No-image placeholder** | Pending frames show ⊘ icon + "NO IMAGE"; active frame has cyber glow pulse + scanning line animation |
 | 📁 **Open folder** | Reveals screenshots in your file manager |
 | 🛑 **Auto-stop** | Server shuts down after 15 min idle (toast countdown at 60s); `--stop` from CLI; single-instance lock |
 

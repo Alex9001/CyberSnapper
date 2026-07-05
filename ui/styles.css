@@ -424,36 +424,148 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .summary .count { font-size: 11px; color: var(--label); }
 .summary .count strong { color: var(--white); }
 
-/* Gallery */
-.gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+/* URL body — head (left) + viewport frames (right) */
+.url-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
 }
-.gallery-item {
+.url-head {
+  flex-shrink: 0;
+  min-width: 160px;
+  max-width: 240px;
+}
+@media (max-width: 720px) {
+  .url-body { flex-direction: column; }
+  .url-head { max-width: none; }
+}
+
+/* Viewport frame cards */
+.vp-frames {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.vp-frame {
+  width: 170px;
   border: 1px solid var(--border);
   background: var(--black);
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  transition: border-color .2s, transform .2s;
+  transition: border-color .2s, box-shadow .2s, opacity .2s;
 }
-.gallery-item:hover { border-color: var(--red); transform: scale(1.02); }
-.gallery-item img {
-  width: 100%; display: block;
+.vp-frame-done { cursor: pointer; }
+.vp-frame-done:hover { border-color: var(--red); }
+.vp-frame-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  background: var(--darker);
+  border-bottom: 1px solid var(--border);
+  color: var(--gold);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-frame-thumb {
+  height: 110px;
+  overflow: hidden;
+  line-height: 0;
+  position: relative;
+}
+.vp-frame-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
   filter: grayscale(30%) contrast(1.05);
   transition: filter .3s;
 }
-.gallery-item:hover img { filter: none; }
-.gallery-item .label {
-  padding: 4px 8px;
-  font-size: 10px;
-  color: var(--label);
-  background: var(--darker);
-  border-top: 1px solid var(--border);
+.vp-frame-done:hover .vp-frame-thumb img { filter: none; }
+
+/* Pending — no image yet */
+.vp-frame-pending {
+  opacity: 0.55;
 }
-.gallery-item:hover .label { color: var(--white); }
+.vp-frame-pending .vp-frame-thumb {
+  background: var(--darker);
+}
+
+/* Loading — cyber glow pulse + scanning line */
+.vp-frame-loading {
+  border-color: var(--red);
+  box-shadow: 0 0 14px rgba(213,16,1,0.25), inset 0 0 14px rgba(213,16,1,0.08);
+  animation: frame-glow 1.8s ease-in-out infinite;
+}
+@keyframes frame-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(213,16,1,0.25), inset 0 0 14px rgba(213,16,1,0.08); }
+  50% { box-shadow: 0 0 28px rgba(213,16,1,0.45), inset 0 0 28px rgba(213,16,1,0.15); }
+}
+.vp-frame-loading .vp-frame-thumb::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--red), var(--gold), transparent);
+  animation: scan-line 2.5s ease-in-out infinite;
+  z-index: 2;
+  pointer-events: none;
+}
+@keyframes scan-line {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 1; }
+  45% { opacity: 1; }
+  55% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: calc(100% - 3px); opacity: 0; }
+}
+
+/* Error */
+.vp-frame-error {
+  opacity: 0.45;
+  border-color: var(--red);
+}
+.vp-frame-error .vp-frame-label { color: var(--red); }
+
+/* Placeholder for pending frames */
+.vp-frame-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  line-height: 1.2;
+}
+.vp-frame-placeholder-icon {
+  font-size: 26px;
+  opacity: 0.3;
+  line-height: 1;
+}
+.vp-frame-placeholder-text {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+
+/* Lightbox — app-window modal for screenshot preview */
+.lightbox-window { width: 90vw; max-width: 900px; }
+.lightbox-body {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+.lightbox-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
 
 /* Footer */
 .win-footer {

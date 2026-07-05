@@ -14,14 +14,19 @@
       "name": "Mobile",
       "width": 375,
       "height": 812
+    },
+    {
+      "name": "custom1",
+      "width": 1600,
+      "height": 800
     }
   ],
   "naming": {
     "template": "{hostname}-{preset}"
   },
-  "initialDelay": 2.4,
+  "initialDelay": 1.4,
   "scrollDelay": 1,
-  "concurrency": 2,
+  "concurrency": 3,
   "formats": [
     "png"
   ],
@@ -39,6 +44,7 @@
   "hideSelectors": [],
   "waitForSelector": "",
   "blockPopups": false,
+  "stripWhitespace": true,
   "blocklist": [],
   "theme": "dark",
   "finalDelay": 1,

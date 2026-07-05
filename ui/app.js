@@ -17,7 +17,7 @@ const els = {
   doneCount: $('done-count'),
   snapCount: $('snap-count'),
   openFolderBtn: $('open-folder-btn'),
-  gallery: $('gallery'),
+
   presetList: $('preset-list'),
   newName: $('new-name'),
   newWidth: $('new-width'),
@@ -47,6 +47,7 @@ const els = {
 };
 
 let presets = [];
+let captureViewports = [];
 let totalSnaps = 0;
 let currentUrlIndex = 0;
 let saving = false;
@@ -350,8 +351,8 @@ async function startCapture() {
   els.snapBtn.disabled = true;
   els.snapBtn.textContent = '⌁ CAPTURING';
   els.progress.classList.add('active');
+  captureViewports = selected;
   els.results.innerHTML = '';
-  els.gallery.innerHTML = '';
   totalSnaps = 0;
   currentUrlIndex = 0;
   els.snapCount.style.display = 'none';
@@ -409,11 +410,28 @@ function handleEvent(ev) {
       const d = document.createElement('div');
       d.className = 'url-result';
       d.id = 'url-' + ev.index;
+
+      let framesHtml = '';
+      for (const vp of captureViewports) {
+        framesHtml +=
+          '<div class="vp-frame vp-frame-pending" id="vp-frame-' + ev.index + '-' + slug(vp.name) + '">' +
+          '<div class="vp-frame-label">' + esc(vp.name) + '</div>' +
+          '<div class="vp-frame-thumb">' +
+          '<div class="vp-frame-placeholder">' +
+          '<span class="vp-frame-placeholder-icon">⊘</span>' +
+          '<span class="vp-frame-placeholder-text">NO IMAGE</span>' +
+          '</div></div></div>';
+      }
+
       d.innerHTML =
+        '<div class="url-body">' +
+        '<div class="url-head">' +
         '<div class="url-line"><span class="status-icon">⏳</span>' +
         '<span class="url-text">' + esc(ev.url) + '</span>' +
         '<span class="badge">' + (ev.index + 1) + '/' + ev.total + '</span></div>' +
-        '<div class="viewports" id="vps-' + ev.index + '"></div>';
+        '</div>' +
+        '<div class="vp-frames" id="vp-frames-' + ev.index + '">' + framesHtml + '</div>' +
+        '</div>';
       els.results.appendChild(d);
       break;
     }
@@ -438,45 +456,43 @@ function handleEvent(ev) {
     }
     case 'viewport-start': {
       const idx = ev.index != null ? ev.index : currentUrlIndex;
-      const vps = document.getElementById('vps-' + idx);
-      if (vps) {
-        const item = document.createElement('span');
-        item.className = 'vp-item active';
-        item.id = 'vp-' + idx + '-' + slug(ev.viewport);
-        item.textContent = '▸ ' + ev.viewport;
-        vps.appendChild(item);
+      const frame = document.getElementById('vp-frame-' + idx + '-' + slug(ev.viewport));
+      if (frame) {
+        frame.className = 'vp-frame vp-frame-loading';
       }
       break;
     }
     case 'viewport-error': {
       const idx = ev.index != null ? ev.index : currentUrlIndex;
-      const item = document.getElementById('vp-' + idx + '-' + slug(ev.viewport));
-      if (item) {
-        item.className = 'vp-item error';
-        item.textContent = '✕ ' + ev.viewport;
+      const frame = document.getElementById('vp-frame-' + idx + '-' + slug(ev.viewport));
+      if (frame) {
+        frame.className = 'vp-frame vp-frame-error';
+        const thumb = frame.querySelector('.vp-frame-thumb');
+        if (thumb) {
+          thumb.innerHTML = '<div class="vp-frame-placeholder"><span class="vp-frame-placeholder-icon" style="opacity:0.6;color:var(--red)">✕</span><span class="vp-frame-placeholder-text" style="color:var(--red)">FAILED</span></div>';
+        }
       }
       break;
     }
     case 'viewport-done': {
       const idx = ev.index != null ? ev.index : currentUrlIndex;
-      const item = document.getElementById('vp-' + idx + '-' + slug(ev.viewport));
-      if (item) {
-        item.className = 'vp-item done';
-        item.textContent = '✓ ' + ev.viewport;
+      const fn = (ev.file || '').split(/[/\\]/).pop();
+      const frame = document.getElementById('vp-frame-' + idx + '-' + slug(ev.viewport));
+      if (frame) {
+        frame.className = 'vp-frame vp-frame-done';
+        const thumb = frame.querySelector('.vp-frame-thumb');
+        if (thumb) {
+          thumb.innerHTML = '<img src="/screenshots/' + encodeURIComponent(fn) + '" alt="' + esc(fn) + '">';
+        }
+        frame.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openLightbox(fn);
+        });
       }
       totalSnaps++;
       els.doneCount.textContent = totalSnaps;
       els.snapCount.style.display = 'block';
       els.openFolderBtn.classList.add('visible');
-
-      const fn = (ev.file || '').split(/[/\\]/).pop();
-      const t = document.createElement('div');
-      t.className = 'gallery-item';
-      t.innerHTML =
-        '<img src="/screenshots/' + encodeURIComponent(fn) + '" loading="lazy" alt="' + esc(fn) + '">' +
-        '<div class="label">' + esc(fn.replace(/\.png$/, '')) + '</div>';
-      t.addEventListener('click', () => window.open('/screenshots/' + encodeURIComponent(fn), '_blank'));
-      els.gallery.prepend(t);
       break;
     }
     case 'warning': {
@@ -500,6 +516,33 @@ function handleEvent(ev) {
     case 'done': break;
   }
 }
+
+/* ---------- Lightbox ---------- */
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxFilename = document.getElementById('lightbox-filename');
+
+function openLightbox(filename) {
+  lightboxImg.src = '/screenshots/' + encodeURIComponent(filename);
+  lightboxFilename.textContent = filename;
+  lightbox.classList.add('visible');
+}
+
+function closeLightbox() {
+  lightbox.classList.remove('visible');
+  lightboxImg.src = '';
+  lightboxFilename.textContent = '';
+}
+
+document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+/* Click outside the modal window closes the lightbox */
+lightbox.addEventListener('click', (e) => {
+  if (e.target === lightbox) closeLightbox();
+});
 
 /* ---------- Misc ---------- */
 els.openFolderBtn.addEventListener('click', () => fetch('/open-folder').catch(() => {}));
