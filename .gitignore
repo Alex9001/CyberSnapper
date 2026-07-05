@@ -2,3 +2,4 @@ node_modules/
 screenshots/
 dist/
 .opencode/
+.cybersnapper.pid

@@ -13,7 +13,9 @@
   },
   "pkg": {
     "assets": [
-      "node_modules/playwright-core/browsers.json"
+      "node_modules/playwright-core/browsers.json",
+      "ui/**/*",
+      "config.json"
     ]
   },
   "keywords": [

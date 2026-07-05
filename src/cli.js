@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { capture, OUT_DIR } = require('./capture');
 const config = require('./config');
-const { generateFilename } = require('./naming');
 
 function findDefaultUrlsFile() {
   const candidates = [
@@ -13,6 +12,11 @@ function findDefaultUrlsFile() {
     if (fs.existsSync(f)) return f;
   }
   return null;
+}
+
+function readFile(filePath) {
+  return fs.readFileSync(filePath, 'utf-8')
+    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
 }
 
 function readUrls(args) {
@@ -29,29 +33,37 @@ function readUrls(args) {
   return args;
 }
 
-function readFile(filePath) {
-  return fs.readFileSync(filePath, 'utf-8')
-    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
-}
+const BAR = '='.repeat(60);
 
 async function runCLI(urls) {
-  if (urls.length === 0) {
+  if (!Array.isArray(urls) || urls.length === 0) {
     console.error('No valid URLs provided.');
     process.exit(1);
   }
 
-  const { presets, naming, initialDelay, scrollDelay, finalDelay, blockPopups } = config.load();
+  const cfg = config.load();
+  const {
+    presets, naming,
+    initialDelay, scrollDelay, finalDelay,
+    concurrency, formats,
+    blockPopups,
+    hideSelectors, waitForSelector,
+    webp, avif, pdf,
+  } = cfg;
+
   console.log(`Launching browser (${presets.length} presets)...\n`);
   console.log(`  Naming template: ${naming.template}`);
-  console.log(`  Delays: initial=${initialDelay}ms, scroll=${scrollDelay}ms, final=${finalDelay}ms`);
+  console.log(`  Delays: initial=${initialDelay}s, scroll=${scrollDelay}s, final=${finalDelay}s`);
+  console.log(`  Concurrency: ${concurrency}`);
+  console.log(`  Formats: ${formats.join(', ')}`);
   console.log(`  Popup blocking: ${blockPopups ? 'ON' : 'OFF'}\n`);
 
   await capture(urls, presets, (event) => {
     switch (event.type) {
       case 'url-start':
-        console.log(`${'='.repeat(60)}`);
+        console.log(BAR);
         console.log(`[${event.index + 1}/${event.total}] ${event.url}`);
-        console.log(`${'='.repeat(60)}\n`);
+        console.log(`${BAR}\n`);
         break;
       case 'url-error':
         console.error(`  Invalid URL, skipping.\n`);
@@ -65,11 +77,26 @@ async function runCLI(urls) {
       case 'viewport-done':
         console.log(`saved`);
         break;
+      case 'warning':
+        console.error(`\n  WARN: ${event.message}`);
+        break;
       case 'done':
         console.log(`\nDone! All screenshots saved to the "${OUT_DIR}" folder.\n`);
         break;
     }
-  }, naming, { initialDelay, scrollDelay, finalDelay, blockPopups });
+  }, naming, {
+    initialDelay,
+    scrollDelay,
+    finalDelay,
+    concurrency,
+    formats,
+    blockPopups,
+    hideSelectors,
+    waitForSelector,
+    webp,
+    avif,
+    pdf,
+  });
 }
 
 module.exports = { runCLI, readUrls };

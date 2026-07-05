@@ -16,13 +16,22 @@
       "height": 812
     }
   ],
+  "naming": {
+    "template": "{hostname}-{preset}"
+  },
   "initialDelay": 1.5,
   "scrollDelay": 1.8,
-  "finalDelay": 1.0,
+  "finalDelay": 1,
   "concurrency": 1,
-  "formats": ["png"],
-  "webp": { "quality": 80 },
-  "avif": { "quality": 50 },
+  "formats": [
+    "png"
+  ],
+  "webp": {
+    "quality": 80
+  },
+  "avif": {
+    "quality": 50
+  },
   "pdf": {
     "format": "A4",
     "landscape": false,
@@ -31,7 +40,6 @@
   "hideSelectors": [],
   "waitForSelector": "",
   "blockPopups": false,
-  "naming": {
-    "template": "{hostname}-{preset}"
-  }
+  "theme": "dark",
+  "apiToken": "47b28735835ffa1c5e07fba903cb83ec"
 }
