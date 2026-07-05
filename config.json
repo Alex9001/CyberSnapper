@@ -19,10 +19,9 @@
   "naming": {
     "template": "{hostname}-{preset}"
   },
-  "initialDelay": 1.5,
-  "scrollDelay": 1.8,
-  "finalDelay": 1,
-  "concurrency": 1,
+  "initialDelay": 2.4,
+  "scrollDelay": 1,
+  "concurrency": 2,
   "formats": [
     "png"
   ],
@@ -40,6 +39,8 @@
   "hideSelectors": [],
   "waitForSelector": "",
   "blockPopups": false,
+  "blocklist": [],
   "theme": "dark",
+  "finalDelay": 1,
   "apiToken": "47b28735835ffa1c5e07fba903cb83ec"
 }

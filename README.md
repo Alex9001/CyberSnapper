@@ -22,7 +22,7 @@
 
 ## Features
 
-`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `📄 PDF` &nbsp; `🖼️ WebP/AVIF` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🎭 Hide elements` &nbsp; `⏳ Wait for selector` &nbsp; `🚫 Domain blocklist` &nbsp; `🔄 Concurrency` &nbsp; `🔌 REST API` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary` &nbsp; `🛑 Auto-stop`
+`📸 Full-page` &nbsp; `🎯 Desktop·Tablet·Mobile` &nbsp; `🌐 Web UI` &nbsp; `🖥️ CLI` &nbsp; `📄 PDF` &nbsp; `🖼️ WebP/AVIF` &nbsp; `⚡ Live progress` &nbsp; `🕒 Adjustable delays` &nbsp; `🚫 Popup blocking` &nbsp; `🎭 Hide elements` &nbsp; `⏳ Wait for selector` &nbsp; `🚫 Domain blocklist` &nbsp; `🔄 Concurrency` &nbsp; `🔌 REST API` &nbsp; `🏷️ Custom naming` &nbsp; `📦 Standalone binary` &nbsp; `🛑 Auto-stop` &nbsp; `🧹 Header whitespace fix`
 
 Capture, archive, and automate screenshots of websites in **PNG, WebP, AVIF, and PDF** formats — with advanced controls for delays, concurrency, and DOM manipulation. Perfect for portfolio archiving, legal records, and automation workflows.
 
@@ -78,7 +78,7 @@ node capture.js --stop       # stop a running web-UI server
 The CLI loads settings from `config.json` and processes all URLs:
 
 - **Delays**: `initialDelay`, `scrollDelay`, `finalDelay` (seconds).
-- **Concurrency**: Number of websites to capture in parallel.
+- **Concurrency**: Number of websites to capture in parallel (worker-pool pattern, one Playwright context per worker).
 - **Formats**: Output formats (PNG, WebP, AVIF, PDF).
 - **Advanced**: `hideSelectors`, `waitForSelector`, `blockPopups`, `blocklist`.
 
@@ -136,6 +136,7 @@ When launched **without arguments**, CyberSnapper starts a local web server and 
 | ⏱️ **Delays** | Adjust initial, scroll, and final delays for optimal loading |
 | 🚫 **Popup blocking** | Toggle to block popups/modals (checkbox in Advanced panel) |
 | 🚫 **Domain blocklist** | URL substrings to block (one per line, merged with built-in blocklist) |
+| 🧹 **Header whitespace fix** | Automatically strips leading white space from full-page PNGs (toggle in Advanced panel) |
 | 🎭 **Hide elements** | Hide specific elements before capturing (CSS selectors) |
 | ⏳ **Wait for selector** | Wait for a specific element before capturing |
 | 🔄 **Concurrency** | Capture multiple websites in parallel |
@@ -175,6 +176,7 @@ Edit `config.json` to customize presets, delays, formats, and advanced settings:
   "waitForSelector": "",
   "blockPopups": false,
   "blocklist": [],
+  "stripWhitespace": true,
   "apiToken": "generated_on_first_run",
   "naming": {
     "template": "{hostname}-{preset}"
@@ -209,6 +211,7 @@ the server keeps the existing token on disk).
 |--------------------|------------------------------------------|
 | `blockPopups`      | Block popups/modals (checkbox). Merges a built-in CMP/analytics domain blocklist + the user `blocklist` + hide-popup CSS. |
 | `blocklist`        | Custom URL substrings to block (one per line). Merged with the built-in domain list when `blockPopups` is enabled. |
+| `stripWhitespace`  | Automatically strips leading blank rows from full-page PNG screenshots via sharp post-processing (default: `true`). |
 | `hideSelectors`    | CSS selectors to hide before capturing.  |
 | `waitForSelector`  | Wait for this selector before capturing. |
 

@@ -19,6 +19,7 @@ const DEFAULTS = {
   hideSelectors: [],
   waitForSelector: '',
   blockPopups: false,
+  stripWhitespace: true,
   blocklist: [],
   naming: { template: '{hostname}-{preset}' },
   theme: 'dark',
@@ -82,6 +83,8 @@ function normalize(data) {
   if (!Array.isArray(out.hideSelectors)) out.hideSelectors = [...DEFAULTS.hideSelectors];
   if (out.waitForSelector == null) out.waitForSelector = DEFAULTS.waitForSelector;
   if (out.blockPopups == null) out.blockPopups = DEFAULTS.blockPopups;
+  if (out.stripWhitespace == null) out.stripWhitespace = DEFAULTS.stripWhitespace;
+  else out.stripWhitespace = Boolean(out.stripWhitespace);
   if (!Array.isArray(out.blocklist)) out.blocklist = [...DEFAULTS.blocklist];
 
   if (!out.naming || !out.naming.template) {

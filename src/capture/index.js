@@ -19,6 +19,7 @@ const DEFAULTS = {
   pdf: { format: 'A4', landscape: false, margin: '0' },
   formats: ['png'],
   blockPopups: false,
+  stripWhitespace: true,
   hideSelectors: [],
   waitForSelector: '',
   blocklist: [],
@@ -39,6 +40,7 @@ function resolveOpts(opts) {
     blocklist: opts.blocklist || [],
     webpQuality: opts.webp?.quality || DEFAULTS.webpQuality,
     avifQuality: opts.avif?.quality || DEFAULTS.avifQuality,
+    stripWhitespace: opts.stripWhitespace == null ? DEFAULTS.stripWhitespace : !!opts.stripWhitespace,
   };
 }
 
@@ -106,8 +108,8 @@ async function captureViewport(page, targetUrl, vp, index, total, template, opts
   const baseName = filename.replace(/\.png$/, '');
   const basePath = path.join(fileDir, baseName);
 
-  const pngBuffer = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' })
-    .then(buf => stripTopWhitespace(buf));
+  const rawPng = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+  const pngBuffer = opts.stripWhitespace ? await stripTopWhitespace(rawPng) : rawPng;
 
   for (const format of opts.formats) {
     try {
@@ -172,26 +174,25 @@ async function capture(urls, viewports, onProgress, naming, rawOpts = {}) {
   try {
     const total = urls.length;
     const concurrency = Math.min(opts.concurrency, total);
+    const queue = urls.map((url, i) => ({ url, index: i }));
 
-    const chunks = [];
-    for (let i = 0; i < total; i += concurrency) {
-      chunks.push(urls.slice(i, i + concurrency));
-    }
-
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex];
-      await Promise.all(chunk.map(async (url, chunkUrlIndex) => {
-        const index = chunkIndex * concurrency + chunkUrlIndex;
+    const worker = async () => {
+      while (true) {
+        const item = queue.shift();
+        if (!item) break;
         const context = await browser.newContext();
         const page = await context.newPage();
         try {
           if (opts.blockPopups) await attachPopupBlocker(page, opts.blocklist);
-          await captureOneUrl(page, url, viewports, index, total, naming, opts, onProgress);
+          await captureOneUrl(page, item.url, viewports, item.index, total, naming, opts, onProgress);
         } finally {
           await context.close();
         }
-      }));
-    }
+      }
+    };
+
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
   } finally {
     await browser.close();
   }

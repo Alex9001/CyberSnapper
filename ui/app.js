@@ -31,6 +31,7 @@ const els = {
   scrollDelay: $('scroll-delay'),
   concurrency: $('concurrency'),
   blockPopups: $('block-popups'),
+  stripWhitespace: $('strip-whitespace'),
   formatPng: $('format-png'),
   formatWebp: $('format-webp'),
   formatAvif: $('format-avif'),
@@ -119,6 +120,7 @@ function collectConfig() {
     hideSelectors,
     waitForSelector: els.waitForSelector.value.trim(),
     blockPopups: els.blockPopups.checked,
+    stripWhitespace: els.stripWhitespace.checked,
     blocklist,
     theme: state.theme,
   };
@@ -133,6 +135,7 @@ function applyConfig(data) {
   if (data.scrollDelay != null) els.scrollDelay.value = data.scrollDelay;
   if (data.concurrency != null) els.concurrency.value = data.concurrency;
   if (data.blockPopups != null) els.blockPopups.checked = data.blockPopups;
+  if (data.stripWhitespace != null) els.stripWhitespace.checked = data.stripWhitespace;
 
   if (data.theme === 'light' || data.theme === 'dark') {
     state.theme = data.theme;
@@ -280,6 +283,7 @@ els.concurrency.addEventListener('change', () => { clampNum(els.concurrency.valu
 els.hideSelectors.addEventListener('change', saveConfig);
 els.waitForSelector.addEventListener('change', saveConfig);
 els.blockPopups.addEventListener('change', saveConfig);
+els.stripWhitespace.addEventListener('change', saveConfig);
 
 /* ---------- Naming preview ---------- */
 document.querySelectorAll('.nv').forEach(el =>
