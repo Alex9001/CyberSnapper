@@ -26,10 +26,10 @@
 
 Capture, archive, and automate screenshots of websites in **PNG, WebP, AVIF, and PDF** formats — with advanced controls for delays, concurrency, and DOM manipulation. Perfect for portfolio archiving, legal records, and automation workflows.
 
-<p align="center">
-  <img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" height="400">
-  <img src="assets/capture-log.png" alt="Capture log with viewport frames" height="400">
-</p>
+<table><tr>
+  <td width="50%"><img src="assets/cybersnapper-screenshot.png" alt="CyberSnapper screenshot" width="100%"></td>
+  <td width="50%"><img src="assets/capture-log.png" alt="Capture log with viewport frames" width="100%"></td>
+</tr></table>
 
 CyberSnapper is a powerful tool for capturing, archiving, and automating website screenshots. Originally built as an internal tool at CYBER BRAND for portfolio archiving, it has evolved into a full-featured website archiver with advanced controls for precision capture.
 
