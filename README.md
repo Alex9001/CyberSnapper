@@ -47,6 +47,14 @@ Use it for:
 
 ### Standalone binary (if built)
 
+The binary bundles Node.js + Playwright into a single executable. On first run, it
+auto-installs Chromium and any missing system dependencies — no separate setup needed.
+
+The `sharp` native image-processing library cannot be bundled into the binary.
+When running from the binary, **WebP/AVIF output and whitespace stripping** are
+automatically disabled (a warning is shown at startup). Use PNG and PDF formats,
+or run from source for full feature support.
+
 ```bash
 ./dist/CyberSnapper          # opens web UI in browser
 ./dist/CyberSnapper urls.txt # CLI mode
@@ -263,7 +271,17 @@ the server keeps the existing token on disk).
 npm run build
 ```
 
-Produces `dist/CyberSnapper` (~90 MB, includes Playwright). The binary works on the platform it was built on.
+Produces `dist/CyberSnapper` (~90 MB) — a standalone binary containing Node.js, Playwright,
+and all JavaScript modules. The binary works on the platform it was built on.
+
+### Binary notes
+
+- **Chromium**: Downloaded automatically on first run (same cache as `npx playwright install`).
+- **system deps** (Linux): Auto-installed via `playwright install-deps` on first launch.
+- **sharp** (native module): Not included. WebP, AVIF, and whitespace stripping (`stripWhitespace`)
+  are unavailable in the binary. PNG and PDF work normally.
+- **Error handling**: Install failures are reported as errors in the Web UI instead of
+  crashing the server.
 
 ---
 

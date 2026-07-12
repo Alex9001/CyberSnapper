@@ -3,3 +3,4 @@ screenshots/
 dist/
 .opencode/
 .cybersnapper.pid
+.cybersnapper.url

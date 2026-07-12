@@ -5,7 +5,14 @@ const { launchBrowser } = require('./browser');
 const { HIDE_POPUPS_CSS, attachPopupBlocker } = require('./popupBlocker');
 const { SCROLLBAR_HIDE_CSS, scrollThrough, waitForContent } = require('./scrolling');
 const { normalizeFormats, writeFormat } = require('./formats');
-const sharp = require('sharp');
+
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch {
+  // sharp native module not available (e.g. in pkg binary)
+  console.warn('  WARN: sharp native module not available; WebP/AVIF conversion and whitespace stripping disabled.');
+}
 
 const OUT_DIR = 'screenshots';
 
@@ -128,6 +135,7 @@ function toMs(value, defaultSec) {
 }
 
 async function stripTopWhitespace(buf) {
+  if (!sharp) return buf;
   const meta = await sharp(buf).metadata();
   if (!meta.width || !meta.height) return buf;
   const { width, height } = meta;

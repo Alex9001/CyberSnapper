@@ -1,5 +1,25 @@
 const { spawn } = require('child_process');
 
+/* resolve the playwright CLI entry point (works in both Node.js and pkg binary) */
+const PLAYWRIGHT_CLI = (() => {
+  try {
+    return require.resolve('playwright/cli.js');
+  } catch {
+    return null;
+  }
+})();
+
+/* Determine the command + args for running playwright's CLI.
+   In pkg binaries process.execPath can load scripts from its own snapshot,
+   so we prefer it over npx (which may not be installed). */
+function playwrightInstallCmd(action) {
+  if (PLAYWRIGHT_CLI) {
+    return { cmd: process.execPath, args: [PLAYWRIGHT_CLI, action, 'chromium'] };
+  }
+  /* fallback: hope npx is on PATH */
+  return { cmd: 'npx', args: ['playwright', action, 'chromium'] };
+}
+
 /* ---------- run a piped child process with progress reporting ---------- */
 function runInstall(cmd, args, statusPrefix, onStatus) {
   return new Promise((resolve, reject) => {
@@ -48,12 +68,14 @@ async function launchBrowser(onStatus) {
     if (msg.includes('Executable doesn\'t exist')) {
       if (onStatus) onStatus({ type: 'status', message: 'Installing Chromium browser engine (may take a minute)...' });
       console.log('\n  Chromium not found. Installing browser engine...\n');
+      const { cmd, args } = playwrightInstallCmd('install');
       try {
-        await runInstall('npx', ['playwright', 'install', 'chromium'], 'Installing Chromium', onStatus);
-      } catch {
-        if (onStatus) onStatus({ type: 'error', message: 'Failed to install Chromium. Run: npx playwright install chromium' });
-        console.log('\n  Auto-install failed. Please run: npx playwright install chromium\n');
-        process.exit(1);
+        await runInstall(cmd, args, 'Installing Chromium', onStatus);
+      } catch (installErr) {
+        const hint = 'Failed to install Chromium. Run: npx playwright install chromium';
+        if (onStatus) onStatus({ type: 'error', message: hint });
+        console.log(`\n  ${hint}\n`);
+        throw new Error(hint);
       }
       if (onStatus) onStatus({ type: 'status', message: 'Chromium installed. Starting capture...' });
       return launchBrowser(onStatus);
@@ -66,12 +88,14 @@ async function launchBrowser(onStatus) {
         msg.includes('Host system is missing')) {
       if (onStatus) onStatus({ type: 'status', message: 'Installing Chromium system dependencies (may take a minute)...' });
       console.log('\n  System dependencies missing. Installing via playwright install-deps...\n');
+      const { cmd, args } = playwrightInstallCmd('install-deps');
       try {
-        await runInstall('npx', ['playwright', 'install-deps', 'chromium'], 'Installing system deps', onStatus);
-      } catch {
-        if (onStatus) onStatus({ type: 'error', message: 'Failed to install system deps. Run: npx playwright install-deps chromium' });
-        console.log('\n  Auto-install failed. Please run: npx playwright install-deps chromium\n');
-        process.exit(1);
+        await runInstall(cmd, args, 'Installing system deps', onStatus);
+      } catch (installErr) {
+        const hint = 'Failed to install system deps. Run: npx playwright install-deps chromium';
+        if (onStatus) onStatus({ type: 'error', message: hint });
+        console.log(`\n  ${hint}\n`);
+        throw new Error(hint);
       }
       if (onStatus) onStatus({ type: 'status', message: 'System dependencies installed. Starting capture...' });
       return launchBrowser(onStatus);
