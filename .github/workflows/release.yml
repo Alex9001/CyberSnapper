@@ -1,0 +1,74 @@
+name: Build & Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            src: CyberSnapper-linux-x64
+            asset: CyberSnapper-linux-x64
+          - os: windows-latest
+            target: win32
+            src: CyberSnapper-win32-x64.exe
+            asset: CyberSnapper-win32-x64.exe
+          - os: macos-13
+            target: macos
+            src: CyberSnapper-macos-x64
+            asset: CyberSnapper-macos-x64
+          - os: macos-latest
+            target: macos-arm64
+            src: CyberSnapper-macos-arm64
+            asset: CyberSnapper-macos-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: node build.js ${{ matrix.target }}
+
+      - name: Rename for release
+        shell: bash
+        run: |
+          if [ "${{ matrix.src }}" != "${{ matrix.asset }}" ]; then
+            mv "dist/${{ matrix.src }}" "dist/${{ matrix.asset }}"
+          fi
+
+      - name: Ad-hoc code sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --sign - dist/${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: List artifacts
+        run: ls -R _artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: _artifacts/*/*

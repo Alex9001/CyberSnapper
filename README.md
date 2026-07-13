@@ -56,8 +56,8 @@ automatically disabled (a warning is shown at startup). Use PNG and PDF formats,
 or run from source for full feature support.
 
 ```bash
-./dist/CyberSnapper          # opens web UI in browser
-./dist/CyberSnapper urls.txt # CLI mode
+./dist/CyberSnapper-linux-x64   # Linux — opens web UI in browser
+./dist/CyberSnapper-win32-x64.exe # Windows — opens web UI in browser
 ```
 
 ### From source — double-click
@@ -271,8 +271,18 @@ the server keeps the existing token on disk).
 npm run build
 ```
 
-Produces `dist/CyberSnapper` (~90 MB) — a standalone binary containing Node.js, Playwright,
-and all JavaScript modules. The binary works on the platform it was built on.
+Produces standalone binaries in `dist/` (~80–100 MB each) containing Node.js, Playwright,
+and all JavaScript modules. Each binary is named with its target platform for clarity:
+
+| Binary | Platform |
+|--------|----------|
+| `CyberSnapper-linux-x64` | Linux (x86_64) |
+| `CyberSnapper-win32-x64.exe` | Windows (x86_64) |
+| `CyberSnapper-macos-x64` | macOS (Intel) |
+| `CyberSnapper-macos-arm64` | macOS (Apple Silicon) |
+
+Use `node build.js linux win32 macos macos-arm64` to build all platforms, or
+`node build.js` to build only the current platform.
 
 ### Binary notes
 
