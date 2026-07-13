@@ -14,19 +14,15 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
-            src: CyberSnapper-linux-x64
             asset: CyberSnapper-linux-x64
           - os: windows-latest
             target: win32
-            src: CyberSnapper-win32-x64.exe
             asset: CyberSnapper-win32-x64.exe
           - os: macos-13
             target: macos
-            src: CyberSnapper-macos-x64
             asset: CyberSnapper-macos-x64
           - os: macos-latest
             target: macos-arm64
-            src: CyberSnapper-macos-arm64
             asset: CyberSnapper-macos-arm64
 
     steps:
@@ -40,13 +36,6 @@ jobs:
       - run: npm ci
 
       - run: node build.js ${{ matrix.target }}
-
-      - name: Rename for release
-        shell: bash
-        run: |
-          if [ "${{ matrix.src }}" != "${{ matrix.asset }}" ]; then
-            mv "dist/${{ matrix.src }}" "dist/${{ matrix.asset }}"
-          fi
 
       - name: Ad-hoc code sign (macOS)
         if: runner.os == 'macOS'
