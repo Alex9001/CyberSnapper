@@ -45,7 +45,8 @@ Copy this into the GitHub release description box and update it for your release
 
 ### ✨ Features
 - Full-page screenshots with Playwright (Chrome)
-- PNG, WebP, AVIF, and PDF output formats
+- PNG and PDF output formats in the standalone binary
+- WebP and AVIF when running from source (not available in the binary)
 - Desktop / Tablet / Mobile viewport presets (configurable)
 - Concurrent URL processing with configurable worker pool
 - Popup / cookie banner blocking (built-in blocklist + user blocklist)
@@ -106,7 +107,8 @@ Current state — no release tag yet. This is the first release placeholder.
 
 #### ✨ Features
 - Full-page screenshots with Playwright (Chrome)
-- PNG, WebP, AVIF, and PDF output formats
+- PNG and PDF output formats in the standalone binary
+- WebP and AVIF when running from source (not available in the binary)
 - Desktop / Tablet / Mobile viewport presets (configurable)
 - Concurrent URL processing with configurable worker pool
 - Popup / cookie banner blocking (built-in blocklist + user blocklist)
