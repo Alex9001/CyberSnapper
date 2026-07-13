@@ -17,9 +17,11 @@
     <a href="#web-ui">Web UI</a>
     •
     <a href="#configuration">Configuration</a>
-    •
-    <a href="#build">Build</a>
-  </p>
+  •
+  <a href="#build">Build</a>
+  •
+  <a href="RELEASE.md">Release</a>
+</p>
 </p>
 
 ## Features
@@ -328,6 +330,11 @@ CyberSnapper/
 ├── screenshots/         Output directory (gitignored)
 └── dist/                Built binaries (gitignored)
 ```
+
+### Releases
+
+See [`RELEASE.md`](RELEASE.md) for release instructions, the changelog, and a
+copy-paste template for GitHub release notes.
 
 ---
 
