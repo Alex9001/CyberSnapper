@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Models.h"
+
 #include <QDateTime>
 #include <QHash>
 #include <QJsonObject>
@@ -17,8 +19,10 @@ class Scheduler final : public QObject {
   Q_OBJECT
 public:
   using StoreProvider = std::function<QList<ProjectStore *>()>;
+  using Submitter = std::function<QString(ProjectStore *, JobRequest, QString *)>;
 
-  Scheduler(JobManager *jobs, StoreProvider stores, QObject *parent = nullptr);
+  Scheduler(JobManager *jobs, StoreProvider stores, Submitter submitter,
+            QObject *parent = nullptr);
   void start();
   void stop();
   void checkNow();
@@ -32,6 +36,7 @@ signals:
 private:
   JobManager *m_jobs;
   StoreProvider m_stores;
+  Submitter m_submitter;
   QTimer m_timer;
   QSet<QString> m_inFlightSchedules;
   QHash<QString, QString> m_jobToSchedule;

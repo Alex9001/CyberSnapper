@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   package:
@@ -116,6 +118,11 @@ jobs:
           ./linuxdeployqt.AppImage --appimage-extract-and-run stage/bin/CyberSnapper -bundle-non-qt-libs -unsupported-allow-new-glibc
           tar -C stage -czf ${{ matrix.artifact }}.tar.gz .
 
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ matrix.artifact }}.*
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -130,6 +137,9 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Create SHA-256 checksums
+        shell: bash
+        run: sha256sum artifacts/* > artifacts/SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*

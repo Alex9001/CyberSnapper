@@ -14,9 +14,12 @@ Errors use `{"error":{"code":"…","message":"…"}}` and an appropriate HTTP st
 |---|---|---|
 | `GET` | `/api/v1/health` | Version and liveness; no authentication |
 | `GET` | `/api/v1/projects` | List open projects |
-| `POST` | `/api/v1/projects` | Create/open a project from `root` and optional `name` |
+| `POST` | `/api/v1/projects` | Create a project in an empty `root` |
+| `POST` | `/api/v1/projects/open` | Open an existing project from `root` |
 | `GET` | `/api/v1/projects/{id}/profiles` | List project profiles |
 | `PUT` | `/api/v1/projects/{id}/profiles/{profileId}` | Create or replace a profile |
+| `DELETE` | `/api/v1/projects/{id}/profiles/{profileId}` | Delete an unused non-default profile |
+| `PATCH` | `/api/v1/projects/{id}/settings` | Set options such as `allowLocalhost` |
 | `POST` | `/api/v1/jobs` | Queue a job; returns HTTP 202 |
 | `GET` | `/api/v1/jobs?projectId=…` | List recent jobs |
 | `GET` | `/api/v1/jobs/{id}` | Get a job and its artifacts |
@@ -27,6 +30,9 @@ Errors use `{"error":{"code":"…","message":"…"}}` and an appropriate HTTP st
 | `GET` | `/api/v1/jobs/{id}/events` | Server-sent events |
 | `GET` | `/api/v1/artifacts/{id}/content` | Download artifact bytes |
 | `PUT` | `/api/v1/artifacts/{id}/baseline` | Promote an artifact to baseline |
+| `GET` | `/api/v1/baselines?projectId=…` | List project baselines |
+| `DELETE` | `/api/v1/baselines` | Remove the baseline identified in the JSON body |
+| `GET` | `/api/v1/comparisons?projectId=…` | List recent project comparisons |
 | `GET` | `/api/v1/schedules?projectId=…` | List schedules |
 | `POST` | `/api/v1/schedules` | Create/update a schedule |
 | `DELETE` | `/api/v1/schedules/{id}` | Remove a schedule |
@@ -42,13 +48,13 @@ Errors use `{"error":{"code":"…","message":"…"}}` and an appropriate HTTP st
 }
 ```
 
-An inline `profile` object may override the saved profile for this job. URLs must be explicit public HTTP(S) URLs.
+An inline `profile` object may override the saved profile for this job. URLs must be explicit HTTP(S) URLs and follow the active project's network policy.
 
 ## Events
 
 `GET /api/v1/jobs/{id}/events` returns `text/event-stream`. Each event has an integer `id` matching its persisted `sequence`, and a compact JSON `data` object. Send `Last-Event-ID` when reconnecting; the server replays later persisted events and continues live streaming until a terminal job event.
 
-Terminal event types are `job_succeeded`, `job_partial`, `job_failed`, and `job_cancelled`.
+Terminal event types are `job_succeeded`, `job_partial`, `job_failed`, `job_cancelled`, and `job_interrupted`.
 
 ## Token lifecycle
 

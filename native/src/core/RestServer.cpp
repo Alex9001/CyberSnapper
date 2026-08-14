@@ -43,7 +43,7 @@ void sendError(httplib::Response &response, int status, const QString &code, con
 }
 
 bool isTerminal(const QString &type) {
-  return QStringList{"job_succeeded", "job_partial", "job_failed", "job_cancelled"}.contains(type);
+  return QStringList{"job_succeeded", "job_partial", "job_failed", "job_cancelled", "job_interrupted"}.contains(type);
 }
 
 } // namespace
@@ -166,6 +166,12 @@ void RestServer::configureRoutes() {
     if (!parseError.isEmpty()) return sendError(response, 400, "invalid_json", parseError);
     resultResponse(response, invoke("project.create", body), 201);
   });
+  m_server->Post("/api/v1/projects/open", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QString parseError; const auto body = parseBody(request, &parseError);
+    if (!parseError.isEmpty()) return sendError(response, 400, "invalid_json", parseError);
+    resultResponse(response, invoke("project.open", body));
+  });
   m_server->Get(R"(/api/v1/projects/([0-9A-Za-z-]+)/profiles)",
                 [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
     if (!requireAuth(request, response)) return;
@@ -180,6 +186,20 @@ void RestServer::configureRoutes() {
     profile.insert("id", QString::fromStdString(request.matches[2]));
     resultResponse(response, invoke("profile.save", {{"projectId", QString::fromStdString(request.matches[1])},
                                                        {"profile", profile}}));
+  });
+  m_server->Delete(R"(/api/v1/projects/([0-9A-Za-z-]+)/profiles/([0-9A-Za-z-]+))",
+                   [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response, invoke("profile.remove", {{"projectId", QString::fromStdString(request.matches[1])},
+                                                          {"profileId", QString::fromStdString(request.matches[2])}}));
+  });
+  m_server->Patch(R"(/api/v1/projects/([0-9A-Za-z-]+)/settings)",
+                  [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QString parseError; QJsonObject body = parseBody(request, &parseError);
+    if (!parseError.isEmpty()) return sendError(response, 400, "invalid_json", parseError);
+    body.insert("projectId", QString::fromStdString(request.matches[1]));
+    resultResponse(response, invoke("project.settings.set", body));
   });
   m_server->Post("/api/v1/jobs", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
     if (!requireAuth(request, response)) return;
@@ -215,6 +235,22 @@ void RestServer::configureRoutes() {
   m_server->Put(R"(/api/v1/artifacts/([0-9a-f-]+)/baseline)", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
     if (!requireAuth(request, response)) return;
     resultResponse(response, invoke("baseline.set", {{"artifactId", QString::fromStdString(request.matches[1])}}));
+  });
+  m_server->Get("/api/v1/baselines", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QJsonObject params; if (request.has_param("projectId")) params.insert("projectId", QString::fromStdString(request.get_param_value("projectId")));
+    resultResponse(response, invoke("baseline.list", params));
+  });
+  m_server->Delete("/api/v1/baselines", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QString parseError; const QJsonObject body = parseBody(request, &parseError);
+    if (!parseError.isEmpty()) return sendError(response, 400, "invalid_json", parseError);
+    resultResponse(response, invoke("baseline.remove", body));
+  });
+  m_server->Get("/api/v1/comparisons", [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QJsonObject params; if (request.has_param("projectId")) params.insert("projectId", QString::fromStdString(request.get_param_value("projectId")));
+    resultResponse(response, invoke("comparison.list", params));
   });
   m_server->Get(R"(/api/v1/artifacts/([0-9a-f-]+)/content)", [requireAuth, invoke](const httplib::Request &request, httplib::Response &response) {
     if (!requireAuth(request, response)) return;

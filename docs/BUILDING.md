@@ -43,4 +43,6 @@ CPack is configured for TGZ on Linux, ZIP/NSIS on Windows, and ZIP/DragNDrop on 
 - Windows: run `windeployqt` for the GUI and agent.
 - macOS: run `macdeployqt`, then sign/notarize the complete app bundle for production.
 
-The release workflow in `.github/workflows/release.yml` performs builds for Linux x64, Windows x64, macOS x64, and macOS arm64. Its packages are intentionally unsigned/ad-hoc signed until production signing identities are configured.
+The release workflow in `.github/workflows/release.yml` performs builds for Linux x64, Windows x64, macOS x64, and macOS arm64. It publishes SHA-256 checksums and GitHub/Sigstore build-provenance attestations. macOS packages use ad-hoc signing and Windows packages remain unsigned because the project does not require paid signing credentials.
+
+GitHub documents the Sigstore-backed attestation model at <https://docs.github.com/en/actions/concepts/security/artifact-attestations>. Apple ties Developer ID distribution/notarization to its paid developer program (<https://developer.apple.com/support/developer-id/>). If CyberSnapper later adopts MSIX/Store distribution, Microsoft documents Store-managed signing as a no-certificate-cost path at <https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options>.

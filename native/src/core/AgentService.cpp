@@ -18,6 +18,8 @@
 #include <QSaveFile>
 #include <QThread>
 #include <QUrl>
+#include <algorithm>
+#include <utility>
 
 namespace CyberSnapper {
 
@@ -30,8 +32,9 @@ bool terminalStatus(const QString &status) {
 QStringList strings(const QJsonValue &value) {
   QStringList result;
   for (const auto &item : value.toArray()) {
-    const QString text = item.toString().trimmed();
+    const QString text = item.toString().trimmed().left(4096);
     if (!text.isEmpty()) result.append(text);
+    if (result.size() >= 1000) break;
   }
   return result;
 }
@@ -53,13 +56,90 @@ QString comparisonKey(const QString &url, const QString &engine, const Viewport 
   return url + "|" + engine + "|" + viewport.id + "|" + profile.captureMode + "|" + format;
 }
 
+bool pathInside(const QString &root, const QString &candidate) {
+  const QFileInfo rootInfo(root);
+  const QFileInfo candidateInfo(candidate);
+  const QString resolvedRoot = rootInfo.canonicalFilePath().isEmpty()
+      ? rootInfo.absoluteFilePath() : rootInfo.canonicalFilePath();
+  const QString resolvedCandidate = candidateInfo.canonicalFilePath().isEmpty()
+      ? candidateInfo.absoluteFilePath() : candidateInfo.canonicalFilePath();
+  const QString relative = QDir(resolvedRoot).relativeFilePath(resolvedCandidate);
+  return !relative.isEmpty() && relative != "." && relative != ".." &&
+         !relative.startsWith("../") && !QDir::isAbsolutePath(relative);
+}
+
+QString autostartFile() {
+#ifdef Q_OS_MACOS
+  return QDir::home().filePath("Library/LaunchAgents/net.cyberbrand.CyberSnapper.Agent.plist");
+#elif defined(Q_OS_LINUX)
+  return QDir::home().filePath(".config/autostart/cybersnapper-agent.desktop");
+#else
+  return {};
+#endif
+}
+
+bool launchAtLoginEnabled() {
+#ifdef Q_OS_WIN
+  QSettings run("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                QSettings::NativeFormat);
+  return run.contains("CyberSnapperAgent");
+#else
+  return QFileInfo::exists(autostartFile());
+#endif
+}
+
+bool setLaunchAtLogin(bool enabled, QString *error) {
+#ifdef Q_OS_WIN
+  QSettings run("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                QSettings::NativeFormat);
+  if (enabled) run.setValue("CyberSnapperAgent",
+                            QStringLiteral("\"%1\" --headless").arg(Paths::agentExecutable()));
+  else run.remove("CyberSnapperAgent");
+  run.sync();
+  if (run.status() == QSettings::NoError) return true;
+  if (error) *error = "Could not update the Windows startup entry";
+  return false;
+#else
+  const QString destination = autostartFile();
+  if (!enabled) {
+    if (!QFileInfo::exists(destination) || QFile::remove(destination)) return true;
+    if (error) *error = "Could not remove the login startup file";
+    return false;
+  }
+  if (!Paths::ensureDirectory(QFileInfo(destination).absolutePath(), error)) return false;
+  QSaveFile file(destination);
+  if (!file.open(QIODevice::WriteOnly)) { if (error) *error = file.errorString(); return false; }
+  const QString executable = Paths::agentExecutable();
+#ifdef Q_OS_MACOS
+  const QString contents = QStringLiteral(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+      "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+      "<plist version=\"1.0\"><dict><key>Label</key><string>net.cyberbrand.CyberSnapper.Agent</string>"
+      "<key>ProgramArguments</key><array><string>%1</string><string>--headless</string></array>"
+      "<key>RunAtLoad</key><true/></dict></plist>\n").arg(executable.toHtmlEscaped());
+#else
+  QString escaped = executable; escaped.replace('\\', "\\\\").replace('"', "\\\"");
+  const QString contents = QStringLiteral("[Desktop Entry]\nType=Application\nName=CyberSnapper Agent\n"
+                                          "Exec=\"%1\" --headless\nX-GNOME-Autostart-enabled=true\n")
+                               .arg(escaped);
+#endif
+  file.write(contents.toUtf8());
+  if (file.commit()) return true;
+  if (error) *error = file.errorString();
+  return false;
+#endif
+}
+
 } // namespace
 
 AgentService::AgentService(QObject *parent)
     : QObject(parent),
       m_settings("CyberBrand", "CyberSnapper"),
       m_jobs(this),
-      m_scheduler(&m_jobs, [this] { return stores(); }, this),
+      m_scheduler(&m_jobs, [this] { return stores(); },
+                  [this](ProjectStore *store, JobRequest request, QString *error) {
+                    return submitJob(store, std::move(request), error);
+                  }, this),
       m_rest(this) {
   connect(&m_jobs, &JobManager::eventPublished, this,
           [this](const QString &projectId, const QJsonObject &event) {
@@ -92,12 +172,23 @@ bool AgentService::start(QString *error) {
   QStringList roots = m_settings.value("projects/recentRoots").toStringList();
   if (!roots.contains(Paths::defaultProjectRoot())) roots.append(Paths::defaultProjectRoot());
   QString firstError;
+  QStringList validRoots;
   for (const auto &root : roots) {
     if (root.trimmed().isEmpty()) continue;
     QString openError;
-    if (openProject(root, {}, &openError)) continue;
+    const bool isDefault = QDir::cleanPath(QFileInfo(root).absoluteFilePath()) ==
+                           QDir::cleanPath(QFileInfo(Paths::defaultProjectRoot()).absoluteFilePath());
+    const bool hasManifest = QFileInfo::exists(QDir(root).filePath("project.cybersnapper.json"));
+    ProjectStore *opened = openProject(root, isDefault ? "Quick Captures" : QString{},
+                                       isDefault && !hasManifest, &openError);
+    if (opened) {
+      validRoots.append(opened->root());
+      continue;
+    }
     if (firstError.isEmpty()) firstError = openError;
   }
+  validRoots.removeDuplicates();
+  m_settings.setValue("projects/recentRoots", validRoots);
   if (m_projects.isEmpty()) {
     if (error) *error = firstError.isEmpty() ? "Could not open the default project" : firstError;
     return false;
@@ -105,6 +196,7 @@ bool AgentService::start(QString *error) {
   const QString storedActive = m_settings.value("projects/activeId").toString();
   if (m_projects.contains(storedActive)) m_activeProjectId = storedActive;
   m_jobs.setMaximumActiveJobs(m_settings.value("jobs/maximumActive", 1).toInt());
+  recoverQueuedJobs();
   m_scheduler.start();
   if (m_settings.value("api/enabled", false).toBool()) {
     QString apiError;
@@ -152,7 +244,8 @@ ProjectStore *AgentService::projectForArtifact(const QString &artifactId) const 
   return nullptr;
 }
 
-ProjectStore *AgentService::openProject(const QString &root, const QString &name, QString *error) {
+ProjectStore *AgentService::openProject(const QString &root, const QString &name,
+                                        bool createProject, QString *error) {
   const QString absoluteRoot = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
   for (const auto &existing : m_projects) {
     if (existing->root() == absoluteRoot) {
@@ -161,13 +254,79 @@ ProjectStore *AgentService::openProject(const QString &root, const QString &name
     }
   }
   auto store = std::make_shared<ProjectStore>();
-  if (!store->open(absoluteRoot, name, error)) return nullptr;
+  const bool opened = createProject
+      ? store->create(absoluteRoot, name, error)
+      : store->open(absoluteRoot, error);
+  if (!opened) return nullptr;
   ProjectStore *result = store.get();
   m_projects.insert(store->projectId(), std::move(store));
   m_activeProjectId = result->projectId();
   m_settings.setValue("projects/activeId", m_activeProjectId);
   rememberProject(absoluteRoot);
   return result;
+}
+
+QString AgentService::submitJob(ProjectStore *store, JobRequest request, QString *error,
+                                bool recovering) {
+  if (!store || !store->isOpen()) {
+    if (error) *error = "A writable project must be open";
+    return {};
+  }
+  if (request.id.isEmpty()) request.id = newId();
+  request.projectId = store->projectId();
+  request.projectRoot = store->root();
+  request.allowLocalhost = store->allowLocalhost();
+  request.profile = profileFromJson(toJson(request.profile));
+  request.baselines = {};
+  if (request.profile.comparisonEnabled) {
+    for (const auto &url : request.urls) {
+      for (const auto &engine : request.profile.engines) {
+        for (const auto &viewport : request.profile.viewports) {
+          if (!viewport.enabled) continue;
+          for (const auto &format : request.profile.formats) {
+            if (format == "pdf") continue;
+            const QString key = comparisonKey(url, engine, viewport, request.profile, format);
+            const QJsonObject baseline = store->baseline(key);
+            if (!baseline.isEmpty()) request.baselines.insert(key, baseline);
+          }
+        }
+      }
+    }
+  }
+  if (recovering) return m_jobs.recover(store, request, error) ? request.id : QString{};
+  return m_jobs.submit(store, request, error);
+}
+
+void AgentService::recoverQueuedJobs() {
+  struct Queued {
+    QString createdAt;
+    QString id;
+    ProjectStore *store = nullptr;
+    JobRequest request;
+  };
+  QList<Queued> queued;
+  for (ProjectStore *store : stores()) {
+    for (const auto &value : store->queuedJobs()) {
+      const QJsonObject job = value.toObject();
+      JobRequest request = jobRequestFromJson(job.value("request").toObject());
+      request.id = job.value("id").toString(request.id);
+      queued.append({job.value("createdAt").toString(), request.id, store, request});
+    }
+  }
+  std::sort(queued.begin(), queued.end(), [](const Queued &left, const Queued &right) {
+    return left.createdAt == right.createdAt ? left.id < right.id : left.createdAt < right.createdAt;
+  });
+  for (auto &entry : queued) {
+    QString recoveryError;
+    if (submitJob(entry.store, std::move(entry.request), &recoveryError, true).isEmpty()) {
+      const QJsonArray prior = entry.store->events(entry.id);
+      const qint64 sequence = prior.isEmpty() ? 1
+          : prior.last().toObject().value("sequence").toVariant().toLongLong() + 1;
+      entry.store->applyWorkerEvent(entry.id,
+          {{"type", "job_failed"}, {"jobId", entry.id}, {"sequence", sequence},
+           {"timestamp", utcNow()}, {"message", "Could not recover queued job: " + recoveryError}});
+    }
+  }
 }
 
 void AgentService::rememberProject(const QString &root) {
@@ -232,7 +391,7 @@ QJsonObject AgentService::invokeThreadSafe(const QString &method, const QJsonObj
 
 QJsonObject AgentService::handle(const QString &method, const QJsonObject &params) {
   if (method == "agent.ping") {
-    return {{"ok", true}, {"version", CYBERSNAPPER_VERSION}, {"protocolVersion", 1}};
+    return {{"ok", true}, {"version", CYBERSNAPPER_VERSION}, {"protocolVersion", 2}};
   }
   if (method == "agent.status") {
     return {{"version", CYBERSNAPPER_VERSION},
@@ -252,7 +411,8 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     QJsonArray projects;
     for (ProjectStore *store : stores()) {
       projects.append(QJsonObject{{"id", store->projectId()}, {"name", store->projectName()},
-                                  {"root", store->root()}, {"active", store->projectId() == m_activeProjectId}});
+                                  {"root", store->root()}, {"allowLocalhost", store->allowLocalhost()},
+                                  {"active", store->projectId() == m_activeProjectId}});
     }
     return {{"projects", projects}, {"activeProjectId", m_activeProjectId}};
   }
@@ -260,7 +420,8 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     const QString root = params.value("root").toString().trimmed();
     if (root.isEmpty()) return failure("invalid_project", "A project folder is required");
     QString error;
-    ProjectStore *store = openProject(root, params.value("name").toString(), &error);
+    const bool createProject = method == "project.create";
+    ProjectStore *store = openProject(root, params.value("name").toString(), createProject, &error);
     if (!store) return failure("project_open_failed", error, 409);
     emit eventPublished("project.changed", {{"projectId", store->projectId()}});
     return {{"project", QJsonObject{{"id", store->projectId()}, {"name", store->projectName()},
@@ -273,6 +434,19 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     m_settings.setValue("projects/activeId", m_activeProjectId);
     emit eventPublished("project.changed", {{"projectId", m_activeProjectId}});
     return {{"activeProjectId", m_activeProjectId}};
+  }
+  if (method == "project.settings.get" || method == "project.settings.set") {
+    ProjectStore *settingsStore = project(params.value("projectId").toString());
+    if (!settingsStore) return failure("not_found", "Project not found", 404);
+    if (method == "project.settings.set") {
+      QString error;
+      if (!settingsStore->setAllowLocalhost(params.value("allowLocalhost").toBool(false), &error)) {
+        return failure("project_settings_failed", error);
+      }
+      emit eventPublished("project.settings.changed", {{"projectId", settingsStore->projectId()}});
+    }
+    return {{"projectId", settingsStore->projectId()},
+            {"allowLocalhost", settingsStore->allowLocalhost()}};
   }
 
   ProjectStore *store = project(params.value("projectId").toString());
@@ -288,9 +462,39 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
   }
   if (method == "profile.save") {
     CaptureProfile profile = profileFromJson(params.value("profile").toObject());
+    if (profile.id.isEmpty()) profile.id = newId();
+    if (profile.name.trimmed().isEmpty()) return failure("invalid_profile", "Profile name is required");
+    bool enabledViewport = false;
+    for (const auto &viewport : profile.viewports) enabledViewport = enabledViewport || viewport.enabled;
+    if (!enabledViewport || profile.engines.isEmpty() || profile.formats.isEmpty()) {
+      return failure("invalid_profile", "A profile needs an enabled viewport, browser, and format");
+    }
+    for (const QString &engine : profile.engines) if (!QStringList{"chromium", "firefox", "webkit"}.contains(engine)) {
+      return failure("invalid_profile", "Unsupported browser engine: " + engine);
+    }
+    for (const QString &format : profile.formats) if (!QStringList{"png", "webp", "avif", "pdf"}.contains(format)) {
+      return failure("invalid_profile", "Unsupported output format: " + format);
+    }
+    if (profile.captureMode == "element" && profile.elementSelector.isEmpty()) {
+      return failure("invalid_profile", "Element capture needs a CSS selector");
+    }
+    if (profile.formats.contains("pdf") && !profile.engines.contains("chromium")) {
+      return failure("invalid_profile", "PDF output requires Chromium");
+    }
     QString error;
     if (!store->saveProfile(profile, &error)) return failure("profile_save_failed", error);
     return {{"profile", toJson(profile)}};
+  }
+  if (method == "profile.remove") {
+    const QString profileId = params.value("profileId").toString();
+    for (const auto &value : store->schedules()) {
+      if (value.toObject().value("profileId").toString() == profileId) {
+        return failure("profile_in_use", "This profile is used by a schedule", 409);
+      }
+    }
+    QString error;
+    if (!store->removeProfile(profileId, &error)) return failure("profile_remove_failed", error, 409);
+    return {{"removed", true}};
   }
   if (method == "job.submit") {
     JobRequest request;
@@ -300,23 +504,8 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     request.urls = strings(params.value("urls"));
     request.profile = params.value("profile").isObject()
         ? profileFromJson(params.value("profile").toObject()) : store->profile(request.profileId);
-    if (request.profile.comparisonEnabled) {
-      for (const auto &url : request.urls) {
-        for (const auto &engine : request.profile.engines) {
-          for (const auto &viewport : request.profile.viewports) {
-            if (!viewport.enabled) continue;
-            for (const auto &format : request.profile.formats) {
-              if (format == "pdf" || (format == "pdf" && engine != "chromium")) continue;
-              const QString key = comparisonKey(url, engine, viewport, request.profile, format);
-              const QJsonObject baseline = store->baseline(key);
-              if (!baseline.isEmpty()) request.baselines.insert(key, baseline);
-            }
-          }
-        }
-      }
-    }
     QString error;
-    const QString jobId = m_jobs.submit(store, request, &error);
+    const QString jobId = submitJob(store, std::move(request), &error);
     if (jobId.isEmpty()) return failure("job_rejected", error);
     return {{"jobId", jobId}, {"status", "queued"}, {"projectId", store->projectId()}};
   }
@@ -334,7 +523,10 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       if (!m_jobs.cancel(jobId, &error)) return failure("cancel_failed", error, 409);
       return {{"jobId", jobId}, {"status", "cancelling"}};
     }
-    const QString retryId = m_jobs.retry(store, jobId, &error);
+    JobRequest retry = jobRequestFromJson(store->job(jobId).value("request").toObject());
+    retry.id = newId();
+    retry.source = "retry";
+    const QString retryId = submitJob(store, std::move(retry), &error);
     if (retryId.isEmpty()) return failure("retry_failed", error);
     return {{"jobId", retryId}, {"status", "queued"}};
   }
@@ -351,7 +543,7 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     const QJsonObject artifact = store->artifact(artifactId);
     const QString root = QFileInfo(store->root()).absoluteFilePath();
     const QString absolute = QFileInfo(QDir(root).filePath(artifact.value("relativePath").toString())).absoluteFilePath();
-    if (absolute != root && !absolute.startsWith(root + QDir::separator())) {
+    if (!pathInside(root, absolute)) {
       return failure("invalid_artifact", "Artifact path escapes the project", 400);
     }
     return {{"artifact", artifact}, {"absolutePath", absolute}};
@@ -370,7 +562,7 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     const QString key = params.value("comparisonKey").toString(comparisonKey(artifact));
     const QString root = QFileInfo(store->root()).absoluteFilePath();
     const QString source = QFileInfo(QDir(root).filePath(artifact.value("relativePath").toString())).absoluteFilePath();
-    if ((source != root && !source.startsWith(root + QDir::separator())) || !QFileInfo::exists(source)) {
+    if (!pathInside(root, source) || !QFileInfo::exists(source)) {
       return failure("baseline_failed", "The source artifact is missing or outside the project");
     }
     QString extension = artifact.value("format").toString("png").toLower();
@@ -405,10 +597,54 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     if (!store) return failure("not_found", "Project not found", 404);
     return {{"baseline", store->baseline(params.value("comparisonKey").toString())}};
   }
+  if (method == "baseline.list") {
+    if (!store) return failure("not_found", "Project not found", 404);
+    return {{"baselines", store->baselines()}};
+  }
+  if (method == "baseline.remove") {
+    if (!store) return failure("not_found", "Project not found", 404);
+    const QString key = params.value("comparisonKey").toString();
+    const QJsonObject existing = store->baseline(key);
+    QString error;
+    if (!store->removeBaseline(key, &error)) return failure("baseline_remove_failed", error, 409);
+    const QString relative = existing.value("relativePath").toString();
+    if (!relative.isEmpty()) {
+      const QString root = QFileInfo(store->root()).absoluteFilePath();
+      const QString absolute = QFileInfo(QDir(root).filePath(relative)).absoluteFilePath();
+      if (pathInside(root, absolute)) QFile::remove(absolute);
+    }
+    return {{"removed", true}};
+  }
   if (method == "comparison.list") {
-    store = projectForJob(params.value("jobId").toString());
-    if (!store) return failure("not_found", "Job not found", 404);
-    return {{"comparisons", store->comparisons(params.value("jobId").toString())}};
+    const QString jobId = params.value("jobId").toString();
+    if (!jobId.isEmpty()) store = projectForJob(jobId);
+    if (!store) return failure("not_found", "Project or job not found", 404);
+    return {{"comparisons", store->comparisons(jobId)}};
+  }
+  if (method == "comparison.resolve") {
+    if (!store) return failure("not_found", "Project not found", 404);
+    const QJsonObject comparison = store->comparison(params.value("comparisonId").toString());
+    if (comparison.isEmpty()) return failure("not_found", "Comparison not found", 404);
+    const QJsonObject current = store->artifact(comparison.value("currentArtifactId").toString());
+    const QString baselineArtifactId = comparison.value("baselineArtifactId").toString();
+    const QJsonObject baselineArtifact = store->artifact(baselineArtifactId);
+    const QJsonObject currentBaseline = store->baseline(comparison.value("comparisonKey").toString());
+    const QString root = QFileInfo(store->root()).absoluteFilePath();
+    const auto resolveInside = [&root](const QString &relative) {
+      const QString absolute = QFileInfo(QDir(root).filePath(relative)).absoluteFilePath();
+      return pathInside(root, absolute) ? absolute : QString{};
+    };
+    const QString currentPath = resolveInside(current.value("relativePath").toString());
+    QString baselinePath = resolveInside(baselineArtifact.value("relativePath").toString());
+    if (baselinePath.isEmpty() && currentBaseline.value("artifactId").toString() == baselineArtifactId) {
+      baselinePath = resolveInside(currentBaseline.value("relativePath").toString());
+    }
+    const QString diffPath = resolveInside(comparison.value("diffRelativePath").toString());
+    if (currentPath.isEmpty() || baselinePath.isEmpty() || diffPath.isEmpty()) {
+      return failure("invalid_comparison", "A comparison path escapes the project", 400);
+    }
+    return {{"comparison", comparison}, {"currentPath", currentPath},
+            {"baselinePath", baselinePath}, {"diffPath", diffPath}};
   }
   if (method == "schedule.list") return {{"schedules", store->schedules()}};
   if (method == "schedule.upsert") {
@@ -416,13 +652,25 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     schedule.insert("id", schedule.value("id").toString(newId()));
     const QStringList urls = strings(schedule.value("urls"));
     if (urls.isEmpty()) return failure("invalid_schedule", "A schedule needs at least one URL");
+    for (const QString &urlText : urls) {
+      const QUrl url(urlText, QUrl::StrictMode);
+      if (!url.isValid() || !QStringList{"http", "https"}.contains(url.scheme().toLower()) ||
+          url.host().isEmpty() || !url.userInfo().isEmpty()) {
+        return failure("invalid_schedule", "Schedules require explicit HTTP or HTTPS URLs without credentials");
+      }
+    }
     schedule.insert("urls", asJson(urls));
+    const QString profileId = schedule.value("profileId").toString("default");
+    if (store->profile(profileId).id.isEmpty()) return failure("invalid_schedule", "The selected profile no longer exists", 409);
+    schedule.insert("profileId", profileId);
     QString recurrenceError;
     const QDateTime next = Scheduler::nextOccurrence(schedule.value("recurrence").toObject(),
                                                       QDateTime::currentDateTimeUtc().addSecs(-1),
                                                       &recurrenceError);
-    if (!next.isValid()) return failure("invalid_recurrence", recurrenceError);
-    schedule.insert("nextRun", next.toString(Qt::ISODateWithMs));
+    if (!next.isValid() && schedule.value("enabled").toBool(true)) {
+      return failure("invalid_recurrence", recurrenceError);
+    }
+    schedule.insert("nextRun", next.isValid() ? next.toString(Qt::ISODateWithMs) : QString{});
     QString error;
     if (!store->upsertSchedule(schedule, &error)) return failure("schedule_save_failed", error);
     emit eventPublished("schedule.changed", {{"projectId", store->projectId()}, {"scheduleId", schedule.value("id")}});
@@ -475,6 +723,13 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       m_jobs.setMaximumActiveJobs(maximum);
     }
     return handle("settings.get", {});
+  }
+  if (method == "autostart.get") return {{"enabled", launchAtLoginEnabled()}};
+  if (method == "autostart.set") {
+    QString error;
+    const bool enabled = params.value("enabled").toBool(false);
+    if (!setLaunchAtLogin(enabled, &error)) return failure("autostart_failed", error, 409);
+    return {{"enabled", launchAtLoginEnabled()}};
   }
   if (method == "browser.status") {
     const QString worker = Paths::workerEntry();

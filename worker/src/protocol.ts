@@ -61,6 +61,7 @@ export interface CaptureJob {
   urls: string[];
   profile: CaptureProfile;
   baselines?: Record<string, BaselineRecord>;
+  allowLocalhost?: boolean;
 }
 
 export interface Artifact {
@@ -83,7 +84,7 @@ export interface Artifact {
 }
 
 export interface WorkerEvent {
-  protocolVersion: 1;
+  protocolVersion: 2;
   sequence: number;
   timestamp: string;
   type: string;

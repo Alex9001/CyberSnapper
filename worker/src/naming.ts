@@ -65,3 +65,18 @@ export async function chooseOutputPath(directory: string, base: string, format: 
   }
   throw new Error('Could not find an available output filename');
 }
+
+export class OutputPathAllocator {
+  private readonly reserved = new Set<string>();
+  private tail: Promise<void> = Promise.resolve();
+
+  async choose(directory: string, base: string, format: OutputFormat,
+               policy: CaptureJob['profile']['collisionPolicy']): Promise<{ absolute: string; skipped: boolean }> {
+    let release: () => void = () => undefined;
+    const previous = this.tail;
+    this.tail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await chooseOutputPath(directory, base, format, policy, this.reserved); }
+    finally { release(); }
+  }
+}

@@ -13,7 +13,7 @@ CyberSnapper separates presentation, orchestration, and untrusted web execution:
 
 GUI and CLI requests use versioned, length-prefixed JSON over `QLocalSocket`. The OS user is the IPC security boundary. The protocol rejects frames larger than 16 MiB.
 
-The agent launches one worker process per active job and exchanges newline-delimited JSON. The agent assigns final event sequence numbers, persists each event, and broadcasts it to GUI/CLI/API consumers. Worker crashes become terminal failed jobs; jobs left running after an agent crash are marked interrupted when the project reopens.
+The agent launches one worker process per active job and exchanges protocol-v2 newline-delimited JSON. The agent assigns final event sequence numbers, transactionally applies state changes with their events, and then broadcasts them to GUI/CLI/API consumers. Heartbeats detect a hung worker. Worker crashes become terminal failed jobs; persisted queued jobs are recovered in global FIFO order, while jobs left running after an agent crash are marked interrupted when the project reopens.
 
 ## Data ownership
 
@@ -23,7 +23,9 @@ The queue is FIFO. One job runs by default and the user may opt into two active 
 
 ## Capture boundary
 
-The worker accepts explicit `http://` and `https://` URLs. Before navigation it resolves host addresses and rejects loopback, link-local, private, documentation, multicast, and other non-public ranges. Request routing repeats that check for redirects and subresources. URL credentials and non-HTTP protocols are rejected.
+The worker accepts explicit `http://` and `https://` URLs. Browsers connect through a job-local filtering proxy that resolves each destination, rejects link-local/private/documentation/multicast ranges, and connects to the exact checked address. This prevents redirects, subresources, and DNS rebinding from escaping the policy. Loopback is allowed only when the active project explicitly enables localhost; private LAN ranges remain blocked. URL credentials and non-HTTP protocols are rejected.
+
+Jobs are capped at 10,000 artifacts. Raster work is capped at 64 million device pixels, worker messages at 16 MiB, and writes require a free-space reserve. Output filenames are allocated serially inside a job so concurrent targets cannot claim the same path.
 
 Each browser engine is launched headlessly. Each target uses an isolated Playwright context. Browser installation is an explicit agent operation and capture jobs never install software automatically.
 
@@ -36,3 +38,5 @@ The API server runs on a dedicated native thread. Requests marshal synchronously
 ## Scheduling
 
 Schedules are stored in the project database. Recurrences use an IANA time zone and calculate the next UTC occurrence at runtime. Missed occurrences coalesce to one run; the scheduler does not create an unbounded backlog. A once-only schedule disables itself after it fires.
+
+The GUI can install an OS-user login entry for the headless agent: a Run registry value on Windows, a LaunchAgent on macOS, or an XDG autostart desktop entry on Linux. No administrator access is required.

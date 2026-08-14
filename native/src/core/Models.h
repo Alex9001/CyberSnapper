@@ -61,6 +61,7 @@ struct JobRequest {
   QStringList urls;
   CaptureProfile profile;
   QJsonObject baselines;
+  bool allowLocalhost = false;
 };
 
 struct JobRecord {

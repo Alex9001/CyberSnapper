@@ -43,7 +43,11 @@ private:
   ProjectStore *project(const QString &projectId = {}) const;
   ProjectStore *projectForJob(const QString &jobId) const;
   ProjectStore *projectForArtifact(const QString &artifactId) const;
-  ProjectStore *openProject(const QString &root, const QString &name, QString *error);
+  ProjectStore *openProject(const QString &root, const QString &name, bool createProject,
+                            QString *error);
+  QString submitJob(ProjectStore *store, JobRequest request, QString *error,
+                    bool recovering = false);
+  void recoverQueuedJobs();
   void rememberProject(const QString &root);
   bool configureApi(bool enabled, QString *plainToken, QString *error);
   static QByteArray tokenHash(const QString &token);

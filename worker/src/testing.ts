@@ -1,2 +1,2 @@
-export { captureBaseName, captureName, safeSegment } from './naming.js';
-export { assertPublicUrl } from './network.js';
+export { captureBaseName, captureName, chooseOutputPath, OutputPathAllocator, safeSegment } from './naming.js';
+export { assertPublicUrl, resolveAllowedHost, startFilteringProxy } from './network.js';

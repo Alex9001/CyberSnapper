@@ -12,7 +12,8 @@ QStringList stringList(const QJsonValue &value) {
   QStringList out;
   for (const auto &entry : value.toArray()) {
     if (entry.isString() && !entry.toString().trimmed().isEmpty()) {
-      out.append(entry.toString().trimmed());
+      out.append(entry.toString().trimmed().left(4096));
+      if (out.size() >= 1000) break;
     }
   }
   return out;
@@ -115,6 +116,7 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
     profile.viewports.clear();
     for (const auto &value : viewportValues) {
       if (value.isObject()) profile.viewports.append(viewportFromJson(value.toObject()));
+      if (profile.viewports.size() >= 100) break;
     }
   }
   const auto engines = stringList(object.value("engines"));
@@ -123,7 +125,7 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   if (!formats.isEmpty()) { profile.formats = formats; profile.formats.removeDuplicates(); }
   profile.captureMode = object.value("captureMode").toString(profile.captureMode);
   if (!QStringList{"fullPage", "viewport", "element"}.contains(profile.captureMode)) profile.captureMode = "fullPage";
-  profile.elementSelector = object.value("elementSelector").toString().trimmed();
+  profile.elementSelector = object.value("elementSelector").toString().trimmed().left(4096);
   profile.initialDelay = boundedDouble(object, "initialDelay", profile.initialDelay, 0.0, 300.0);
   profile.scrollDelay = boundedDouble(object, "scrollDelay", profile.scrollDelay, 0.0, 300.0);
   profile.finalDelay = boundedDouble(object, "finalDelay", profile.finalDelay, 0.0, 300.0);
@@ -136,8 +138,8 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   profile.stripWhitespace = object.value("stripWhitespace").toBool(profile.stripWhitespace);
   profile.blocklist = stringList(object.value("blocklist"));
   profile.hideSelectors = stringList(object.value("hideSelectors"));
-  profile.waitForSelector = object.value("waitForSelector").toString().trimmed();
-  profile.namingTemplate = object.value("namingTemplate").toString(profile.namingTemplate).trimmed();
+  profile.waitForSelector = object.value("waitForSelector").toString().trimmed().left(4096);
+  profile.namingTemplate = object.value("namingTemplate").toString(profile.namingTemplate).trimmed().left(512);
   if (profile.namingTemplate.isEmpty()) profile.namingTemplate = "{hostname}-{preset}";
   profile.collisionPolicy = object.value("collisionPolicy").toString(profile.collisionPolicy);
   if (!QStringList{"version", "overwrite", "skip"}.contains(profile.collisionPolicy)) profile.collisionPolicy = "version";
@@ -161,7 +163,8 @@ QJsonObject toJson(const JobRequest &request) {
           {"source", request.source},
           {"urls", jsonList(request.urls)},
           {"profile", toJson(request.profile)},
-          {"baselines", request.baselines}};
+          {"baselines", request.baselines},
+          {"allowLocalhost", request.allowLocalhost}};
 }
 
 JobRequest jobRequestFromJson(const QJsonObject &object) {
@@ -174,6 +177,7 @@ JobRequest jobRequestFromJson(const QJsonObject &object) {
   request.urls = stringList(object.value("urls"));
   request.profile = profileFromJson(object.value("profile").toObject());
   request.baselines = object.value("baselines").toObject();
+  request.allowLocalhost = object.value("allowLocalhost").toBool(false);
   return request;
 }
 

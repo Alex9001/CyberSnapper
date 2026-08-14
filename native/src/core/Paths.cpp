@@ -70,7 +70,7 @@ QString defaultProjectRoot() {
 QString agentServerName() {
   const QByteArray identity = (QDir::homePath() + QCoreApplication::organizationDomain()).toUtf8();
   const QString suffix = QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(12));
-  const QString name = QStringLiteral("net.cyberbrand.CyberSnapper.Agent.v1.%1").arg(suffix);
+  const QString name = QStringLiteral("net.cyberbrand.CyberSnapper.Agent.v2.%1").arg(suffix);
 #ifdef Q_OS_WIN
   return name;
 #else
@@ -138,7 +138,8 @@ QString browserCacheDir() {
     QDir().mkpath(overridden);
     return QDir::cleanPath(overridden);
   }
-  const QString writable = QDir(appDataDir()).filePath("browsers");
+  const QString cacheGeneration = QStringLiteral("v%1").arg(QStringLiteral(CYBERSNAPPER_VERSION).section('.', 0, 0));
+  const QString writable = QDir(appDataDir()).filePath("browsers/" + cacheGeneration);
   QDir().mkpath(writable);
   const QString appDir = QCoreApplication::applicationDirPath();
 #ifdef Q_OS_WIN

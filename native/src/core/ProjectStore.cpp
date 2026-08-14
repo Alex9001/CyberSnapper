@@ -50,13 +50,62 @@ ProjectStore::~ProjectStore() {
   if (!connection.isEmpty()) QSqlDatabase::removeDatabase(connection);
 }
 
-bool ProjectStore::open(const QString &root, const QString &requestedName, QString *error) {
+bool ProjectStore::open(const QString &root, QString *error) {
+  return openInternal(root, {}, false, error);
+}
+
+bool ProjectStore::create(const QString &root, const QString &requestedName, QString *error) {
+  return openInternal(root, requestedName, true, error);
+}
+
+bool ProjectStore::openInternal(const QString &root, const QString &requestedName,
+                                bool createProject, QString *error) {
   if (isOpen()) {
     if (error) *error = "Project store is already open";
     return false;
   }
 
   m_root = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
+  const QString manifestPath = QDir(m_root).filePath("project.cybersnapper.json");
+  QJsonObject manifest;
+  if (createProject) {
+    QDir destination(m_root);
+    if (destination.exists() && !destination.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+      if (error) *error = "A new project folder must be empty: " + m_root;
+      return false;
+    }
+  } else {
+    QFile manifestFile(manifestPath);
+    if (!manifestFile.open(QIODevice::ReadOnly)) {
+      if (error) *error = "This folder is not a CyberSnapper 2 project (project.cybersnapper.json is missing)";
+      return false;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
+    manifest = document.object();
+    if (!document.isObject() || manifest.value("projectId").toString().isEmpty() ||
+        manifest.value("schemaVersion").toInt() != 1) {
+      if (error) *error = parseError.error == QJsonParseError::NoError
+          ? "This project manifest is invalid or unsupported"
+          : "Could not parse the project manifest: " + parseError.errorString();
+      return false;
+    }
+    const QString databaseRelative = manifest.value("database").toString();
+    const QFileInfo databaseInfo(QDir(m_root).filePath(databaseRelative));
+    const QString databasePath = databaseInfo.canonicalFilePath();
+    const QString canonicalRoot = QFileInfo(m_root).canonicalFilePath();
+    const QString databaseFromRoot = canonicalRoot.isEmpty() || databasePath.isEmpty()
+        ? QString{} : QDir(canonicalRoot).relativeFilePath(databasePath);
+    if (databaseRelative.isEmpty() ||
+        canonicalRoot.isEmpty() || databasePath.isEmpty() ||
+        databaseFromRoot == ".." || databaseFromRoot.startsWith("../") ||
+        QDir::isAbsolutePath(databaseFromRoot) ||
+        !databaseInfo.isFile()) {
+      if (error) *error = "The project database is missing or outside the project folder";
+      return false;
+    }
+  }
+
   if (!Paths::ensureDirectory(m_root, error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/previews"), error) ||
@@ -64,8 +113,7 @@ bool ProjectStore::open(const QString &root, const QString &requestedName, QStri
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/logs"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/tmp"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath("captures"), error) ||
-      !Paths::ensureDirectory(QDir(m_root).filePath("baselines"), error) ||
-      !Paths::ensureDirectory(QDir(m_root).filePath("reports"), error)) {
+      !Paths::ensureDirectory(QDir(m_root).filePath("baselines"), error)) {
     return false;
   }
 
@@ -76,11 +124,10 @@ bool ProjectStore::open(const QString &root, const QString &requestedName, QStri
     return false;
   }
 
-  const QString manifestPath = QDir(m_root).filePath("project.cybersnapper.json");
-  if (QFile file(manifestPath); file.open(QIODevice::ReadOnly)) {
-    const auto manifest = QJsonDocument::fromJson(file.readAll()).object();
+  if (!manifest.isEmpty()) {
     m_projectId = manifest.value("projectId").toString();
     m_projectName = manifest.value("name").toString();
+    m_allowLocalhost = manifest.value("allowLocalhost").toBool(false);
   }
   if (m_projectId.isEmpty()) m_projectId = newId();
   if (m_projectName.isEmpty()) {
@@ -101,12 +148,30 @@ bool ProjectStore::open(const QString &root, const QString &requestedName, QStri
   execute("PRAGMA synchronous = NORMAL");
   if (!migrate(error) || !writeManifest(error)) return false;
 
-  QSqlQuery interrupted(m_db);
-  interrupted.prepare("UPDATE jobs SET status='interrupted', finished_at=?, error="
-                      "CASE WHEN error='' THEN 'Agent stopped before the job completed' ELSE error END "
-                      "WHERE status IN ('preparing','running','cancelling')");
-  interrupted.addBindValue(utcNow());
-  interrupted.exec();
+  QStringList interruptedIds;
+  QSqlQuery interrupted("SELECT id FROM jobs WHERE status IN ('preparing','running','cancelling')", m_db);
+  while (interrupted.next()) interruptedIds.append(interrupted.value(0).toString());
+  if (!interruptedIds.isEmpty()) {
+    if (!m_db.transaction()) { if (error) *error = m_db.lastError().text(); return false; }
+    bool recovered = true;
+    for (const QString &jobId : interruptedIds) {
+      QSqlQuery sequenceQuery(m_db);
+      sequenceQuery.prepare("SELECT COALESCE(MAX(sequence),0)+1 FROM events WHERE job_id=?");
+      sequenceQuery.addBindValue(jobId);
+      recovered = sequenceQuery.exec() && sequenceQuery.next();
+      if (!recovered) break;
+      const QJsonObject event{{"protocolVersion", 2}, {"sequence", sequenceQuery.value(0).toLongLong()},
+                              {"timestamp", utcNow()}, {"type", "job_interrupted"}, {"jobId", jobId},
+                              {"message", "Agent stopped before the job completed"}};
+      recovered = updateJob(jobId, "interrupted", event.value("message").toString()) && appendEvent(jobId, event);
+      if (!recovered) break;
+    }
+    if (!recovered || !m_db.commit()) {
+      if (error) *error = m_db.lastError().text();
+      m_db.rollback();
+      return false;
+    }
+  }
 
   CaptureProfile existing = profile("default");
   if (existing.id.isEmpty() && !saveProfile(defaultProfile(), error)) return false;
@@ -117,6 +182,15 @@ bool ProjectStore::isOpen() const { return m_db.isValid() && m_db.isOpen(); }
 QString ProjectStore::root() const { return m_root; }
 QString ProjectStore::projectId() const { return m_projectId; }
 QString ProjectStore::projectName() const { return m_projectName; }
+bool ProjectStore::allowLocalhost() const { return m_allowLocalhost; }
+
+bool ProjectStore::setAllowLocalhost(bool allowed, QString *error) {
+  if (m_allowLocalhost == allowed) return true;
+  m_allowLocalhost = allowed;
+  if (writeManifest(error)) return true;
+  m_allowLocalhost = !allowed;
+  return false;
+}
 
 bool ProjectStore::execute(const QString &sql, QString *error) const {
   QSqlQuery query(m_db);
@@ -160,7 +234,7 @@ bool ProjectStore::migrate(QString *error) {
     return false;
   }
   QSqlQuery version(m_db);
-  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','3') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
   if (!version.exec() || !m_db.commit()) {
     if (error) *error = version.lastError().text().isEmpty() ? m_db.lastError().text() : version.lastError().text();
     return false;
@@ -185,7 +259,8 @@ bool ProjectStore::writeManifest(QString *error) {
                              {"name", m_projectName},
                              {"createdAt", createdAt},
                              {"database", ".cybersnapper/project.sqlite"},
-                             {"captureRoot", "captures"}};
+                             {"captureRoot", "captures"},
+                             {"allowLocalhost", m_allowLocalhost}};
   file.write(QJsonDocument(manifest).toJson(QJsonDocument::Indented));
   if (file.commit()) return true;
   if (error) *error = file.errorString();
@@ -222,17 +297,38 @@ bool ProjectStore::saveProfile(const CaptureProfile &profileValue, QString *erro
   return false;
 }
 
+bool ProjectStore::removeProfile(const QString &id, QString *error) {
+  if (id == "default") {
+    if (error) *error = "The default profile cannot be removed";
+    return false;
+  }
+  QSqlQuery query(m_db);
+  query.prepare("DELETE FROM profiles WHERE id=?");
+  query.addBindValue(id);
+  if (query.exec() && query.numRowsAffected() > 0) return true;
+  if (error) *error = query.lastError().text().isEmpty() ? "Profile not found" : query.lastError().text();
+  return false;
+}
+
 bool ProjectStore::insertJob(const JobRequest &request, QString *error) {
+  if (!m_db.transaction()) {
+    if (error) *error = m_db.lastError().text();
+    return false;
+  }
+  const QString createdAt = utcNow();
   QSqlQuery query(m_db);
   query.prepare("INSERT INTO jobs(id,project_id,status,source,created_at,request_json) VALUES(?,?,?,?,?,?)");
   query.addBindValue(request.id);
   query.addBindValue(m_projectId);
   query.addBindValue("queued");
   query.addBindValue(request.source);
-  query.addBindValue(utcNow());
+  query.addBindValue(createdAt);
   query.addBindValue(compactJson(toJson(request)));
-  if (query.exec()) return true;
-  if (error) *error = query.lastError().text();
+  const QJsonObject queued{{"protocolVersion", 2}, {"sequence", 1}, {"timestamp", createdAt},
+                           {"type", "job_queued"}, {"jobId", request.id}, {"status", "queued"}};
+  if (query.exec() && appendEvent(request.id, queued) && m_db.commit()) return true;
+  if (error) *error = query.lastError().text().isEmpty() ? m_db.lastError().text() : query.lastError().text();
+  m_db.rollback();
   return false;
 }
 
@@ -257,6 +353,44 @@ bool ProjectStore::updateJob(const QString &jobId, const QString &status, const 
   return query.exec();
 }
 
+bool ProjectStore::applyWorkerEvent(const QString &jobId, const QJsonObject &event, QString *error) {
+  if (!m_db.transaction()) {
+    if (error) *error = m_db.lastError().text();
+    return false;
+  }
+  const QString type = event.value("type").toString();
+  bool ok = true;
+  if (type == "job_queued") {
+    ok = updateJob(jobId, "queued");
+  } else if (type == "job_preparing") {
+    ok = updateJob(jobId, "preparing");
+  } else if (type == "job_started") {
+    ok = updateJob(jobId, "running");
+  } else if (type == "job_cancelling") {
+    ok = updateJob(jobId, "cancelling");
+  } else if (type == "artifact_completed") {
+    ok = insertArtifact(jobId, event.value("artifact").toObject()) &&
+         updateJob(jobId, "running", {}, 1, 0);
+  } else if (type == "artifact_failed") {
+    ok = insertArtifact(jobId, event.value("artifact").toObject()) &&
+         updateJob(jobId, "running", {}, 0, 1);
+  } else if (type == "comparison_completed") {
+    ok = insertComparison(event.value("comparison").toObject());
+  } else if (type == "job_succeeded" || type == "job_partial" ||
+             type == "job_failed" || type == "job_cancelled" || type == "job_interrupted") {
+    const QString status = type == "job_succeeded" ? "succeeded" :
+                           type == "job_partial" ? "partial" :
+                           type == "job_cancelled" ? "cancelled" :
+                           type == "job_interrupted" ? "interrupted" : "failed";
+    ok = updateJob(jobId, status, event.value("message").toString());
+  }
+  ok = ok && appendEvent(jobId, event);
+  if (ok && m_db.commit()) return true;
+  if (error) *error = m_db.lastError().text();
+  m_db.rollback();
+  return false;
+}
+
 QJsonObject ProjectStore::job(const QString &jobId) const {
   QSqlQuery query(m_db);
   query.prepare("SELECT * FROM jobs WHERE id=?");
@@ -277,9 +411,18 @@ QJsonArray ProjectStore::jobs(int limit) const {
   return out;
 }
 
+QJsonArray ProjectStore::queuedJobs() const {
+  QJsonArray out;
+  QSqlQuery query(m_db);
+  query.prepare("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at ASC, id ASC");
+  if (!query.exec()) return out;
+  while (query.next()) out.append(queryJob(query));
+  return out;
+}
+
 bool ProjectStore::appendEvent(const QString &jobId, const QJsonObject &event) {
   QSqlQuery query(m_db);
-  query.prepare("INSERT OR REPLACE INTO events(job_id,sequence,type,created_at,event_json) VALUES(?,?,?,?,?)");
+  query.prepare("INSERT INTO events(job_id,sequence,type,created_at,event_json) VALUES(?,?,?,?,?)");
   query.addBindValue(jobId);
   query.addBindValue(event.value("sequence").toVariant().toLongLong());
   query.addBindValue(event.value("type").toString());
@@ -431,6 +574,22 @@ QJsonObject ProjectStore::baseline(const QString &key) const {
           {"artifact", artifactValue}};
 }
 
+QJsonArray ProjectStore::baselines() const {
+  QJsonArray out;
+  QSqlQuery query("SELECT comparison_key FROM baselines ORDER BY updated_at DESC", m_db);
+  while (query.next()) out.append(baseline(query.value(0).toString()));
+  return out;
+}
+
+bool ProjectStore::removeBaseline(const QString &key, QString *error) {
+  QSqlQuery query(m_db);
+  query.prepare("DELETE FROM baselines WHERE comparison_key=?");
+  query.addBindValue(key);
+  if (query.exec() && query.numRowsAffected() > 0) return true;
+  if (error) *error = query.lastError().text().isEmpty() ? "Baseline not found" : query.lastError().text();
+  return false;
+}
+
 bool ProjectStore::insertComparison(const QJsonObject &comparison) {
   QSqlQuery query(m_db);
   query.prepare("INSERT OR REPLACE INTO comparisons(id,job_id,comparison_key,baseline_artifact_id,current_artifact_id,status,mismatch_ratio,diff_relative_path,created_at,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)");
@@ -450,11 +609,22 @@ bool ProjectStore::insertComparison(const QJsonObject &comparison) {
 QJsonArray ProjectStore::comparisons(const QString &jobId) const {
   QJsonArray out;
   QSqlQuery query(m_db);
-  query.prepare("SELECT metadata_json FROM comparisons WHERE job_id=? ORDER BY created_at ASC");
-  query.addBindValue(jobId);
+  if (jobId.isEmpty()) {
+    query.prepare("SELECT metadata_json FROM comparisons ORDER BY created_at DESC LIMIT 2000");
+  } else {
+    query.prepare("SELECT metadata_json FROM comparisons WHERE job_id=? ORDER BY created_at ASC");
+    query.addBindValue(jobId);
+  }
   if (!query.exec()) return out;
   while (query.next()) out.append(QJsonDocument::fromJson(query.value(0).toByteArray()).object());
   return out;
+}
+
+QJsonObject ProjectStore::comparison(const QString &id) const {
+  QSqlQuery query(m_db);
+  query.prepare("SELECT metadata_json FROM comparisons WHERE id=?");
+  query.addBindValue(id);
+  return query.exec() && query.next() ? parseObject(query.value(0)) : QJsonObject{};
 }
 
 QJsonObject ProjectStore::parseObject(const QVariant &value) {

@@ -4,6 +4,7 @@
 #include "core/ProjectStore.h"
 
 #include <QDir>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
@@ -12,6 +13,10 @@
 #include <utility>
 
 namespace CyberSnapper {
+
+namespace {
+constexpr qsizetype kMaximumWorkerLine = 16 * 1024 * 1024;
+}
 
 JobManager::JobManager(QObject *parent) : QObject(parent) {}
 
@@ -23,7 +28,18 @@ QString JobManager::validate(const JobRequest &request) {
   if (request.urls.size() > 1000) return "A job may contain at most 1,000 URLs";
   if (request.profile.viewports.isEmpty()) return "At least one viewport is required";
   bool enabledViewport = false;
-  for (const auto &viewport : request.profile.viewports) enabledViewport = enabledViewport || viewport.enabled;
+  qint64 enabledViewports = 0;
+  for (const auto &viewport : request.profile.viewports) {
+    enabledViewport = enabledViewport || viewport.enabled;
+    if (viewport.enabled) {
+      ++enabledViewports;
+      if (request.profile.captureMode == "viewport") {
+        const long double pixels = static_cast<long double>(viewport.width) * viewport.height *
+                                   viewport.deviceScaleFactor * viewport.deviceScaleFactor;
+        if (pixels > 64000000.0L) return "A viewport capture may contain at most 64 million device pixels";
+      }
+    }
+  }
   if (!enabledViewport) return "At least one viewport must be enabled";
   if (request.profile.engines.isEmpty()) return "At least one browser engine is required";
   if (request.profile.formats.isEmpty()) return "At least one output format is required";
@@ -47,6 +63,14 @@ QString JobManager::validate(const JobRequest &request) {
   if (request.profile.formats.contains("pdf") && !request.profile.engines.contains("chromium")) {
     return "PDF output requires Chromium";
   }
+  qint64 formatsAcrossEngines = 0;
+  for (const auto &engine : request.profile.engines) {
+    for (const auto &format : request.profile.formats) {
+      if (format != "pdf" || engine == "chromium") ++formatsAcrossEngines;
+    }
+  }
+  const qint64 totalArtifacts = request.urls.size() * enabledViewports * formatsAcrossEngines;
+  if (totalArtifacts > 10000) return "A job may create at most 10,000 artifacts";
   return {};
 }
 
@@ -66,10 +90,30 @@ QString JobManager::submit(ProjectStore *store, JobRequest request, QString *err
   }
   if (!store->insertJob(request, error)) return {};
   m_queue.enqueue({store, request});
-  publish(store, {{"type", "job_queued"}, {"jobId", request.id}, {"status", "queued"}});
+  const QJsonArray events = store->events(request.id);
+  if (!events.isEmpty()) emit eventPublished(store->projectId(), events.first().toObject());
   emit queueChanged(m_queue.size(), m_active.size());
   QTimer::singleShot(0, this, &JobManager::startNext);
   return request.id;
+}
+
+bool JobManager::recover(ProjectStore *store, JobRequest request, QString *error) {
+  if (!store || !store->isOpen() || request.id.isEmpty()) {
+    if (error) *error = "A persisted job needs an open project and job ID";
+    return false;
+  }
+  request.projectId = store->projectId();
+  request.projectRoot = store->root();
+  request.profile = profileFromJson(toJson(request.profile));
+  const QString validationError = validate(request);
+  if (!validationError.isEmpty()) {
+    if (error) *error = validationError;
+    return false;
+  }
+  m_queue.enqueue({store, request});
+  emit queueChanged(m_queue.size(), m_active.size());
+  QTimer::singleShot(0, this, &JobManager::startNext);
+  return true;
 }
 
 void JobManager::startNext() {
@@ -91,8 +135,8 @@ void JobManager::startJob(const PendingJob &pending) {
   active->store = pending.store;
   active->request = pending.request;
   active->process = new QProcess(this);
+  active->lastEventMs = QDateTime::currentMSecsSinceEpoch();
   m_active.insert(active->request.id, active);
-  active->store->updateJob(active->request.id, "preparing");
   publish(active->store, {{"type", "job_preparing"}, {"jobId", active->request.id}, {"status", "preparing"}});
   const QJsonArray previousEvents = active->store->events(active->request.id);
   if (!previousEvents.isEmpty()) {
@@ -111,23 +155,32 @@ void JobManager::startJob(const PendingJob &pending) {
   active->process->setProcessChannelMode(QProcess::SeparateChannels);
 
   connect(active->process, &QProcess::started, this, [this, active] {
-    const QJsonObject command{{"protocolVersion", 1}, {"command", "run"}, {"job", toJson(active->request)}};
+    const QJsonObject command{{"protocolVersion", 2}, {"command", "run"}, {"job", toJson(active->request)}};
     active->process->write(QJsonDocument(command).toJson(QJsonDocument::Compact) + '\n');
   });
   connect(active->process, &QProcess::readyReadStandardOutput, this, [this, active] { readWorkerOutput(active); });
   connect(active->process, &QProcess::readyReadStandardError, this, [this, active] {
-    const QString message = QString::fromUtf8(active->process->readAllStandardError()).trimmed();
+    QString message = QString::fromUtf8(active->process->readAllStandardError()).trimmed();
+    if (message.size() > 65536) message = message.left(65536) + "\n[worker log truncated]";
     if (!message.isEmpty()) publish(active->store, {{"type", "worker_log"}, {"jobId", active->request.id}, {"message", message}});
   });
   connect(active->process, &QProcess::errorOccurred, this, [this, active](QProcess::ProcessError error) {
     if (error == QProcess::FailedToStart) {
       handleWorkerEvent(active, {{"type", "job_failed"}, {"jobId", active->request.id},
                                  {"message", "Could not start capture worker: " + active->process->errorString()}});
+      const QString jobId = active->request.id;
+      QTimer::singleShot(0, this, [this, jobId] {
+        if (ActiveJob *failed = m_active.value(jobId, nullptr)) {
+          finishProcess(failed, -1, QProcess::CrashExit);
+        }
+      });
     }
   });
   connect(active->process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
           [this, active](int code, QProcess::ExitStatus status) { finishProcess(active, code, status); });
   active->process->start();
+  const QString jobId = active->request.id;
+  QTimer::singleShot(30000, this, [this, jobId] { checkLiveness(jobId); });
 }
 
 void JobManager::readWorkerOutput(ActiveJob *active) {
@@ -136,6 +189,12 @@ void JobManager::readWorkerOutput(ActiveJob *active) {
   while (true) {
     const qsizetype newline = active->stdoutBuffer.indexOf('\n');
     if (newline < 0) break;
+    if (newline > kMaximumWorkerLine) {
+      handleWorkerEvent(active, {{"type", "job_failed"},
+                                 {"message", "Capture worker produced an oversized protocol message"}});
+      active->process->kill();
+      return;
+    }
     const QByteArray line = active->stdoutBuffer.left(newline).trimmed();
     active->stdoutBuffer.remove(0, newline + 1);
     if (line.isEmpty()) continue;
@@ -146,39 +205,63 @@ void JobManager::readWorkerOutput(ActiveJob *active) {
                               {"message", error.errorString()}});
       continue;
     }
+    if (document.object().value("protocolVersion").toInt() != 2) {
+      handleWorkerEvent(active, {{"type", "job_failed"},
+                                 {"message", "Capture worker used an unsupported protocol version"}});
+      active->process->kill();
+      return;
+    }
     handleWorkerEvent(active, document.object());
+  }
+  if (active->stdoutBuffer.size() > kMaximumWorkerLine) {
+    handleWorkerEvent(active, {{"type", "job_failed"},
+                               {"message", "Capture worker protocol buffer exceeded 16 MiB"}});
+    active->process->kill();
   }
 }
 
 void JobManager::handleWorkerEvent(ActiveJob *active, QJsonObject event) {
   if (!active || !active->store) return;
-  event.insert("protocolVersion", 1);
+  active->lastEventMs = QDateTime::currentMSecsSinceEpoch();
+  event.insert("protocolVersion", 2);
   event.insert("jobId", active->request.id);
   // The agent owns event ordering. Worker-local sequence numbers are intentionally
   // remapped so preparatory events cannot be overwritten in SQLite.
   event.insert("sequence", ++active->fallbackSequence);
   if (!event.contains("timestamp")) event.insert("timestamp", utcNow());
   const QString type = event.value("type").toString();
+  if (type == "worker_heartbeat") return;
 
-  if (type == "job_started") {
-    active->store->updateJob(active->request.id, "running");
-  } else if (type == "artifact_completed") {
-    active->store->insertArtifact(active->request.id, event.value("artifact").toObject());
-    active->store->updateJob(active->request.id, "running", {}, 1, 0);
-  } else if (type == "artifact_failed") {
-    active->store->insertArtifact(active->request.id, event.value("artifact").toObject());
-    active->store->updateJob(active->request.id, "running", {}, 0, 1);
-  } else if (type == "comparison_completed") {
-    active->store->insertComparison(event.value("comparison").toObject());
-  } else if (type == "job_succeeded" || type == "job_partial" || type == "job_failed" || type == "job_cancelled") {
-    const QString status = type == "job_succeeded" ? "succeeded" :
-                           type == "job_partial" ? "partial" :
-                           type == "job_cancelled" ? "cancelled" : "failed";
+  if (type == "job_started") active->startedSeen = true;
+  if (type == "job_succeeded" || type == "job_partial" || type == "job_failed" ||
+      type == "job_cancelled" || type == "job_interrupted") {
     active->terminalSeen = true;
-    active->store->updateJob(active->request.id, status, event.value("message").toString());
   }
-  active->store->appendEvent(active->request.id, event);
+  QString persistenceError;
+  if (!active->store->applyWorkerEvent(active->request.id, event, &persistenceError)) {
+    active->terminalSeen = true;
+    emit eventPublished(active->store->projectId(), {{"type", "storage_error"},
+                         {"jobId", active->request.id}, {"message", persistenceError}});
+    if (active->process->state() != QProcess::NotRunning) active->process->kill();
+    return;
+  }
   emit eventPublished(active->store->projectId(), event);
+}
+
+void JobManager::checkLiveness(const QString &jobId) {
+  ActiveJob *running = m_active.value(jobId, nullptr);
+  if (!running || running->terminalSeen) return;
+  const qint64 quietMs = QDateTime::currentMSecsSinceEpoch() - running->lastEventMs;
+  const QString message = running->startedSeen
+      ? "Capture worker stopped responding for more than 45 seconds"
+      : "Capture worker did not start within 30 seconds";
+  if ((!running->startedSeen && quietMs >= 30000) || (running->startedSeen && quietMs >= 45000)) {
+    handleWorkerEvent(running, {{"type", "job_failed"}, {"message", message}});
+    if (running->process->state() != QProcess::NotRunning) running->process->kill();
+    else finishProcess(running, -1, QProcess::CrashExit);
+    return;
+  }
+  QTimer::singleShot(15000, this, [this, jobId] { checkLiveness(jobId); });
 }
 
 void JobManager::finishProcess(ActiveJob *active, int exitCode, QProcess::ExitStatus exitStatus) {
@@ -198,7 +281,7 @@ void JobManager::finishProcess(ActiveJob *active, int exitCode, QProcess::ExitSt
 
 void JobManager::publish(ProjectStore *store, QJsonObject event) {
   if (!store) return;
-  event.insert("protocolVersion", 1);
+  event.insert("protocolVersion", 2);
   if (!event.contains("timestamp")) event.insert("timestamp", utcNow());
   const QString jobId = event.value("jobId").toString();
   if (!jobId.isEmpty() && !event.contains("sequence")) {
@@ -206,14 +289,18 @@ void JobManager::publish(ProjectStore *store, QJsonObject event) {
     const auto previous = store->events(jobId);
     if (!previous.isEmpty()) sequence = previous.last().toObject().value("sequence").toVariant().toLongLong() + 1;
     event.insert("sequence", sequence);
-    store->appendEvent(jobId, event);
+    QString persistenceError;
+    if (!store->applyWorkerEvent(jobId, event, &persistenceError)) {
+      emit eventPublished(store->projectId(), {{"type", "storage_error"}, {"jobId", jobId},
+                                               {"message", persistenceError}});
+      return;
+    }
     if (ActiveJob *active = m_active.value(jobId, nullptr)) active->fallbackSequence = sequence;
   }
   emit eventPublished(store->projectId(), event);
 }
 
 void JobManager::failBeforeStart(ProjectStore *store, const JobRequest &request, const QString &message) {
-  store->updateJob(request.id, "failed", message);
   publish(store, {{"type", "job_failed"}, {"jobId", request.id}, {"message", message}});
 }
 
@@ -224,7 +311,6 @@ bool JobManager::cancel(const QString &jobId, QString *error) {
     PendingJob pending = m_queue.dequeue();
     if (pending.request.id == jobId) {
       removed = true;
-      pending.store->updateJob(jobId, "cancelled");
       publish(pending.store, {{"type", "job_cancelled"}, {"jobId", jobId}, {"message", "Cancelled before start"}});
     } else {
       retained.enqueue(pending);
@@ -241,9 +327,8 @@ bool JobManager::cancel(const QString &jobId, QString *error) {
     if (error) *error = "Job is not queued or running";
     return false;
   }
-  active->store->updateJob(jobId, "cancelling");
   publish(active->store, {{"type", "job_cancelling"}, {"jobId", jobId}});
-  active->process->write(QJsonDocument(QJsonObject{{"protocolVersion", 1}, {"command", "cancel"}, {"jobId", jobId}})
+  active->process->write(QJsonDocument(QJsonObject{{"protocolVersion", 2}, {"command", "cancel"}, {"jobId", jobId}})
                              .toJson(QJsonDocument::Compact) + '\n');
   QTimer::singleShot(5000, active->process, [process = active->process] {
     if (process->state() != QProcess::NotRunning) process->terminate();
@@ -252,22 +337,6 @@ bool JobManager::cancel(const QString &jobId, QString *error) {
     });
   });
   return true;
-}
-
-QString JobManager::retry(ProjectStore *store, const QString &jobId, QString *error) {
-  if (!store) {
-    if (error) *error = "Project is not open";
-    return {};
-  }
-  const QJsonObject original = store->job(jobId);
-  if (original.isEmpty()) {
-    if (error) *error = "Job not found";
-    return {};
-  }
-  JobRequest request = jobRequestFromJson(original.value("request").toObject());
-  request.id = newId();
-  request.source = "retry";
-  return submit(store, request, error);
 }
 
 bool JobManager::hasActiveJobs() const { return !m_active.isEmpty() || !m_queue.isEmpty(); }
@@ -284,8 +353,7 @@ void JobManager::shutdown() {
   m_shuttingDown = true;
   while (!m_queue.isEmpty()) {
     PendingJob pending = m_queue.dequeue();
-    pending.store->updateJob(pending.request.id, "interrupted", "Agent stopped before the job started");
-    publish(pending.store, {{"type", "job_failed"}, {"jobId", pending.request.id},
+    publish(pending.store, {{"type", "job_interrupted"}, {"jobId", pending.request.id},
                             {"message", "Agent stopped before the job started"}});
   }
   const QList<ActiveJob *> activeJobs = m_active.values();
@@ -296,7 +364,8 @@ void JobManager::shutdown() {
       active->process->terminate();
       if (!active->process->waitForFinished(2000)) active->process->kill();
     }
-    active->store->updateJob(active->request.id, "interrupted", "Agent stopped before the job completed");
+    publish(active->store, {{"type", "job_interrupted"}, {"jobId", active->request.id},
+                            {"message", "Agent stopped before the job completed"}});
     active->process->deleteLater();
     delete active;
   }

@@ -53,6 +53,11 @@ int main(int argc, char **argv) {
       padding-left: 20px;
       padding-right: 20px;
     }
+    QPushButton#primaryAction:disabled {
+      background-color: palette(button);
+      color: palette(mid);
+      border-color: palette(mid);
+    }
     QGroupBox {
       font-weight: 600;
       margin-top: 8px;
@@ -109,7 +114,9 @@ int main(int argc, char **argv) {
   QTimer::singleShot(250, &window, &MainWindow::connectToAgent);
   const QString screenshotPath = qEnvironmentVariable("CYBERSNAPPER_UI_SCREENSHOT");
   if (!screenshotPath.isEmpty()) {
-    QTimer::singleShot(500, &window, [&application, &window, screenshotPath] {
+    bool delayOk = false;
+    const int requestedDelay = qEnvironmentVariableIntValue("CYBERSNAPPER_UI_SCREENSHOT_DELAY", &delayOk);
+    QTimer::singleShot(delayOk ? qMax(250, requestedDelay) : 1500, &window, [&application, &window, screenshotPath] {
       window.grab().save(screenshotPath);
       application.quit();
     });

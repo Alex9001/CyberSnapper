@@ -4,12 +4,22 @@ CyberSnapper 2 uses the native cross-platform workflow at `.github/workflows/rel
 
 1. Run all local checks documented in `docs/BUILDING.md`.
 2. Confirm a capture succeeds through the native CLI and appears in the native History view.
-3. Update the version in the top-level `CMakeLists.txt` and the changelog below.
-4. Tag the commit (`git tag v2.0.0`) and push the tag.
+3. Update the version in the top-level `CMakeLists.txt`, `package.json`, and the changelog below.
+4. Tag the commit (for example, `git tag v2.1.0`) and push the tag.
 5. Publish a GitHub release for the tag or manually dispatch **Native Release**.
 6. Download and smoke-test every archive before announcing it.
 
-The workflow creates portable archives for Linux x64, Windows x64, macOS x64, and macOS arm64. macOS uses ad-hoc signing; Windows and Linux packages are unsigned. Configure organization signing/notarization separately before presenting packages as trusted production installers.
+The workflow creates portable archives for Linux x64, Windows x64, macOS x64, and macOS arm64, plus SHA-256 checksums and GitHub/Sigstore provenance attestations. macOS uses ad-hoc signing; Windows and Linux packages are unsigned. No paid signing identity is required.
+
+## v2.1.0
+
+- Reorganized native UI with live capture planning, persisted splitters/tables, searchable history, browser readiness cards, and first-run guidance.
+- Full tabbed profile manager, dirty-state Save/Revert flow, complete schedule editor, and login-start integration.
+- Compare workspace with side-by-side, overlay, generated-diff, and baseline-manager views.
+- Strict project creation/opening, global FIFO queue recovery, baseline-aware scheduled/retry submission, and transactional job events.
+- Worker protocol v2 heartbeats, startup/hang handling, serialized filename allocation, disk/artifact/pixel limits, and versioned browser caches.
+- DNS-pinning filtering proxy with private-network blocking and explicit per-project localhost access.
+- Expanded native/worker/GUI tests, package checksums, and GitHub build-provenance attestations.
 
 ## v2.0.0
 

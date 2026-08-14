@@ -13,13 +13,11 @@ namespace {
 
 QTimeZone scheduleZone(const QJsonObject &recurrence) {
   const QByteArray requested = recurrence.value("timeZone").toString().toUtf8();
-  QTimeZone zone(requested);
-  return zone.isValid() ? zone : QTimeZone::systemTimeZone();
+  return requested.isEmpty() ? QTimeZone::systemTimeZone() : QTimeZone(requested);
 }
 
 QTime scheduleTime(const QJsonObject &recurrence) {
-  const QTime time = QTime::fromString(recurrence.value("time").toString("09:00"), "HH:mm");
-  return time.isValid() ? time : QTime(9, 0);
+  return QTime::fromString(recurrence.value("time").toString("09:00"), "HH:mm");
 }
 
 QDateTime validLocalDateTime(QDate date, QTime time, const QTimeZone &zone) {
@@ -30,8 +28,9 @@ QDateTime validLocalDateTime(QDate date, QTime time, const QTimeZone &zone) {
 
 } // namespace
 
-Scheduler::Scheduler(JobManager *jobs, StoreProvider stores, QObject *parent)
-    : QObject(parent), m_jobs(jobs), m_stores(std::move(stores)) {
+Scheduler::Scheduler(JobManager *jobs, StoreProvider stores, Submitter submitter, QObject *parent)
+    : QObject(parent), m_jobs(jobs), m_stores(std::move(stores)),
+      m_submitter(std::move(submitter)) {
   m_timer.setInterval(30000);
   connect(&m_timer, &QTimer::timeout, this, &Scheduler::checkNow);
   connect(m_jobs, &JobManager::eventPublished, this, &Scheduler::handleJobEvent);
@@ -48,7 +47,9 @@ QDateTime Scheduler::nextOccurrence(const QJsonObject &recurrence, const QDateTi
   const QString type = recurrence.value("type").toString();
   if (type == "once") {
     const QDateTime at = QDateTime::fromString(recurrence.value("at").toString(), Qt::ISODate);
-    return at.isValid() && at.toUTC() > afterUtc.toUTC() ? at.toUTC() : QDateTime{};
+    if (at.isValid() && at.toUTC() > afterUtc.toUTC()) return at.toUTC();
+    if (error) *error = "The one-time run must be a valid future date and time";
+    return {};
   }
   if (type == "interval") {
     const int minutes = qBound(15, recurrence.value("minutes").toInt(60), 525600);
@@ -56,8 +57,10 @@ QDateTime Scheduler::nextOccurrence(const QJsonObject &recurrence, const QDateTi
   }
 
   const QTimeZone zone = scheduleZone(recurrence);
+  if (!zone.isValid()) { if (error) *error = "The schedule time zone is invalid"; return {}; }
   const QDateTime localAfter = afterUtc.toTimeZone(zone);
   const QTime time = scheduleTime(recurrence);
+  if (!time.isValid()) { if (error) *error = "Use a valid 24-hour time such as 09:00"; return {}; }
   if (type == "daily") {
     QDate date = localAfter.date();
     QDateTime candidate = validLocalDateTime(date, time, zone);
@@ -70,7 +73,7 @@ QDateTime Scheduler::nextOccurrence(const QJsonObject &recurrence, const QDateTi
       const int day = entry.toInt();
       if (day >= 1 && day <= 7) days.insert(day);
     }
-    if (days.isEmpty()) days.insert(1);
+    if (days.isEmpty()) { if (error) *error = "A weekly schedule needs at least one weekday"; return {}; }
     for (int add = 0; add <= 7; ++add) {
       const QDate date = localAfter.date().addDays(add);
       if (!days.contains(date.dayOfWeek())) continue;
@@ -80,6 +83,14 @@ QDateTime Scheduler::nextOccurrence(const QJsonObject &recurrence, const QDateTi
   }
   if (type == "monthly") {
     const QJsonValue dayValue = recurrence.value("day");
+    if (dayValue.isString() && dayValue.toString() != "last") {
+      if (error) *error = "Monthly day must be 1 through 31 or last";
+      return {};
+    }
+    if (!dayValue.isString() && (dayValue.toInt() < 1 || dayValue.toInt() > 31)) {
+      if (error) *error = "Monthly day must be 1 through 31 or last";
+      return {};
+    }
     for (int addMonth = 0; addMonth <= 12; ++addMonth) {
       const QDate month = QDate(localAfter.date().year(), localAfter.date().month(), 1).addMonths(addMonth);
       const int day = dayValue.toString() == "last"
@@ -131,7 +142,9 @@ void Scheduler::checkNow() {
       request.source = "schedule:" + scheduleId;
       for (const auto &url : schedule.value("urls").toArray()) request.urls.append(url.toString());
       QString submitError;
-      const QString jobId = m_jobs->submit(store, request, &submitError);
+      const QString jobId = m_submitter
+          ? m_submitter(store, request, &submitError)
+          : m_jobs->submit(store, request, &submitError);
       const QString status = jobId.isEmpty() ? "failed" : "queued";
       if (schedule.value("recurrence").toObject().value("type").toString() == "once") {
         QJsonObject completedOnce = schedule;

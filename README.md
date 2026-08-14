@@ -1,4 +1,4 @@
-# CyberSnapper 2
+# CyberSnapper 2.1
 
 CyberSnapper is a native Qt desktop application for repeatable website captures on macOS, Windows, and Linux. A small background agent owns jobs, schedules, projects, and the optional localhost API; a private Playwright worker performs browser automation.
 
@@ -9,16 +9,18 @@ CyberSnapper 2 is a clean break from the original script. It does not read, impo
 - Native Qt Widgets application with Capture, History, Compare, Schedules, and Settings workflows.
 - Background tray/headless agent with a persistent FIFO job queue and crash recovery.
 - Native `cybersnapper-cli` using the same jobs and project history as the GUI.
-- Portable folder projects backed by SQLite, with captures, baselines, diffs, reports, and event history.
+- Portable folder projects backed by SQLite, with captures, baselines, diffs, and event history.
 - Chromium, Firefox, and WebKit support through Playwright; Chromium is bundled in release packages and other engines install on demand.
 - Full-page, viewport, and CSS-element capture modes.
 - PNG, WebP, AVIF, and Chromium PDF output.
 - Custom viewports, profiles, delays, selectors, popup blocking, network blocklists, output naming, safe collision handling, and bounded concurrency.
 - Visual baselines, image diffs, mismatch thresholds, and comparison history.
+- Side-by-side, overlay, and generated-diff inspection with project baseline management.
 - Once, interval, daily, weekly, and monthly schedules with IANA time zones.
+- Optional login startup for dependable schedules and per-project localhost capture access.
 - Authenticated REST v1 API and resumable server-sent job events, bound only to `127.0.0.1`.
 
-CyberSnapper intentionally accepts explicit public HTTP(S) URLs only. The capture worker rejects local/private destinations, embedded URL credentials, and private redirect/resource targets.
+CyberSnapper accepts explicit HTTP(S) URLs. Public destinations are allowed by default; localhost is an explicit per-project opt-in, while private LAN destinations remain blocked. A filtering proxy resolves and pins every destination connection so redirects and subresources cannot bypass the policy. Embedded URL credentials and non-HTTP protocols are rejected.
 
 ## Build from source
 
@@ -66,6 +68,7 @@ cybersnapper-cli job cancel JOB_ID
 cybersnapper-cli job retry JOB_ID
 cybersnapper-cli projects list
 cybersnapper-cli projects open /path/to/project
+cybersnapper-cli projects create /path/to/empty-folder "Project name"
 cybersnapper-cli schedules list
 cybersnapper-cli schedules run SCHEDULE_ID
 cybersnapper-cli api enable

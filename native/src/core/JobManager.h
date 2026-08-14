@@ -19,8 +19,8 @@ public:
   ~JobManager() override;
 
   QString submit(ProjectStore *store, JobRequest request, QString *error = nullptr);
+  bool recover(ProjectStore *store, JobRequest request, QString *error = nullptr);
   bool cancel(const QString &jobId, QString *error = nullptr);
-  QString retry(ProjectStore *store, const QString &jobId, QString *error = nullptr);
   bool hasActiveJobs() const;
   int queuedCount() const;
   int activeCount() const;
@@ -44,6 +44,8 @@ private:
     QByteArray stdoutBuffer;
     qint64 fallbackSequence = 0;
     bool terminalSeen = false;
+    bool startedSeen = false;
+    qint64 lastEventMs = 0;
   };
 
   QQueue<PendingJob> m_queue;
@@ -56,6 +58,7 @@ private:
   void readWorkerOutput(ActiveJob *active);
   void handleWorkerEvent(ActiveJob *active, QJsonObject event);
   void finishProcess(ActiveJob *active, int exitCode, QProcess::ExitStatus exitStatus);
+  void checkLiveness(const QString &jobId);
   void publish(ProjectStore *store, QJsonObject event);
   void failBeforeStart(ProjectStore *store, const JobRequest &request, const QString &message);
   static QString validate(const JobRequest &request);

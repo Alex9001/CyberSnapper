@@ -183,7 +183,9 @@ int main(int argc, char **argv) {
   } else if (command == "projects") {
     if (arguments.isEmpty() || arguments.first() == "list") result = invoke("project.list", {}, &error);
     else if (arguments.first() == "open" && arguments.size() >= 2) result = invoke("project.open", {{"root", arguments.at(1)}}, &error);
-    else { QTextStream(stderr) << "Usage: cybersnapper-cli projects [list|open <folder>]\n"; return 2; }
+    else if (arguments.first() == "create" && arguments.size() >= 2) {
+      result = invoke("project.create", {{"root", arguments.at(1)}, {"name", arguments.value(2)}}, &error);
+    } else { QTextStream(stderr) << "Usage: cybersnapper-cli projects [list|open <folder>|create <folder> [name]]\n"; return 2; }
   } else if (command == "schedules") {
     if (arguments.isEmpty() || arguments.first() == "list") {
       result = invoke("schedule.list", {{"projectId", parser.value(projectOption)}}, &error);

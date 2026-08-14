@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, statfs, writeFile } from 'node:fs/promises';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 import sharp from 'sharp';
-import { assertPublicUrl } from './network.js';
-import { captureName, chooseOutputPath, safeSegment } from './naming.js';
+import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './network.js';
+import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
 import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, Viewport, WorkerEvent } from './protocol.js';
 
 export interface JobRuntime {
@@ -22,6 +22,10 @@ const popupSelectors = [
   '[id*="newsletter" i]', '[class*="newsletter" i]', '[class*="modal" i]',
   '[class*="intercom" i]', '[class*="chat-widget" i]', '[data-testid*="consent" i]',
 ];
+const maximumArtifacts = 10_000;
+const maximumDevicePixels = 64_000_000;
+const maximumConcurrentDevicePixels = 128_000_000;
+const minimumFreeBytes = 256 * 1024 * 1024;
 
 const sleep = (seconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, seconds) * 1000));
 const id = (): string => crypto.randomUUID();
@@ -33,17 +37,22 @@ function inside(root: string, candidate: string): boolean {
 }
 
 async function atomicWrite(destination: string, bytes: Buffer): Promise<void> {
+  const disk = await statfs(path.dirname(destination));
+  const available = Number(disk.bavail) * Number(disk.bsize);
+  if (!Number.isFinite(available) || available < Math.max(minimumFreeBytes, bytes.length * 2)) {
+    throw new Error('Not enough free disk space to safely write the capture');
+  }
   const temporary = `${destination}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   await writeFile(temporary, bytes);
   await rename(temporary, destination);
 }
 
-async function installRouting(context: BrowserContext, blocklist: string[]): Promise<void> {
+async function installRouting(context: BrowserContext, blocklist: string[], policy: NetworkPolicy): Promise<void> {
   await context.route('**/*', async (route) => {
     const requestUrl = route.request().url();
     if (blocklist.some((part) => part && requestUrl.includes(part))) return route.abort('blockedbyclient');
     if (!requestUrl.startsWith('http:') && !requestUrl.startsWith('https:')) return route.continue();
-    try { await assertPublicUrl(requestUrl); await route.continue(); } catch { await route.abort('blockedbyclient'); }
+    try { await assertPublicUrl(requestUrl, policy); await route.continue(); } catch { await route.abort('blockedbyclient'); }
   });
 }
 
@@ -82,17 +91,28 @@ async function screenshotPng(page: Page, job: CaptureJob, viewport: Viewport): P
   if (profile.captureMode === 'element') {
     const locator = page.locator(profile.elementSelector).first();
     await locator.waitFor({ state: 'visible', timeout: profile.selectorTimeoutSeconds * 1000 });
+    const box = await locator.boundingBox();
+    if (box) ensurePixelBudget(box.width, box.height, viewport.deviceScaleFactor);
     return Buffer.from(await locator.screenshot({ type: 'png', animations: 'disabled' }));
   }
   if (profile.captureMode === 'viewport') {
+    ensurePixelBudget(viewport.width, viewport.height, viewport.deviceScaleFactor);
     return Buffer.from(await page.screenshot({ type: 'png', animations: 'disabled' }));
   }
   const pageHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0));
+  ensurePixelBudget(viewport.width, Math.min(pageHeight, profile.maxPageHeight), viewport.deviceScaleFactor);
   if (pageHeight <= profile.maxPageHeight) {
     return Buffer.from(await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' }));
   }
   return Buffer.from(await page.screenshot({ type: 'png', animations: 'disabled',
     clip: { x: 0, y: 0, width: viewport.width, height: profile.maxPageHeight } }));
+}
+
+function ensurePixelBudget(width: number, height: number, scale: number): void {
+  const pixels = Math.ceil(width * scale) * Math.ceil(height * scale);
+  if (!Number.isFinite(pixels) || pixels > maximumDevicePixels) {
+    throw new Error(`Capture exceeds the ${maximumDevicePixels.toLocaleString()} device-pixel safety limit`);
+  }
 }
 
 async function convertPng(png: Buffer, format: OutputFormat, job: CaptureJob): Promise<Buffer> {
@@ -106,6 +126,7 @@ async function stripTopWhitespace(png: Buffer): Promise<Buffer> {
   const metadata = await sharp(png).metadata();
   if (!metadata.width || !metadata.height) return png;
   const { width, height } = metadata;
+  if (width * height > maximumDevicePixels) throw new Error('Image exceeds the processing pixel limit');
   const raw = await sharp(png).ensureAlpha().raw().toBuffer();
   const left = Math.floor(width * 0.2);
   const right = Math.ceil(width * 0.8);
@@ -183,7 +204,7 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
 }
 
 async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Browser,
-                             outputDirectory: string, reserved: Set<string>, runtime: JobRuntime,
+                             outputDirectory: string, allocator: OutputPathAllocator, runtime: JobRuntime,
                              emit: Emit): Promise<{ completed: number; failed: number }> {
   let context: BrowserContext | undefined;
   let page: Page | undefined;
@@ -192,15 +213,16 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
   const { url, engine, viewport, formats } = target;
   try {
     if (runtime.cancelled) return { completed, failed };
-    await assertPublicUrl(url);
+    const networkPolicy = { allowLocalhost: job.allowLocalhost === true };
+    await assertPublicUrl(url, networkPolicy);
     context = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       deviceScaleFactor: viewport.deviceScaleFactor,
-      isMobile: viewport.mobile,
+      isMobile: engine === 'firefox' ? false : viewport.mobile,
       hasTouch: viewport.mobile,
       ignoreHTTPSErrors: false,
     });
-    await installRouting(context, job.profile.blocklist);
+    await installRouting(context, job.profile.blocklist, networkPolicy);
     page = await context.newPage();
     page.setDefaultNavigationTimeout(job.profile.navigationTimeoutSeconds * 1000);
     page.setDefaultTimeout(job.profile.selectorTimeoutSeconds * 1000);
@@ -227,7 +249,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       if (runtime.cancelled) break;
       const artifactId = id();
       try {
-        const selection = await chooseOutputPath(targetDirectory, name.base, format, job.profile.collisionPolicy, reserved);
+        const selection = await allocator.choose(targetDirectory, name.base, format, job.profile.collisionPolicy);
         const relativePath = path.relative(job.projectRoot, selection.absolute);
         const comparisonKey = `${url}|${engine}|${viewport.id}|${job.profile.captureMode}|${format}`;
         if (selection.skipped) {
@@ -297,6 +319,10 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
   const outputDirectory = path.join(root, 'captures', day, safeSegment(job.id));
   if (!inside(root, outputDirectory)) throw new Error('Capture output escapes project root');
   await mkdir(outputDirectory, { recursive: true });
+  const initialDisk = await statfs(outputDirectory);
+  if (Number(initialDisk.bavail) * Number(initialDisk.bsize) < minimumFreeBytes) {
+    throw new Error('At least 256 MiB of free disk space is required to start a capture');
+  }
   const targets: CaptureTarget[] = [];
   for (const engine of job.profile.engines) {
     for (const viewport of job.profile.viewports.filter((candidate) => candidate.enabled)) {
@@ -305,16 +331,20 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     }
   }
   const totalArtifacts = targets.reduce((sum, target) => sum + target.formats.length, 0);
+  if (totalArtifacts === 0) throw new Error('The job has no enabled capture targets');
+  if (totalArtifacts > maximumArtifacts) throw new Error(`A job may create at most ${maximumArtifacts.toLocaleString()} artifacts`);
   emit({ type: 'job_started', status: 'running', totalArtifacts });
   const browsers = new Map<BrowserEngine, Browser>();
+  const proxy = await startFilteringProxy({ allowLocalhost: job.allowLocalhost === true });
   try {
     for (const engine of new Set(targets.map((target) => target.engine))) {
       if (runtime.cancelled) break;
-      const browser = await browserTypes[engine].launch({ headless: true });
+      const browser = await browserTypes[engine].launch({ headless: true, proxy: { server: proxy.url },
+        args: engine === 'chromium' ? ['--proxy-bypass-list=<-loopback>'] : [] });
       browsers.set(engine, browser);
       runtime.browsers.add(browser);
     }
-    const reserved = new Set<string>();
+    const allocator = new OutputPathAllocator();
     let cursor = 0;
     let completed = 0;
     let failed = 0;
@@ -325,13 +355,22 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
         const target = targets[index];
         const browser = browsers.get(target.engine);
         if (!browser) return;
-        const result = await captureTarget(job, target, browser, outputDirectory, reserved, runtime, emit);
+        const result = await captureTarget(job, target, browser, outputDirectory, allocator, runtime, emit);
         completed += result.completed;
         failed += result.failed;
         emit({ type: 'job_progress', completed, failed, totalArtifacts });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(job.profile.concurrency, Math.max(1, targets.length)) }, worker));
+    const estimatedTargetPixels = job.profile.captureMode === 'viewport'
+      ? Math.max(...job.profile.viewports.filter((viewport) => viewport.enabled)
+          .map((viewport) => viewport.width * viewport.height * viewport.deviceScaleFactor ** 2))
+      : maximumDevicePixels;
+    const resourceConcurrency = Math.max(1, Math.floor(maximumConcurrentDevicePixels / Math.max(1, estimatedTargetPixels)));
+    const effectiveConcurrency = Math.min(job.profile.concurrency, resourceConcurrency, Math.max(1, targets.length));
+    if (effectiveConcurrency < job.profile.concurrency) {
+      emit({ type: 'job_warning', message: `Parallel pages reduced to ${effectiveConcurrency} for the image-memory safety budget` });
+    }
+    await Promise.all(Array.from({ length: effectiveConcurrency }, worker));
     if (runtime.cancelled) emit({ type: 'job_cancelled', status: 'cancelled', completed, failed });
     else if (failed === 0) emit({ type: 'job_succeeded', status: 'succeeded', completed, failed });
     else if (completed > 0) emit({ type: 'job_partial', status: 'partial', completed, failed, message: `${failed} artifacts failed` });
@@ -339,5 +378,6 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
   } finally {
     await Promise.all([...browsers.values()].map((browser) => browser.close().catch(() => undefined)));
     runtime.browsers.clear();
+    await proxy.close();
   }
 }
