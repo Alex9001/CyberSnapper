@@ -1,29 +1,25 @@
-name: Build & Release
+name: Native Release
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
-  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    name: ${{ matrix.target }}
+  package:
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: linux
-            asset: CyberSnapper-linux-x64
-          - os: windows-latest
-            target: win32
-            asset: CyberSnapper-win32-x64.exe
-          - os: macos-13
-            target: macos
-            asset: CyberSnapper-macos-x64
-          - os: macos-latest
-            target: macos-arm64
-            asset: CyberSnapper-macos-arm64
+          - { os: ubuntu-24.04, name: Linux x64, artifact: CyberSnapper-linux-x64 }
+          - { os: windows-2025, name: Windows x64, artifact: CyberSnapper-windows-x64 }
+          - { os: macos-15-intel, name: macOS x64, artifact: CyberSnapper-macos-x64 }
+          - { os: macos-15, name: macOS arm64, artifact: CyberSnapper-macos-arm64 }
 
     steps:
       - uses: actions/checkout@v4
@@ -31,33 +27,101 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
 
-      - run: npm ci
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtsvg'
+          cache: true
 
-      - run: node build.js ${{ matrix.target }}
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
 
-      - name: Ad-hoc code sign (macOS)
+      - name: Install and verify worker
+        shell: bash
+        run: |
+          npm ci
+          npm run typecheck:worker
+          npm run build:worker
+          npm run test:worker
+
+      - name: Bundle Chromium
+        shell: bash
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+        run: npx playwright install chromium
+
+      - name: Install Chromium host dependencies
+        if: runner.os == 'Linux'
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+        run: npx playwright install-deps chromium
+
+      - name: Stage Node runtime (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: mkdir -p .runtime && cp "$(command -v node)" .runtime/node && chmod +x .runtime/node
+
+      - name: Stage Node runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force .runtime; Copy-Item (Get-Command node).Source .runtime/node.exe
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCYBERSNAPPER_BUILD_TESTS=ON
+          cmake --build build/native --parallel
+          ctest --test-dir build/native --output-on-failure
+
+      - name: Keep production worker dependencies
+        run: npm prune --omit=dev
+
+      - name: Install application
+        shell: bash
+        run: cmake --install build/native --prefix stage
+
+      - name: Deploy Qt (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          windeployqt --release --no-translations stage/bin/CyberSnapper.exe
+          windeployqt --release --no-translations stage/bin/cybersnapper-agent.exe
+          Compress-Archive -Path stage/* -DestinationPath ${{ matrix.artifact }}.zip
+
+      - name: Deploy Qt and sign (macOS)
         if: runner.os == 'macOS'
-        run: codesign --sign - dist/${{ matrix.asset }}
+        shell: bash
+        run: |
+          macdeployqt stage/CyberSnapper.app
+          codesign --force --deep --sign - stage/CyberSnapper.app
+          ditto -c -k --sequesterRsrc --keepParent stage/CyberSnapper.app ${{ matrix.artifact }}.zip
+
+      - name: Deploy Qt (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          curl -L -o linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+          chmod +x linuxdeployqt.AppImage
+          ./linuxdeployqt.AppImage --appimage-extract-and-run stage/bin/CyberSnapper -bundle-non-qt-libs -unsupported-allow-new-glibc
+          tar -C stage -czf ${{ matrix.artifact }}.tar.gz .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.*
 
-  release:
-    needs: build
+  publish:
+    needs: package
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: _artifacts
-
-      - name: List artifacts
-        run: ls -R _artifacts/
-
+          path: artifacts
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: _artifacts/*/*
+          files: artifacts/*

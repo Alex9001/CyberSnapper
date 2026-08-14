@@ -1,6 +1,9 @@
 node_modules/
 screenshots/
 dist/
+build/
+.runtime/
+.playwright-browsers/
 .opencode/
 .cybersnapper.pid
 .cybersnapper.url

@@ -1,23 +1,11 @@
 {
   "name": "cybersnapper",
-  "version": "1.0.0",
-  "description": "Full-page screenshots at Desktop, Tablet, and Mobile viewports — CLI and Web UI, powered by Playwright",
-  "main": "capture.js",
-  "bin": {
-    "cybersnapper": "./capture.js"
-  },
+  "version": "2.0.0",
+  "description": "Native cross-platform website capture and visual regression, powered by Qt and Playwright",
   "scripts": {
-    "start": "node src/index.js",
-    "test": "node test/browser.test.js",
-    "build": "node build.js",
-    "pkg": "npx @yao-pkg/pkg src/index.js --targets node22-linux-x64 --output dist/CyberSnapper"
-  },
-  "pkg": {
-    "assets": [
-      "node_modules/playwright-core/browsers.json",
-      "ui/**/*",
-      "config.json"
-    ]
+    "build:worker": "node worker/build.mjs",
+    "typecheck:worker": "tsc -p worker/tsconfig.json --noEmit",
+    "test:worker": "node --test worker/test/*.test.cjs"
   },
   "keywords": [
     "screenshot",
@@ -43,10 +31,11 @@
   "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
     "playwright": "^1.61.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.21.0",
-    "esbuild": "^0.25.12"
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.0"
   }
 }

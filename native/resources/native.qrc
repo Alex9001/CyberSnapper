@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/cybersnapper">
+    <file alias="logo.png">../../assets/logo.png</file>
+  </qresource>
+</RCC>
