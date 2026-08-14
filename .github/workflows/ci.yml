@@ -28,9 +28,17 @@ jobs:
       - name: Worker checks
         shell: bash
         run: npm ci && npm run typecheck:worker && npm run build:worker && npm run test:worker
-      - name: Native checks
+      - name: Native checks (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCYBERSNAPPER_BUILD_TESTS=ON
           cmake --build build/native --parallel
           ctest --test-dir build/native --output-on-failure
+      - name: Native checks (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64 -DCYBERSNAPPER_BUILD_TESTS=ON
+          cmake --build build/native --config Release --parallel
+          ctest --test-dir build/native -C Release --output-on-failure
