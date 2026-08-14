@@ -49,6 +49,10 @@ private:
   QCheckBox *m_blockPopups = nullptr;
   QLineEdit *m_waitSelector = nullptr;
   QLineEdit *m_hideSelectors = nullptr;
+  QCheckBox *m_comparisonEnabled = nullptr;
+  QDoubleSpinBox *m_pixelThreshold = nullptr;
+  QDoubleSpinBox *m_mismatchThreshold = nullptr;
+  QLineEdit *m_comparisonIgnoreSelectors = nullptr;
   QTableWidget *m_viewports = nullptr;
   QTreeWidget *m_activeJobs = nullptr;
   QTableWidget *m_history = nullptr;
@@ -66,6 +70,8 @@ private:
   QWidget *buildComparePage();
   QWidget *buildSchedulesPage();
   QWidget *buildSettingsPage();
+  QWidget *buildHelpPage();
+  void showAbout();
   void rpcCall(const QString &method, const QJsonObject &params,
                std::function<void(const QJsonObject &)> success = {});
   void refreshAll();
@@ -82,6 +88,7 @@ private:
   QString selectedScheduleId() const;
   void showJobDetails();
   void openSelectedArtifact();
+  void setSelectedArtifactAsBaseline();
   void createSchedule();
 };
 

@@ -214,7 +214,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       await sleep(job.profile.scrollDelay);
     }
     await hideElements(page, [...job.profile.hideSelectors,
-      ...job.profile.comparisonIgnoreSelectors,
+      ...(job.profile.comparisonEnabled ? job.profile.comparisonIgnoreSelectors : []),
       ...(job.profile.blockPopups ? popupSelectors : [])]);
     await sleep(job.profile.finalDelay);
     let png = formats.some((format) => format !== 'pdf') ? await screenshotPng(page, job, viewport) : undefined;

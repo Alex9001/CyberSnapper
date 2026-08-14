@@ -62,6 +62,36 @@ int main(int argc, char **argv) {
       left: 8px;
       padding: 0 4px;
     }
+    QToolBar#mainNavigation {
+      spacing: 2px;
+      padding: 4px;
+      border-bottom: 1px solid palette(mid);
+    }
+    QToolBar#mainNavigation QToolButton {
+      padding: 6px 8px;
+      margin: 1px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+    }
+    QToolBar#mainNavigation QToolButton:hover {
+      background-color: palette(midlight);
+      border-color: palette(highlight);
+    }
+    QToolBar#mainNavigation QToolButton:checked {
+      background-color: palette(highlight);
+      color: palette(highlighted-text);
+      font-weight: 600;
+    }
+    QLabel#helperText {
+      background-color: palette(base);
+      color: palette(text);
+      border-left: 3px solid palette(highlight);
+      padding: 5px 7px;
+    }
+    QLabel#pageTitle {
+      font-size: 20px;
+      font-weight: 700;
+    }
   )");
 
   QString error;

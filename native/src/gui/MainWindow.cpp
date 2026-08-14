@@ -5,8 +5,11 @@
 
 #include <QAbstractItemView>
 #include <QAction>
+#include <QActionGroup>
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
@@ -20,17 +23,20 @@
 #include <QGridLayout>
 #include <QInputDialog>
 #include <QJsonDocument>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTextBrowser>
 #include <QTextEdit>
 #include <QTimer>
 #include <QTimeZone>
@@ -74,6 +80,23 @@ QTableWidgetItem *item(const QString &text, const QString &id = {}) {
   return result;
 }
 
+QLabel *helperText(const QString &text) {
+  auto *label = new QLabel(text);
+  label->setObjectName("helperText");
+  label->setWordWrap(true);
+  return label;
+}
+
+void explain(QWidget *widget, const QString &text) {
+  widget->setToolTip(text);
+  widget->setWhatsThis(text);
+  widget->setAccessibleDescription(text);
+}
+
+void explainHeader(QTableWidget *table, int column, const QString &text) {
+  if (auto *header = table->horizontalHeaderItem(column)) header->setToolTip(text);
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), m_rpc(this) {
@@ -110,15 +133,29 @@ void MainWindow::buildUi() {
   resize(1180, 780);
   setMinimumSize(900, 620);
 
-  auto *toolbar = addToolBar("Project");
+  auto *toolbar = addToolBar("Main navigation");
+  toolbar->setObjectName("mainNavigation");
   toolbar->setMovable(false);
+  toolbar->setFloatable(false);
+  toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
   toolbar->addWidget(new QLabel("Project: "));
   m_projectCombo = new QComboBox;
-  m_projectCombo->setMinimumWidth(250);
+  m_projectCombo->setMinimumWidth(190);
+  m_projectCombo->setMaximumWidth(260);
+  explain(m_projectCombo, "The active project owns capture profiles, history, schedules, baselines, and output files.");
   toolbar->addWidget(m_projectCombo);
-  QAction *openProject = toolbar->addAction("Open…");
-  QAction *newProject = toolbar->addAction("New…");
+  QAction *newProject = toolbar->addAction("New");
+  newProject->setShortcut(QKeySequence::New);
+  newProject->setToolTip("Create a new portable CyberSnapper project folder");
+  newProject->setStatusTip(newProject->toolTip());
+  QAction *openProject = toolbar->addAction("Open");
+  openProject->setShortcut(QKeySequence::Open);
+  openProject->setToolTip("Open an existing CyberSnapper project folder");
+  openProject->setStatusTip(openProject->toolTip());
   QAction *refresh = toolbar->addAction("Refresh");
+  refresh->setShortcut(QKeySequence::Refresh);
+  refresh->setToolTip("Reload projects, jobs, schedules, and runtime status");
+  refresh->setStatusTip(refresh->toolTip());
   m_connectionStatus = new QLabel("Starting…");
   statusBar()->addPermanentWidget(m_connectionStatus);
 
@@ -129,7 +166,45 @@ void MainWindow::buildUi() {
   tabs->addTab(buildComparePage(), "Compare");
   tabs->addTab(buildSchedulesPage(), "Schedules");
   tabs->addTab(buildSettingsPage(), "Settings");
+  tabs->addTab(buildHelpPage(), "Help");
+  if (auto *tabBar = tabs->findChild<QTabBar *>()) tabBar->hide();
   setCentralWidget(tabs);
+
+  toolbar->addSeparator();
+  auto *navigation = new QActionGroup(this);
+  navigation->setExclusive(true);
+  QList<QAction *> pageActions;
+  const QList<QPair<QString, QString>> pages{
+      {"Capture", "Configure and start website captures"},
+      {"History", "Review capture jobs and open their artifacts"},
+      {"Compare", "Review visual differences and manage baselines"},
+      {"Schedules", "Create and manage recurring captures"},
+      {"Settings", "Configure browsers, runtime capacity, and the local API"},
+      {"Help", "Explain CyberSnapper concepts and controls"},
+  };
+  for (int index = 0; index < pages.size(); ++index) {
+    auto *action = new QAction(pages.at(index).first, navigation);
+    action->setCheckable(true);
+    action->setToolTip(pages.at(index).second);
+    action->setStatusTip(action->toolTip());
+    action->setShortcut(index < 5
+                            ? QKeySequence(QStringLiteral("Ctrl+%1").arg(index + 1))
+                            : QKeySequence::HelpContents);
+    toolbar->addAction(action);
+    connect(action, &QAction::triggered, tabs, [tabs, index] { tabs->setCurrentIndex(index); });
+    pageActions.append(action);
+  }
+  pageActions.first()->setChecked(true);
+  connect(tabs, &QTabWidget::currentChanged, this, [pageActions](int index) {
+    if (index >= 0 && index < pageActions.size()) pageActions.at(index)->setChecked(true);
+  });
+  auto *spacer = new QWidget;
+  spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  toolbar->addWidget(spacer);
+  QAction *about = toolbar->addAction("About");
+  about->setToolTip("Version, architecture, and license information");
+  about->setStatusTip(about->toolTip());
+  connect(about, &QAction::triggered, this, &MainWindow::showAbout);
 
   connect(refresh, &QAction::triggered, this, &MainWindow::refreshAll);
   connect(openProject, &QAction::triggered, this, [this] {
@@ -174,31 +249,57 @@ QWidget *MainWindow::buildCapturePage() {
   auto *targetLayout = new QGridLayout(targetGroup);
   targetLayout->setColumnStretch(1, 1);
   m_profileCombo = new QComboBox;
-  targetLayout->addWidget(new QLabel("Profile"), 0, 0);
+  explain(m_profileCombo, "A profile is a reusable set of viewport, browser, format, and page-preparation options. Changes below are not saved until you save a profile.");
+  auto *profileLabel = new QLabel("Profile");
+  profileLabel->setBuddy(m_profileCombo);
+  explain(profileLabel, m_profileCombo->toolTip());
+  targetLayout->addWidget(profileLabel, 0, 0);
   targetLayout->addWidget(m_profileCombo, 0, 1, 1, 3);
   m_urls = new QTextEdit;
   m_urls->setPlaceholderText("https://example.com\nhttps://example.org/about");
   m_urls->setAcceptRichText(false);
   m_urls->setMinimumHeight(90);
-  targetLayout->addWidget(new QLabel("URLs"), 1, 0, Qt::AlignTop);
+  explain(m_urls, "Enter one public HTTP or HTTPS address per line. Each URL is captured with every enabled viewport, browser, and format.");
+  auto *urlsLabel = new QLabel("URLs");
+  urlsLabel->setBuddy(m_urls);
+  explain(urlsLabel, m_urls->toolTip());
+  targetLayout->addWidget(urlsLabel, 1, 0, Qt::AlignTop);
   targetLayout->addWidget(m_urls, 1, 1, 1, 3);
   m_captureMode = new QComboBox;
   m_captureMode->addItem("Full page", "fullPage");
   m_captureMode->addItem("Viewport", "viewport");
   m_captureMode->addItem("Element", "element");
+  m_captureMode->setItemData(0, "Automatically scroll, then capture all scrollable content.", Qt::ToolTipRole);
+  m_captureMode->setItemData(1, "Capture only the configured viewport rectangle.", Qt::ToolTipRole);
+  m_captureMode->setItemData(2, "Capture the first visible element matching the CSS selector.", Qt::ToolTipRole);
+  explain(m_captureMode, "Full page captures the document, Viewport captures the visible rectangle, and Element captures one CSS-selected element.");
   m_elementSelector = new QLineEdit;
   m_elementSelector->setPlaceholderText("CSS selector, for example main");
   m_elementSelector->setEnabled(false);
-  targetLayout->addWidget(new QLabel("Mode"), 2, 0);
+  explain(m_elementSelector, "CSS selector for Element mode, such as main, #content, or .product-card.");
+  auto *modeLabel = new QLabel("Mode");
+  modeLabel->setBuddy(m_captureMode);
+  explain(modeLabel, m_captureMode->toolTip());
+  auto *elementLabel = new QLabel("Element");
+  elementLabel->setBuddy(m_elementSelector);
+  explain(elementLabel, m_elementSelector->toolTip());
+  targetLayout->addWidget(modeLabel, 2, 0);
   targetLayout->addWidget(m_captureMode, 2, 1);
-  targetLayout->addWidget(new QLabel("Element"), 2, 2);
+  targetLayout->addWidget(elementLabel, 2, 2);
   targetLayout->addWidget(m_elementSelector, 2, 3);
   leftLayout->addWidget(targetGroup, 1);
 
   auto *viewportGroup = new QGroupBox("Viewports");
   auto *viewportLayout = new QVBoxLayout(viewportGroup);
   m_viewports = new QTableWidget(0, 6);
-  m_viewports->setHorizontalHeaderLabels({"Use", "Name", "Width", "Height", "Scale", "Mobile"});
+  m_viewports->setHorizontalHeaderLabels({"Use", "Name", "Width", "Height", "Pixel ratio", "Mobile mode"});
+  explain(m_viewports, "Each enabled row creates a browser viewport. Hover a column heading for its exact meaning.");
+  explainHeader(m_viewports, 0, "Include this viewport in the capture job.");
+  explainHeader(m_viewports, 1, "A descriptive name used in filenames, history, and comparisons.");
+  explainHeader(m_viewports, 2, "Viewport width in CSS pixels. This controls responsive page layout.");
+  explainHeader(m_viewports, 3, "Viewport height in CSS pixels. This controls the initially visible page area.");
+  explainHeader(m_viewports, 4, "Device pixels per CSS pixel. Use 1× for standard output or 2× for high-density/Retina output.");
+  explainHeader(m_viewports, 5, "Enable browser mobile viewport behavior and touch input. This does not imitate a specific phone or change the user agent.");
   m_viewports->setMinimumHeight(145);
   m_viewports->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_viewports->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -207,9 +308,12 @@ QWidget *MainWindow::buildCapturePage() {
   }
   m_viewports->verticalHeader()->setVisible(false);
   viewportLayout->addWidget(m_viewports);
+  viewportLayout->addWidget(helperText("Width and height are CSS pixels. Pixel ratio controls output density—at 2×, a viewport capture of a 375 × 812 layout is 750 × 1624 pixels. Mobile mode enables mobile viewport behavior and touch input."));
   auto *viewportActions = new QHBoxLayout;
-  auto *addViewport = new QPushButton("Add");
-  auto *removeViewport = new QPushButton("Remove");
+  auto *addViewport = new QPushButton("Add Viewport…");
+  auto *removeViewport = new QPushButton("Remove Selected");
+  explain(addViewport, "Add a custom viewport row.");
+  explain(removeViewport, "Remove the selected viewport row. At least one row is retained.");
   viewportActions->addWidget(addViewport);
   viewportActions->addWidget(removeViewport);
   viewportActions->addStretch();
@@ -229,6 +333,13 @@ QWidget *MainWindow::buildCapturePage() {
   m_webp = new QCheckBox("WebP");
   m_avif = new QCheckBox("AVIF");
   m_pdf = new QCheckBox("PDF");
+  explain(m_chromium, "Capture using the Chromium browser engine.");
+  explain(m_firefox, "Capture using the Firefox browser engine. Install it from Settings first.");
+  explain(m_webkit, "Capture using the WebKit browser engine. Install it from Settings first.");
+  explain(m_png, "Lossless raster image; best for visual comparisons.");
+  explain(m_webp, "Smaller modern raster image with profile-controlled quality.");
+  explain(m_avif, "Highly compressed modern raster image with profile-controlled quality.");
+  explain(m_pdf, "Printable PDF output. PDF capture is available only with Chromium.");
   outputLayout->addWidget(new QLabel("Browsers"), 0, 0);
   outputLayout->addWidget(m_chromium, 0, 1);
   outputLayout->addWidget(m_firefox, 0, 2);
@@ -250,21 +361,52 @@ QWidget *MainWindow::buildCapturePage() {
   m_blockPopups = new QCheckBox("Block common overlays");
   m_waitSelector = new QLineEdit; m_waitSelector->setPlaceholderText("Optional CSS selector");
   m_hideSelectors = new QLineEdit; m_hideSelectors->setPlaceholderText("Comma-separated CSS selectors");
-  timing->addWidget(new QLabel("Initial"), 0, 0);
-  timing->addWidget(m_initialDelay, 0, 1);
-  timing->addWidget(new QLabel("Scroll"), 0, 2);
-  timing->addWidget(m_scrollDelay, 0, 3);
-  timing->addWidget(new QLabel("Final"), 0, 4);
-  timing->addWidget(m_finalDelay, 0, 5);
-  timing->addWidget(new QLabel("Parallel"), 1, 0);
-  timing->addWidget(m_concurrency, 1, 1);
-  timing->addWidget(m_blockPopups, 1, 2, 1, 4);
-  timing->addWidget(new QLabel("Wait for"), 2, 0);
-  timing->addWidget(m_waitSelector, 2, 1, 1, 5);
-  timing->addWidget(new QLabel("Hide"), 3, 0);
-  timing->addWidget(m_hideSelectors, 3, 1, 1, 5);
+  explain(m_initialDelay, "Seconds to let the page settle immediately after it loads.");
+  explain(m_scrollDelay, "Seconds to let lazy-loaded content settle after automatic full-page scrolling.");
+  explain(m_finalDelay, "Seconds to wait after elements are hidden and immediately before capture.");
+  explain(m_concurrency, "Browser pages processed in parallel inside this job. Higher values use more CPU and memory.");
+  explain(m_blockPopups, "Hide common cookie banners, newsletter dialogs, chat widgets, and modal overlays before capture.");
+  explain(m_waitSelector, "Optional CSS selector that must become visible before page preparation continues.");
+  explain(m_hideSelectors, "Comma-separated CSS selectors to hide before capture, such as .timestamp, .ad, #chat-widget.");
+  timing->addWidget(helperText("Order: load → settle → optional full-page scroll → settle → hide elements → settle → capture."), 0, 0, 1, 6);
+  timing->addWidget(new QLabel("After load"), 1, 0);
+  timing->addWidget(m_initialDelay, 1, 1);
+  timing->addWidget(new QLabel("After scroll"), 1, 2);
+  timing->addWidget(m_scrollDelay, 1, 3);
+  timing->addWidget(new QLabel("Before capture"), 1, 4);
+  timing->addWidget(m_finalDelay, 1, 5);
+  timing->addWidget(new QLabel("Parallel pages"), 2, 0);
+  timing->addWidget(m_concurrency, 2, 1);
+  timing->addWidget(m_blockPopups, 2, 2, 1, 4);
+  timing->addWidget(new QLabel("Wait for element"), 3, 0);
+  timing->addWidget(m_waitSelector, 3, 1, 1, 5);
+  timing->addWidget(new QLabel("Hide elements"), 4, 0);
+  timing->addWidget(m_hideSelectors, 4, 1, 1, 5);
   for (int column : {1, 3, 5}) timing->setColumnStretch(column, 1);
   rightLayout->addWidget(timingGroup);
+
+  auto *comparisonGroup = new QGroupBox("Visual comparison");
+  auto *comparisonLayout = new QGridLayout(comparisonGroup);
+  m_comparisonEnabled = new QCheckBox("Compare captures with a saved baseline");
+  m_pixelThreshold = new QDoubleSpinBox;
+  m_pixelThreshold->setRange(0, 100); m_pixelThreshold->setDecimals(1); m_pixelThreshold->setValue(10); m_pixelThreshold->setSuffix(" %");
+  m_mismatchThreshold = new QDoubleSpinBox;
+  m_mismatchThreshold->setRange(0, 100); m_mismatchThreshold->setDecimals(3); m_mismatchThreshold->setValue(0.1); m_mismatchThreshold->setSuffix(" %");
+  m_comparisonIgnoreSelectors = new QLineEdit;
+  m_comparisonIgnoreSelectors->setPlaceholderText("Optional comma-separated CSS selectors");
+  explain(m_comparisonEnabled, "Compare future non-PDF captures against a baseline with the same URL, browser, viewport, mode, and format.");
+  explain(m_pixelThreshold, "How different a pixel must be before it counts as changed. Higher values ignore smaller color differences.");
+  explain(m_mismatchThreshold, "Maximum percentage of changed pixels allowed before the comparison is marked as different.");
+  explain(m_comparisonIgnoreSelectors, "When comparison is enabled, these elements are hidden before capture to stabilize dynamic regions such as timestamps or rotating content.");
+  comparisonLayout->addWidget(m_comparisonEnabled, 0, 0, 1, 4);
+  comparisonLayout->addWidget(new QLabel("Pixel sensitivity"), 1, 0);
+  comparisonLayout->addWidget(m_pixelThreshold, 1, 1);
+  comparisonLayout->addWidget(new QLabel("Allowed difference"), 1, 2);
+  comparisonLayout->addWidget(m_mismatchThreshold, 1, 3);
+  comparisonLayout->addWidget(new QLabel("Hide dynamic elements"), 2, 0);
+  comparisonLayout->addWidget(m_comparisonIgnoreSelectors, 2, 1, 1, 3);
+  comparisonLayout->setColumnStretch(3, 1);
+  rightLayout->addWidget(comparisonGroup);
 
   auto *actions = new QHBoxLayout;
   auto *capture = new QPushButton("Start Capture");
@@ -272,6 +414,8 @@ QWidget *MainWindow::buildCapturePage() {
   capture->setObjectName("primaryAction");
   capture->setMinimumHeight(38);
   auto *saveProfile = new QPushButton("Save as Profile…");
+  explain(capture, "Queue one capture for every URL × enabled viewport × browser × format combination.");
+  explain(saveProfile, "Create a new reusable profile from the current options.");
   actions->addWidget(capture);
   actions->addWidget(saveProfile);
   actions->addStretch();
@@ -308,16 +452,25 @@ QWidget *MainWindow::buildCapturePage() {
 
   connect(m_captureMode, &QComboBox::currentIndexChanged, this,
           [this] { m_elementSelector->setEnabled(m_captureMode->currentData().toString() == "element"); });
+  const auto updateComparisonControls = [this] {
+    const bool enabled = m_comparisonEnabled->isChecked();
+    m_pixelThreshold->setEnabled(enabled);
+    m_mismatchThreshold->setEnabled(enabled);
+    m_comparisonIgnoreSelectors->setEnabled(enabled);
+  };
+  connect(m_comparisonEnabled, &QCheckBox::toggled, this, updateComparisonControls);
+  updateComparisonControls();
   connect(m_profileCombo, &QComboBox::currentIndexChanged, this, &MainWindow::loadSelectedProfile);
   connect(addViewport, &QPushButton::clicked, this, [this] {
     const int row = m_viewports->rowCount();
     m_viewports->insertRow(row);
-    auto *enabled = item(QString()); enabled->setCheckState(Qt::Checked);
+    auto *enabled = item(QString()); enabled->setCheckState(Qt::Checked); enabled->setToolTip("Include this viewport in captures.");
     auto *name = item("Custom", newId());
-    auto *mobile = item(QString()); mobile->setCheckState(Qt::Unchecked);
+    auto *mobile = item(QString()); mobile->setCheckState(Qt::Unchecked); mobile->setToolTip("Enable mobile viewport behavior and touch input.");
+    auto *pixelRatio = item("1"); pixelRatio->setToolTip("Device pixels per CSS pixel. Use 2 for high-density output.");
     m_viewports->setItem(row, 0, enabled); m_viewports->setItem(row, 1, name);
     m_viewports->setItem(row, 2, item("1440")); m_viewports->setItem(row, 3, item("900"));
-    m_viewports->setItem(row, 4, item("1")); m_viewports->setItem(row, 5, mobile);
+    m_viewports->setItem(row, 4, pixelRatio); m_viewports->setItem(row, 5, mobile);
   });
   connect(removeViewport, &QPushButton::clicked, this, [this] {
     const int row = m_viewports->currentRow();
@@ -347,7 +500,7 @@ QWidget *MainWindow::buildHistoryPage() {
   auto *layout = new QVBoxLayout(page);
   auto *splitter = new QSplitter(Qt::Vertical);
   m_history = new QTableWidget(0, 6);
-  m_history->setHorizontalHeaderLabels({"Created", "Status", "Source", "Completed", "Failed", "Job ID"});
+  m_history->setHorizontalHeaderLabels({"Created", "Status", "Source", "Files created", "File errors", "Job ID"});
   m_history->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_history->setSelectionMode(QAbstractItemView::SingleSelection);
   m_history->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -358,22 +511,31 @@ QWidget *MainWindow::buildHistoryPage() {
   m_artifacts->setSelectionMode(QAbstractItemView::SingleSelection);
   m_artifacts->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_artifacts->horizontalHeader()->setStretchLastSection(true);
-  splitter->addWidget(m_history);
-  splitter->addWidget(m_artifacts);
+  auto *jobsGroup = new QGroupBox("Capture jobs");
+  auto *jobsLayout = new QVBoxLayout(jobsGroup);
+  jobsLayout->addWidget(m_history);
+  auto *artifactsGroup = new QGroupBox("Files from the selected job");
+  auto *artifactsLayout = new QVBoxLayout(artifactsGroup);
+  artifactsLayout->addWidget(m_artifacts);
+  splitter->addWidget(jobsGroup);
+  splitter->addWidget(artifactsGroup);
   splitter->setStretchFactor(0, 2);
   splitter->setStretchFactor(1, 1);
   layout->addWidget(splitter);
   auto *buttons = new QHBoxLayout;
   auto *open = new QPushButton("Open Artifact");
+  auto *baseline = new QPushButton("Set as Baseline");
   auto *retry = new QPushButton("Retry Job");
   auto *cancel = new QPushButton("Cancel Job");
   auto *refresh = new QPushButton("Refresh");
-  for (auto *button : {open, retry, cancel, refresh}) buttons->addWidget(button);
+  explain(baseline, "Use the selected non-PDF file as the reference image for future visual comparisons.");
+  for (auto *button : {open, baseline, retry, cancel, refresh}) buttons->addWidget(button);
   buttons->addStretch();
   layout->addLayout(buttons);
   connect(m_history, &QTableWidget::itemSelectionChanged, this, &MainWindow::showJobDetails);
   connect(m_artifacts, &QTableWidget::cellDoubleClicked, this, [this] { openSelectedArtifact(); });
   connect(open, &QPushButton::clicked, this, &MainWindow::openSelectedArtifact);
+  connect(baseline, &QPushButton::clicked, this, &MainWindow::setSelectedArtifactAsBaseline);
   connect(refresh, &QPushButton::clicked, this, &MainWindow::refreshJobs);
   connect(retry, &QPushButton::clicked, this, [this] {
     const QString id = selectedJobId();
@@ -389,8 +551,7 @@ QWidget *MainWindow::buildHistoryPage() {
 QWidget *MainWindow::buildComparePage() {
   auto *page = new QWidget;
   auto *layout = new QVBoxLayout(page);
-  auto *intro = new QLabel("Comparisons are produced automatically when a profile has visual comparison enabled. "
-                           "Select a captured artifact in History and promote it as the baseline.");
+  auto *intro = new QLabel("This page shows comparisons for the job currently selected in History. To begin, select a non-PDF file in History and choose Set as Baseline. Future captures with visual comparison enabled are matched by URL, browser, viewport, mode, and format.");
   intro->setWordWrap(true);
   layout->addWidget(intro);
   m_comparisons = new QTableWidget(0, 5);
@@ -408,17 +569,10 @@ QWidget *MainWindow::buildComparePage() {
   m_comparisons->setColumnWidth(2, 240);
   m_comparisons->setColumnWidth(3, 150);
   layout->addWidget(m_comparisons, 1);
-  auto *promote = new QPushButton("Use Selected History Artifact as Baseline");
-  layout->addWidget(promote, 0, Qt::AlignLeft);
-  connect(promote, &QPushButton::clicked, this, [this] {
-    const QString artifactId = selectedArtifactId();
-    if (artifactId.isEmpty()) {
-      QMessageBox::information(this, "Choose an artifact", "Select an artifact on the History tab first.");
-      return;
-    }
-    rpcCall("baseline.set", {{"artifactId", artifactId}}, [this](const QJsonObject &) {
-      statusBar()->showMessage("Baseline updated", 4000);
-    });
+  auto *history = new QPushButton("Choose a Baseline in History");
+  layout->addWidget(history, 0, Qt::AlignLeft);
+  connect(history, &QPushButton::clicked, this, [this] {
+    if (auto *tabs = findChild<QTabWidget *>("mainTabs")) tabs->setCurrentIndex(1);
   });
   return page;
 }
@@ -426,6 +580,7 @@ QWidget *MainWindow::buildComparePage() {
 QWidget *MainWindow::buildSchedulesPage() {
   auto *page = new QWidget;
   auto *layout = new QVBoxLayout(page);
+  layout->addWidget(helperText("Schedules run a saved capture profile in the displayed local time zone. Run Now starts the selected schedule immediately without changing its next planned run."));
   m_schedules = new QTableWidget(0, 6);
   m_schedules->setHorizontalHeaderLabels({"Name", "Enabled", "Recurrence", "Next run", "Last status", "ID"});
   m_schedules->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -438,6 +593,9 @@ QWidget *MainWindow::buildSchedulesPage() {
   auto *run = new QPushButton("Run Now");
   auto *remove = new QPushButton("Remove");
   auto *refresh = new QPushButton("Refresh");
+  explain(add, "Create a recurring capture using the profile currently selected on Capture.");
+  explain(run, "Run the selected schedule immediately.");
+  explain(remove, "Permanently remove the selected schedule after confirmation.");
   for (auto *button : {add, run, remove, refresh}) buttons->addWidget(button);
   buttons->addStretch();
   layout->addLayout(buttons);
@@ -465,6 +623,9 @@ QWidget *MainWindow::buildSettingsPage() {
   m_apiEnabled = new QCheckBox("Enable localhost API");
   m_apiStatus = new QLabel("Checking…");
   auto *regenerate = new QPushButton("Generate New Token…");
+  explain(m_apiEnabled, "Allow automation tools on this computer to submit and inspect captures through an authenticated API. It never listens on the network.");
+  explain(regenerate, "Replace the current bearer token immediately. Existing integrations will stop authenticating.");
+  apiForm->addRow(helperText("Optional automation interface for tools on this computer. It binds only to 127.0.0.1 and requires a bearer token."));
   apiForm->addRow(QString(), m_apiEnabled);
   apiForm->addRow("Status", m_apiStatus);
   apiForm->addRow(QString(), regenerate);
@@ -475,17 +636,23 @@ QWidget *MainWindow::buildSettingsPage() {
   m_workerStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
   m_maximumJobs = new QSpinBox; m_maximumJobs->setRange(1, 2);
   auto *saveRuntime = new QPushButton("Save Runtime Settings");
+  explain(m_maximumJobs, "Separate capture jobs allowed to run simultaneously. Each profile’s Parallel pages setting controls concurrency inside one job.");
+  explain(saveRuntime, "Apply the simultaneous-job limit to the background capture service.");
   auto *browserButtons = new QWidget;
   auto *browserButtonsLayout = new QHBoxLayout(browserButtons);
   browserButtonsLayout->setContentsMargins(0, 0, 0, 0);
   auto *installChromium = new QPushButton("Install Chromium");
   auto *installFirefox = new QPushButton("Install Firefox");
   auto *installWebKit = new QPushButton("Install WebKit");
+  explain(installChromium, "Install or repair CyberSnapper’s managed Chromium browser engine.");
+  explain(installFirefox, "Install or repair CyberSnapper’s managed Firefox browser engine.");
+  explain(installWebKit, "Install or repair CyberSnapper’s managed WebKit browser engine.");
   for (auto *button : {installChromium, installFirefox, installWebKit}) browserButtonsLayout->addWidget(button);
   browserButtonsLayout->addStretch();
-  runtimeForm->addRow("Worker", m_workerStatus);
+  runtimeForm->addRow(helperText("The capture engine runs browser automation in the background. Browser installation state is available by hovering over Engine status."));
+  runtimeForm->addRow("Engine status", m_workerStatus);
   runtimeForm->addRow("Browser engines", browserButtons);
-  runtimeForm->addRow("Concurrent jobs", m_maximumJobs);
+  runtimeForm->addRow("Simultaneous jobs", m_maximumJobs);
   runtimeForm->addRow(QString(), saveRuntime);
   layout->addWidget(runtimeGroup);
   layout->addStretch();
@@ -521,6 +688,75 @@ QWidget *MainWindow::buildSettingsPage() {
   connect(installFirefox, &QPushButton::clicked, this, [install] { install("firefox"); });
   connect(installWebKit, &QPushButton::clicked, this, [install] { install("webkit"); });
   return scrollable(page);
+}
+
+QWidget *MainWindow::buildHelpPage() {
+  auto *page = new QWidget;
+  auto *layout = new QVBoxLayout(page);
+  layout->setContentsMargins(18, 14, 18, 14);
+  auto *title = new QLabel("CyberSnapper Help");
+  title->setObjectName("pageTitle");
+  layout->addWidget(title);
+  layout->addWidget(helperText("Most controls also have a tooltip—hover over a field or table heading for its exact behavior."));
+
+  auto *help = new QTextBrowser;
+  help->setOpenExternalLinks(true);
+  help->setHtml(QStringLiteral(R"HTML(
+    <h2>Quick start</h2>
+    <ol>
+      <li>Choose or create a <b>Project</b>. A project keeps profiles, history, schedules, baselines, and files together.</li>
+      <li>On <b>Capture</b>, enter one public HTTP or HTTPS URL per line.</li>
+      <li>Choose the viewports, browsers, formats, and capture mode you need.</li>
+      <li>Select <b>Start Capture</b>. Progress appears under Active jobs and finished files appear in History.</li>
+    </ol>
+
+    <h2>Navigation</h2>
+    <p>The single header contains project commands and every application section. Use Ctrl+1 through Ctrl+5 for Capture through Settings, or F1 for this Help page.</p>
+
+    <h2>Profiles</h2>
+    <p>A profile is a reusable set of capture options. Editing controls changes the next capture only. <b>Save as Profile</b> creates a new reusable profile from the current settings.</p>
+
+    <h2>Viewports</h2>
+    <table cellspacing="6">
+      <tr><td><b>Use</b></td><td>Includes that row in the capture.</td></tr>
+      <tr><td><b>Width / Height</b></td><td>The browser layout size in CSS pixels. These values trigger responsive breakpoints.</td></tr>
+      <tr><td><b>Pixel ratio</b></td><td>Device pixels per CSS pixel. At 2×, a viewport capture of a 375 × 812 layout produces a 750 × 1624 image without changing the page layout.</td></tr>
+      <tr><td><b>Mobile mode</b></td><td>Enables mobile viewport behavior and touch input. It does not imitate a particular phone or change the browser user agent.</td></tr>
+    </table>
+
+    <h2>Capture modes</h2>
+    <ul>
+      <li><b>Full page</b> automatically scrolls, waits for lazy content, then captures all scrollable content.</li>
+      <li><b>Viewport</b> captures only the configured viewport rectangle.</li>
+      <li><b>Element</b> captures the first visible element matching the CSS selector.</li>
+    </ul>
+
+    <h2>Page preparation</h2>
+    <p>The sequence is: load the page, wait After load, optionally auto-scroll, wait After scroll, hide requested elements and common overlays, wait Before capture, then capture. <b>Parallel pages</b> controls browser pages inside one job; Settings → Simultaneous jobs controls separate jobs.</p>
+
+    <h2>Visual comparison</h2>
+    <p>Select a non-PDF file in History and choose <b>Set as Baseline</b>. Enable comparison in a capture profile. Future captures are matched by URL, browser, viewport, mode, and format.</p>
+    <p><b>Pixel sensitivity</b> decides how large a color change must be before a pixel counts as changed. <b>Allowed difference</b> is the percentage of changed pixels permitted before the result is marked different. Dynamic-element selectors are hidden in comparison-enabled captures to stabilize timestamps, ads, and rotating content.</p>
+
+    <h2>History, schedules, and settings</h2>
+    <p><b>History</b> shows jobs above and files from the selected job below. <b>Schedules</b> runs saved profiles at recurring times. <b>Settings</b> installs browser engines, limits simultaneous jobs, and optionally enables the authenticated localhost API.</p>
+
+    <p><a href="https://github.com/Alex9001/CyberSnapper">CyberSnapper on GitHub</a></p>
+  )HTML"));
+  layout->addWidget(help, 1);
+  return page;
+}
+
+void MainWindow::showAbout() {
+  QMessageBox::about(
+      this, "About CyberSnapper",
+      QStringLiteral("<h2>CyberSnapper %1</h2>"
+                     "<p>Native cross-platform website capture and visual regression.</p>"
+                     "<p>Qt %2 interface · background capture agent · private Playwright worker</p>"
+                     "<p>Runs on macOS, Windows, and Linux.</p>"
+                     "<p><a href=\"https://github.com/Alex9001/CyberSnapper\">github.com/Alex9001/CyberSnapper</a></p>"
+                     "<p>ISC License</p>")
+          .arg(QCoreApplication::applicationVersion(), QString::fromLatin1(qVersion())));
 }
 
 void MainWindow::rpcCall(const QString &method, const QJsonObject &params,
@@ -632,9 +868,14 @@ void MainWindow::refreshSchedules() {
 
 void MainWindow::refreshSettings() {
   rpcCall("settings.get", {}, [this](const QJsonObject &result) {
-    m_workerStatus->setText(result.value("workerEntry").toString().isEmpty()
-                                ? "Worker is not built (run npm run build:worker)"
-                                : result.value("workerEntry").toString());
+    const QString workerEntry = result.value("workerEntry").toString();
+    m_workerStatus->setProperty("workerEntry", workerEntry);
+    m_workerStatus->setText(workerEntry.isEmpty()
+                                ? "Not ready — build the capture worker"
+                                : "Ready");
+    m_workerStatus->setToolTip(workerEntry.isEmpty()
+                                   ? "Run npm run build:worker from a source checkout."
+                                   : "Worker: " + workerEntry);
     m_maximumJobs->setValue(result.value("maximumActiveJobs").toInt(1));
   });
   rpcCall("api.status", {}, [this](const QJsonObject &result) {
@@ -651,7 +892,9 @@ void MainWindow::refreshSettings() {
     for (const auto &engine : {QString("chromium"), QString("firefox"), QString("webkit")}) {
       states.append(engine + ": " + (browsers.value(engine).toObject().value("installed").toBool() ? "installed" : "not installed"));
     }
-    m_workerStatus->setToolTip(states.join("\n"));
+    const QString workerEntry = m_workerStatus->property("workerEntry").toString();
+    const QString worker = workerEntry.isEmpty() ? QString() : "Worker: " + workerEntry + "\n\n";
+    m_workerStatus->setToolTip(worker + "Browser engines:\n" + states.join("\n"));
   });
 }
 
@@ -674,6 +917,14 @@ QJsonObject MainWindow::captureProfile() const {
   QStringList hidden;
   for (const auto &part : m_hideSelectors->text().split(',')) if (!part.trimmed().isEmpty()) hidden.append(part.trimmed());
   profile.insert("hideSelectors", stringArray(hidden));
+  profile.insert("comparisonEnabled", m_comparisonEnabled->isChecked());
+  profile.insert("pixelThreshold", m_pixelThreshold->value() / 100.0);
+  profile.insert("mismatchThreshold", m_mismatchThreshold->value() / 100.0);
+  QStringList comparisonIgnored;
+  for (const auto &part : m_comparisonIgnoreSelectors->text().split(',')) {
+    if (!part.trimmed().isEmpty()) comparisonIgnored.append(part.trimmed());
+  }
+  profile.insert("comparisonIgnoreSelectors", stringArray(comparisonIgnored));
   QJsonArray viewports;
   for (int row = 0; row < m_viewports->rowCount(); ++row) {
     const QString id = m_viewports->item(row, 1)->data(Qt::UserRole).toString();
@@ -714,17 +965,27 @@ void MainWindow::loadSelectedProfile() {
   QStringList hidden;
   for (const auto &value : profile.value("hideSelectors").toArray()) hidden.append(value.toString());
   m_hideSelectors->setText(hidden.join(", "));
+  m_comparisonEnabled->setChecked(profile.value("comparisonEnabled").toBool(false));
+  m_pixelThreshold->setValue(profile.value("pixelThreshold").toDouble(0.10) * 100.0);
+  m_mismatchThreshold->setValue(profile.value("mismatchThreshold").toDouble(0.001) * 100.0);
+  QStringList comparisonIgnored;
+  for (const auto &value : profile.value("comparisonIgnoreSelectors").toArray()) comparisonIgnored.append(value.toString());
+  m_comparisonIgnoreSelectors->setText(comparisonIgnored.join(", "));
   const QJsonArray viewports = profile.value("viewports").toArray();
   m_viewports->setRowCount(viewports.size());
   for (int row = 0; row < viewports.size(); ++row) {
     const QJsonObject viewport = viewports.at(row).toObject();
     auto *enabled = item(QString()); enabled->setCheckState(viewport.value("enabled").toBool(true) ? Qt::Checked : Qt::Unchecked);
+    enabled->setToolTip("Include this viewport in captures.");
     auto *name = item(viewport.value("name").toString(), viewport.value("id").toString());
     auto *mobile = item(QString()); mobile->setCheckState(viewport.value("mobile").toBool() ? Qt::Checked : Qt::Unchecked);
+    mobile->setToolTip("Enable mobile viewport behavior and touch input.");
+    auto *pixelRatio = item(QString::number(viewport.value("deviceScaleFactor").toDouble(1.0)));
+    pixelRatio->setToolTip("Device pixels per CSS pixel. Use 2 for high-density output.");
     m_viewports->setItem(row, 0, enabled); m_viewports->setItem(row, 1, name);
     m_viewports->setItem(row, 2, item(QString::number(viewport.value("width").toInt())));
     m_viewports->setItem(row, 3, item(QString::number(viewport.value("height").toInt())));
-    m_viewports->setItem(row, 4, item(QString::number(viewport.value("deviceScaleFactor").toDouble(1.0))));
+    m_viewports->setItem(row, 4, pixelRatio);
     m_viewports->setItem(row, 5, mobile);
   }
 }
@@ -820,6 +1081,17 @@ void MainWindow::openSelectedArtifact() {
       return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+  });
+}
+
+void MainWindow::setSelectedArtifactAsBaseline() {
+  const QString artifactId = selectedArtifactId();
+  if (artifactId.isEmpty()) {
+    QMessageBox::information(this, "Choose a file", "Select a non-PDF file from the selected job first.");
+    return;
+  }
+  rpcCall("baseline.set", {{"artifactId", artifactId}}, [this](const QJsonObject &) {
+    statusBar()->showMessage("Visual comparison baseline updated", 4000);
   });
 }
 
