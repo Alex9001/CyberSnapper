@@ -31,6 +31,7 @@ public:
   explicit MainWindow(QWidget *parent = nullptr);
   ~MainWindow() override;
   void connectToAgent();
+  bool prepareScreenshotScene(const QString &scene);
 
 private:
   RpcClient m_rpc;

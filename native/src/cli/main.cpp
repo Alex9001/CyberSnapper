@@ -30,6 +30,7 @@ void printJson(const QJsonValue &value) {
 
 bool ensureAgent(QString *error) {
   if (!blockingRpcCall(Paths::agentServerName(), "agent.ping", {}, 300, error).isEmpty()) return true;
+  if (qEnvironmentVariableIsSet("CYBERSNAPPER_NO_AUTOSTART")) return false;
   if (!QProcess::startDetached(Paths::agentExecutable(), {"--headless"})) {
     if (error) *error = "Could not launch " + Paths::agentExecutable();
     return false;

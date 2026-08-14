@@ -4,6 +4,9 @@
   "description": "Native cross-platform website capture and visual regression, powered by Qt and Playwright",
   "scripts": {
     "build:worker": "node worker/build.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "screenshots:docs": "node scripts/generate-doc-screenshots.mjs",
+    "test:site": "node scripts/build-site.mjs",
     "typecheck:worker": "tsc -p worker/tsconfig.json --noEmit",
     "test:worker": "node --test worker/test/*.test.cjs"
   },
@@ -27,7 +30,7 @@
     "type": "git",
     "url": "git+https://github.com/Alex9001/CyberSnapper.git"
   },
-  "homepage": "https://github.com/Alex9001/CyberSnapper",
+  "homepage": "https://alex9001.github.io/CyberSnapper/",
   "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
     "playwright": "^1.61.1",

@@ -16,6 +16,21 @@ ctest --test-dir build/native --output-on-failure
 
 `cpp-httplib` may be installed system-wide. If it is absent, CMake fetches the pinned v0.52.0 source.
 
+## Documentation screenshots and website
+
+The repository can seed a deterministic project, start an isolated agent, and capture the real Qt interface without live URLs or customer data. Build the native targets first, then run:
+
+```bash
+npm run screenshots:docs
+npm run build:site
+```
+
+The screenshot source files are written to `docs/images/`. The Pages build is staged and validated under `build/pages/`; all temporary configuration, database, socket, and preview state stays under `build/test-runtime/`.
+
+On Linux, the screenshot command uses Qt's offscreen platform automatically. If the host applies a local-socket sandbox, grant the command permission to create its isolated IPC socket while keeping its filesystem state inside the repository.
+
+GitHub Pages deploys `build/pages/` through `.github/workflows/pages.yml`. The site intentionally has no framework or remote runtime dependencies; only its release-download resolver calls the public GitHub Releases API.
+
 ## Install tree
 
 ```bash

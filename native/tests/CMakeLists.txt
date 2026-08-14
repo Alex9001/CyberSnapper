@@ -10,3 +10,6 @@ qt_add_executable(cybersnapper-gui-tests
 target_link_libraries(cybersnapper-gui-tests PRIVATE cybersnapper_core Qt6::Test Qt6::Widgets Qt6::Svg)
 add_test(NAME cybersnapper-gui-tests COMMAND cybersnapper-gui-tests)
 set_tests_properties(cybersnapper-gui-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+qt_add_executable(cybersnapper-doc-fixture DocFixture.cpp)
+target_link_libraries(cybersnapper-doc-fixture PRIVATE cybersnapper_core Qt6::Gui)

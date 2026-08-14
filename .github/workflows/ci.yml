@@ -13,8 +13,8 @@ jobs:
         os: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -27,7 +27,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
       - name: Worker checks
         shell: bash
-        run: npm ci && npm run typecheck:worker && npm run build:worker && npm run test:worker
+        run: npm ci && npm run typecheck:worker && npm run build:worker && npm run test:worker && npm run test:site
       - name: Native checks (Unix)
         if: runner.os != 'Windows'
         shell: bash
@@ -42,3 +42,8 @@ jobs:
           cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64 -DCYBERSNAPPER_BUILD_TESTS=ON
           cmake --build build/native --config Release --parallel
           ctest --test-dir build/native -C Release --output-on-failure
+      - name: Documentation screenshot smoke test
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: npm run screenshots:docs

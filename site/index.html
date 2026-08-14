@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="CyberSnapper is a native cross-platform website capture and visual regression studio for macOS, Windows, and Linux.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://alex9001.github.io/CyberSnapper/">
+  <meta property="og:title" content="CyberSnapper — Capture every viewport. Catch every change.">
+  <meta property="og:description" content="Repeatable multi-browser captures, visual baselines, schedules, CLI automation, and a native Qt interface.">
+  <meta property="og:image" content="https://alex9001.github.io/CyberSnapper/assets/social-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>CyberSnapper — Native website capture &amp; visual regression</title>
+  <link rel="canonical" href="https://alex9001.github.io/CyberSnapper/">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <nav class="nav shell" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="CyberSnapper home">
+        <img src="assets/logo-96.png" alt="" width="42" height="42">
+        <span>Cyber<span>Snapper</span></span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+        <span></span><span></span><span></span><span class="sr-only">Toggle navigation</span>
+      </button>
+      <div class="nav-links" id="nav-links">
+        <a href="#features">Features</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#download">Download</a>
+        <a class="nav-github" href="https://github.com/Alex9001/CyberSnapper">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" id="top">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> Native desktop visual QA</div>
+        <h1>Capture every viewport.<br><em>Catch every change.</em></h1>
+        <p class="lede">CyberSnapper turns repeatable website captures into a focused desktop workflow—multi-browser screenshots, visual baselines, scheduled runs, and automation without a browser-tab interface.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" id="hero-download" href="#download">Download CyberSnapper</a>
+          <a class="button button-secondary" href="https://github.com/Alex9001/CyberSnapper">View source <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-meta" aria-label="Supported platforms and license">
+          <span>macOS</span><i></i><span>Windows</span><i></i><span>Linux</span><i></i><span>Open source</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="app-window">
+          <div class="window-bar"><span></span><span></span><span></span><b>CyberSnapper / Compare</b></div>
+          <picture>
+            <source srcset="assets/screenshots/app-compare.webp" type="image/webp">
+            <img src="assets/screenshots/app-compare.png" alt="CyberSnapper Compare view showing baseline and current website captures side by side" width="1280" height="800">
+          </picture>
+        </div>
+        <div class="signal-card signal-top"><strong>2.437%</strong><span>visual change</span></div>
+        <div class="signal-card signal-bottom"><span class="pulse"></span><strong>Ready</strong><span>3 viewports · 2 browsers</span></div>
+      </div>
+    </section>
+
+    <section class="trust-strip" aria-label="Key capabilities">
+      <div class="shell trust-grid">
+        <div><strong>3</strong><span>browser engines</span></div>
+        <div><strong>4</strong><span>output formats</span></div>
+        <div><strong>∞</strong><span>custom viewports</span></div>
+        <div><strong>1</strong><span>portable project folder</span></div>
+      </div>
+    </section>
+
+    <section class="section shell" id="features">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span> Built for repeatability</div>
+        <h2>A serious capture studio,<br>not another screenshot button.</h2>
+        <p>Set the conditions once. Reuse them from the native UI, the CLI, a schedule, or the localhost API.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card feature-wide">
+          <div class="feature-icon">▦</div>
+          <div><h3>Every viewport, one run</h3><p>Capture desktop, tablet, mobile, and your own exact dimensions. Pixel ratio and mobile browser behavior are explicit—not hidden magic.</p></div>
+          <div class="viewport-stack" aria-hidden="true"><span>1440 × 900</span><span>768 × 1024</span><span>390 × 844 @2×</span></div>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">◐</div><h3>Visual baselines</h3><p>Promote trusted captures, compare every new run, set sensitivity and allowed-difference thresholds, then inspect side-by-side, overlay, or generated diff views.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">⌁</div><h3>Three real engines</h3><p>Run Chromium, Firefox, and WebKit through Playwright. Select only what matters for a quick check or fan out for broad coverage.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">◷</div><h3>Schedules that persist</h3><p>Once, interval, daily, weekly, and monthly recurrence with IANA time zones. The background agent owns the queue so the window does not need to stay open.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">⌘</div><h3>Automation included</h3><p>The native CLI and authenticated localhost API share the same projects, queue, artifacts, and history as the GUI. No parallel universe to reconcile.</p>
+        </article>
+        <article class="feature-card feature-wide feature-formats">
+          <div><div class="feature-icon">◇</div><h3>Output that fits the job</h3><p>Full page, viewport, or CSS element captures in PNG, WebP, AVIF, and Chromium PDF—with collision-safe naming and portable output folders.</p></div>
+          <div class="format-row" aria-label="Supported output formats"><span>PNG</span><span>WebP</span><span>AVIF</span><span>PDF</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section workflow-section" id="workflow">
+      <div class="shell">
+        <div class="section-heading centered">
+          <div class="eyebrow"><span></span> A workflow you can trust</div>
+          <h2>From URL to signal in three steps.</h2>
+        </div>
+        <ol class="workflow">
+          <li><b>01</b><div><h3>Define the capture</h3><p>Add URLs, choose browsers and viewports, then tune page settling, selectors, formats, and naming in a reusable profile.</p></div></li>
+          <li><b>02</b><div><h3>Run now or later</h3><p>Start from the UI, submit through the CLI or API, or attach the profile to a recurring schedule. Every request enters one durable queue.</p></div></li>
+          <li><b>03</b><div><h3>Review the evidence</h3><p>Browse history, open artifacts, establish baselines, and focus on visual changes above your project’s acceptable threshold.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section shell" id="screenshots">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span> The actual application</div>
+        <h2>Native, dense where it matters,<br>clear where it counts.</h2>
+        <p>These screenshots are generated automatically from a deterministic demo project during development.</p>
+      </div>
+      <div class="gallery">
+        <button class="shot shot-large" type="button" data-image="assets/screenshots/app-capture.png" data-alt="Capture workspace with targets, viewports, output, preparation, and visual comparison settings">
+          <picture><source srcset="assets/screenshots/app-capture.webp" type="image/webp"><img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace" width="1280" height="800"></picture><span><b>Capture</b> Configure the entire run without endless vertical scrolling.</span>
+        </button>
+        <button class="shot" type="button" data-image="assets/screenshots/app-history.png" data-alt="Capture history with job filters and selected artifacts">
+          <picture><source srcset="assets/screenshots/app-history.webp" type="image/webp"><img src="assets/screenshots/app-history.png" alt="CyberSnapper capture History" width="1280" height="800"></picture><span><b>History</b> Jobs and files stay connected.</span>
+        </button>
+        <button class="shot" type="button" data-image="assets/screenshots/app-compare.png" data-alt="Visual comparison with baseline and current captures side by side">
+          <picture><source srcset="assets/screenshots/app-compare.webp" type="image/webp"><img src="assets/screenshots/app-compare.png" alt="CyberSnapper visual Compare workspace" width="1280" height="800"></picture><span><b>Compare</b> Baseline, current, overlay, and diff.</span>
+        </button>
+        <button class="shot" type="button" data-image="assets/screenshots/app-schedules.png" data-alt="Schedules workspace with recurring capture entries">
+          <picture><source srcset="assets/screenshots/app-schedules.webp" type="image/webp"><img src="assets/screenshots/app-schedules.png" alt="CyberSnapper Schedules workspace" width="1280" height="800"></picture><span><b>Schedules</b> Repeatable monitoring in local time.</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="section shell architecture" id="architecture">
+      <div class="architecture-copy">
+        <div class="eyebrow"><span></span> Local-first architecture</div>
+        <h2>Your captures remain your files.</h2>
+        <p>Projects are ordinary portable folders backed by SQLite. The Qt interface talks to a local background agent; a private Playwright worker drives browsers only when a capture runs.</p>
+        <ul class="check-list">
+          <li>No hosted account or cloud dependency</li>
+          <li>API binds only to <code>127.0.0.1</code> and is off by default</li>
+          <li>Private-network navigation protections and pinned DNS resolution</li>
+          <li>Readable project manifest, captures, baselines, and diffs</li>
+        </ul>
+        <a class="text-link" href="https://github.com/Alex9001/CyberSnapper/blob/master/docs/ARCHITECTURE.md">Read the architecture guide <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="architecture-map" aria-label="CyberSnapper component architecture">
+        <div class="map-clients"><span>Qt GUI</span><span>CLI</span><span>REST v1</span></div>
+        <div class="map-line"><i></i><b>local RPC</b><i></i></div>
+        <div class="map-agent"><strong>CyberSnapper Agent</strong><span>queue · schedules · projects</span></div>
+        <div class="map-branches"><i></i><i></i></div>
+        <div class="map-targets"><span><b>SQLite</b>project state</span><span><b>Playwright</b>browser worker</span></div>
+      </div>
+    </section>
+
+    <section class="section download-section" id="download">
+      <div class="shell">
+        <div class="section-heading centered">
+          <div class="eyebrow"><span></span> Get CyberSnapper</div>
+          <h2>Start catching visual change.</h2>
+          <p id="release-status">Checking the latest CyberSnapper 2 release…</p>
+        </div>
+        <div class="download-grid">
+          <article><div class="platform-icon">⌘</div><h3>macOS</h3><p>Apple silicon and Intel</p><div class="platform-actions"><a class="button button-primary asset-link" data-asset="CyberSnapper-macos-arm64.zip" href="https://github.com/Alex9001/CyberSnapper/releases">Apple silicon</a><a class="minor-link asset-link" data-asset="CyberSnapper-macos-x64.zip" href="https://github.com/Alex9001/CyberSnapper/releases">Intel build</a></div></article>
+          <article><div class="platform-icon">⊞</div><h3>Windows</h3><p>Windows 10/11 · x64</p><div class="platform-actions"><a class="button button-primary asset-link" data-asset="CyberSnapper-windows-x64.zip" href="https://github.com/Alex9001/CyberSnapper/releases">Download .zip</a><span class="minor-note">Unsigned package</span></div></article>
+          <article><div class="platform-icon">◆</div><h3>Linux</h3><p>64-bit portable archive</p><div class="platform-actions"><a class="button button-primary asset-link" data-asset="CyberSnapper-linux-x64.tar.gz" href="https://github.com/Alex9001/CyberSnapper/releases">Download .tar.gz</a><span class="minor-note">Bundled Qt runtime</span></div></article>
+        </div>
+        <div class="source-callout"><div><strong>Prefer to build it yourself?</strong><span>CyberSnapper uses C++20, Qt 6.8+, CMake, Node.js, and Playwright.</span></div><a class="button button-secondary" href="https://github.com/Alex9001/CyberSnapper#build-from-source">Build from source</a></div>
+        <p class="signing-note">Release archives include SHA-256 checksums and build-provenance attestations. macOS builds are ad-hoc signed; Windows builds are currently unsigned.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-grid">
+      <div><a class="brand" href="#top"><img src="assets/logo-96.png" alt="" width="38" height="38"><span>Cyber<span>Snapper</span></span></a><p>Capture every viewport. Catch every change.</p></div>
+      <div><strong>Product</strong><a href="#features">Features</a><a href="#screenshots">Screenshots</a><a href="#download">Download</a></div>
+      <div><strong>Developers</strong><a href="https://github.com/Alex9001/CyberSnapper/blob/master/docs/API.md">REST API</a><a href="https://github.com/Alex9001/CyberSnapper/blob/master/docs/BUILDING.md">Build guide</a><a href="https://github.com/Alex9001/CyberSnapper">Source code</a></div>
+      <div><strong>Project</strong><a href="https://github.com/Alex9001/CyberSnapper/releases">Releases</a><a href="https://github.com/Alex9001/CyberSnapper/issues">Issues</a><a href="https://github.com/Alex9001/CyberSnapper/releases/tag/v1.0.0">Frozen 1.x archive</a></div>
+    </div>
+    <div class="shell footer-bottom"><span>CyberSnapper is open source under the ISC license.</span><span>Built with Qt + Playwright.</span></div>
+  </footer>
+
+  <dialog class="lightbox" aria-label="Screenshot preview">
+    <button type="button" class="lightbox-close" aria-label="Close screenshot">×</button>
+    <img src="assets/screenshots/app-capture.png" alt="">
+  </dialog>
+</body>
+</html>

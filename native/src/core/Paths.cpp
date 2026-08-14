@@ -68,6 +68,8 @@ QString defaultProjectRoot() {
 }
 
 QString agentServerName() {
+  const QString overridden = qEnvironmentVariable("CYBERSNAPPER_AGENT_SERVER");
+  if (!overridden.isEmpty()) return QDir::cleanPath(overridden);
   const QByteArray identity = (QDir::homePath() + QCoreApplication::organizationDomain()).toUtf8();
   const QString suffix = QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(12));
   const QString name = QStringLiteral("net.cyberbrand.CyberSnapper.Agent.v2.%1").arg(suffix);

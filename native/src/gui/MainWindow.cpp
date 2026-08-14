@@ -64,6 +64,7 @@ public:
   }
   void setImage(const QString &path) { m_path = path; m_image.load(path); update(); }
   void clearImage() { m_path.clear(); m_image = {}; update(); }
+  bool hasImage() const { return !m_image.isNull(); }
 
 protected:
   void paintEvent(QPaintEvent *) override {
@@ -209,6 +210,41 @@ MainWindow::~MainWindow() { saveUiState(); }
 
 void MainWindow::connectToAgent() {
   if (!m_rpc.isConnected()) m_rpc.connectToAgent(Paths::agentServerName());
+}
+
+bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
+  const QString scene = requestedScene.trimmed().toLower();
+  const QHash<QString, int> scenes{{"capture", 0}, {"history", 1}, {"compare", 2},
+                                  {"schedules", 3}, {"settings", 4}, {"help", 5}};
+  if (!scenes.contains(scene) || !m_tabs) return false;
+  m_tabs->setCurrentIndex(scenes.value(scene));
+  if (scene == "capture" && m_urls && m_urls->toPlainText().trimmed().isEmpty()) {
+    m_urls->setPlainText("https://example.com\nhttps://example.org/pricing");
+  }
+  if (!m_connectionStatus || m_connectionStatus->text() != "Ready" || m_projectId.isEmpty()) return false;
+  if (scene == "capture") {
+    return m_profileCombo && m_profileCombo->count() > 0 && m_viewports && m_viewports->rowCount() >= 3 &&
+           m_startCapture && m_startCapture->isEnabled();
+  }
+  if (scene == "history") {
+    if (!m_history || m_history->rowCount() == 0) return false;
+    if (m_history->currentRow() < 0) { m_history->selectRow(0); return false; }
+    if (!m_artifacts || m_artifacts->rowCount() == 0) return false;
+    if (m_artifacts->currentRow() < 0) m_artifacts->selectRow(0);
+    return true;
+  }
+  if (scene == "compare") {
+    if (!m_comparisons || m_comparisons->rowCount() == 0) return false;
+    if (m_comparisons->currentRow() < 0) { m_comparisons->selectRow(0); return false; }
+    return m_baselineImage && m_baselineImage->hasImage() && m_currentImage && m_currentImage->hasImage() &&
+           m_diffImage && m_diffImage->hasImage();
+  }
+  if (scene == "schedules") {
+    if (!m_schedules || m_schedules->rowCount() == 0) return false;
+    if (m_schedules->currentRow() < 0) m_schedules->selectRow(0);
+    return true;
+  }
+  return true;
 }
 
 void MainWindow::buildUi() {
