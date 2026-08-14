@@ -2,6 +2,11 @@ name: Native Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to receive rebuilt packages (leave blank for a rehearsal)
+        required: false
+        type: string
   release:
     types: [published]
 
@@ -89,9 +94,15 @@ jobs:
       - name: Keep production worker dependencies
         run: npm prune --omit=dev
 
-      - name: Install application
+      - name: Install application (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: cmake --install build/native --prefix stage --config Release
+
+      - name: Install application (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --install "$env:GITHUB_WORKSPACE/build/native" --prefix "$env:GITHUB_WORKSPACE/stage" --config Release
 
       - name: Deploy Qt (Windows)
         if: runner.os == 'Windows'
@@ -113,10 +124,37 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          mkdir -p build/release-qt-plugins/{platforms,sqldrivers,imageformats,iconengines,platforminputcontexts,xcbglintegrations,tls}
+          cp "$QT_ROOT_DIR/plugins/platforms/libqxcb.so" build/release-qt-plugins/platforms/
+          cp "$QT_ROOT_DIR/plugins/sqldrivers/libqsqlite.so" build/release-qt-plugins/sqldrivers/
+          cp "$QT_ROOT_DIR"/plugins/imageformats/libq{gif,ico,jpeg,svg}.so build/release-qt-plugins/imageformats/
+          cp "$QT_ROOT_DIR/plugins/iconengines/libqsvgicon.so" build/release-qt-plugins/iconengines/
+          cp "$QT_ROOT_DIR/plugins/platforminputcontexts/libcomposeplatforminputcontextplugin.so" build/release-qt-plugins/platforminputcontexts/
+          cp "$QT_ROOT_DIR"/plugins/xcbglintegrations/libqxcb-{egl,glx}-integration.so build/release-qt-plugins/xcbglintegrations/
+          cp "$QT_ROOT_DIR"/plugins/tls/libq{certonly,openssl}backend.so build/release-qt-plugins/tls/
           curl -L -o linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
           chmod +x linuxdeployqt.AppImage
-          ./linuxdeployqt.AppImage --appimage-extract-and-run stage/bin/CyberSnapper -bundle-non-qt-libs -unsupported-allow-new-glibc
+          export CYBERSNAPPER_REAL_QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export CYBERSNAPPER_RELEASE_PLUGINS="$PWD/build/release-qt-plugins"
+          ./linuxdeployqt.AppImage --appimage-extract-and-run stage/bin/CyberSnapper \
+            -qmake="$PWD/scripts/release-qmake-wrapper.sh" \
+            -executable=stage/bin/cybersnapper-agent \
+            -executable=stage/bin/cybersnapper-cli \
+            -bundle-non-qt-libs -unsupported-allow-new-glibc
           tar -C stage -czf ${{ matrix.artifact }}.tar.gz .
+
+      - name: Smoke test package (Linux)
+        if: runner.os == 'Linux'
+        run: stage/bin/cybersnapper-cli --version
+
+      - name: Smoke test package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: stage/bin/cybersnapper-cli.exe --version
+
+      - name: Smoke test package (macOS)
+        if: runner.os == 'macOS'
+        run: stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli --version
 
       - name: Attest package provenance
         uses: actions/attest-build-provenance@v2
@@ -130,7 +168,7 @@ jobs:
 
   publish:
     needs: package
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || inputs.release_tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -142,4 +180,5 @@ jobs:
         run: sha256sum artifacts/* > artifacts/SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name || inputs.release_tag }}
           files: artifacts/*
