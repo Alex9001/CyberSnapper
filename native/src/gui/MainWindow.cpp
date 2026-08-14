@@ -206,6 +206,10 @@ void MainWindow::buildUi() {
   about->setStatusTip(about->toolTip());
   connect(about, &QAction::triggered, this, &MainWindow::showAbout);
 
+  // Keep every primary destination visible instead of letting QToolBar move
+  // Help or About into its overflow menu on narrower platforms or font sizes.
+  setMinimumWidth(qMax(minimumWidth(), toolbar->sizeHint().width() + 12));
+
   connect(refresh, &QAction::triggered, this, &MainWindow::refreshAll);
   connect(openProject, &QAction::triggered, this, [this] {
     const QString folder = QFileDialog::getExistingDirectory(this, "Open CyberSnapper Project");
@@ -528,11 +532,19 @@ QWidget *MainWindow::buildHistoryPage() {
   auto *retry = new QPushButton("Retry Job");
   auto *cancel = new QPushButton("Cancel Job");
   auto *refresh = new QPushButton("Refresh");
-  explain(baseline, "Use the selected non-PDF file as the reference image for future visual comparisons.");
+  baseline->setEnabled(false);
+  explain(baseline, "Select a successful PNG, WebP, or AVIF file to use as the reference image for future visual comparisons.");
   for (auto *button : {open, baseline, retry, cancel, refresh}) buttons->addWidget(button);
   buttons->addStretch();
   layout->addLayout(buttons);
   connect(m_history, &QTableWidget::itemSelectionChanged, this, &MainWindow::showJobDetails);
+  connect(m_artifacts, &QTableWidget::itemSelectionChanged, this, [this, baseline] {
+    const int row = m_artifacts->currentRow();
+    const bool eligible = row >= 0 &&
+        m_artifacts->item(row, 2)->text().compare("pdf", Qt::CaseInsensitive) != 0 &&
+        m_artifacts->item(row, 4)->text() == "succeeded";
+    baseline->setEnabled(eligible);
+  });
   connect(m_artifacts, &QTableWidget::cellDoubleClicked, this, [this] { openSelectedArtifact(); });
   connect(open, &QPushButton::clicked, this, &MainWindow::openSelectedArtifact);
   connect(baseline, &QPushButton::clicked, this, &MainWindow::setSelectedArtifactAsBaseline);
@@ -1088,6 +1100,15 @@ void MainWindow::setSelectedArtifactAsBaseline() {
   const QString artifactId = selectedArtifactId();
   if (artifactId.isEmpty()) {
     QMessageBox::information(this, "Choose a file", "Select a non-PDF file from the selected job first.");
+    return;
+  }
+  const int row = m_artifacts->currentRow();
+  if (row < 0 || m_artifacts->item(row, 2)->text().compare("pdf", Qt::CaseInsensitive) == 0) {
+    QMessageBox::information(this, "Image required", "PDF files cannot be visual-comparison baselines. Select a successful PNG, WebP, or AVIF file.");
+    return;
+  }
+  if (m_artifacts->item(row, 4)->text() != "succeeded") {
+    QMessageBox::information(this, "Completed file required", "Only successfully created image files can be used as visual-comparison baselines.");
     return;
   }
   rpcCall("baseline.set", {{"artifactId", artifactId}}, [this](const QJsonObject &) {

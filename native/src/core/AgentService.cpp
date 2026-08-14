@@ -361,6 +361,12 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     store = projectForArtifact(artifactId);
     if (!store) return failure("not_found", "Artifact not found", 404);
     const QJsonObject artifact = store->artifact(artifactId);
+    if (artifact.value("status").toString() != "succeeded") {
+      return failure("invalid_baseline", "Only successfully created artifacts can be used as baselines", 409);
+    }
+    if (artifact.value("format").toString().compare("pdf", Qt::CaseInsensitive) == 0) {
+      return failure("invalid_baseline", "PDF artifacts cannot be used as visual comparison baselines", 409);
+    }
     const QString key = params.value("comparisonKey").toString(comparisonKey(artifact));
     const QString root = QFileInfo(store->root()).absoluteFilePath();
     const QString source = QFileInfo(QDir(root).filePath(artifact.value("relativePath").toString())).absoluteFilePath();
@@ -368,7 +374,9 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       return failure("baseline_failed", "The source artifact is missing or outside the project");
     }
     QString extension = artifact.value("format").toString("png").toLower();
-    if (!QStringList{"png", "webp", "avif", "pdf"}.contains(extension)) extension = "bin";
+    if (!QStringList{"png", "webp", "avif"}.contains(extension)) {
+      return failure("invalid_baseline", "Unsupported visual comparison baseline format", 409);
+    }
     const QString baselineName = QString::fromLatin1(QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha256)
                                                           .toHex().left(32)) + "." + extension;
     const QString destination = QDir(root).filePath("baselines/" + baselineName);
