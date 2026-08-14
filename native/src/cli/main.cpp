@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
   QCoreApplication application(argc, argv);
   application.setOrganizationName("CyberBrand");
   application.setOrganizationDomain("cyberbrand.net");
-  application.setApplicationName("cybersnapper");
+  application.setApplicationName("cybersnapper-cli");
   application.setApplicationVersion(CYBERSNAPPER_VERSION);
 
   QCommandLineParser parser;
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
   QString error;
   if (!ensureAgent(&error)) {
     if (json) printJson(QJsonObject{{"error", error}});
-    else QTextStream(stderr) << "cybersnapper: " << error << '\n';
+    else QTextStream(stderr) << "cybersnapper-cli: " << error << '\n';
     return 1;
   }
 
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
     QStringList urls = arguments;
     if (parser.isSet(fileOption)) urls.append(fileLines(parser.value(fileOption), &error));
     if (!error.isEmpty() || urls.isEmpty()) {
-      QTextStream(stderr) << "cybersnapper: " << (error.isEmpty() ? "provide at least one URL" : error) << '\n';
+      QTextStream(stderr) << "cybersnapper-cli: " << (error.isEmpty() ? "provide at least one URL" : error) << '\n';
       return 2;
     }
     QJsonObject params{{"projectId", parser.value(projectOption)}, {"profileId", parser.value(profileOption)},
@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
                                   {"limit", parser.value(limitOption).toInt()}}, &error);
   } else if (command == "job") {
     if (arguments.size() < 2) {
-      QTextStream(stderr) << "Usage: cybersnapper job <show|cancel|retry> <job-id>\n";
+      QTextStream(stderr) << "Usage: cybersnapper-cli job <show|cancel|retry> <job-id>\n";
       return 2;
     }
     const QString action = arguments.at(0);
@@ -183,24 +183,24 @@ int main(int argc, char **argv) {
   } else if (command == "projects") {
     if (arguments.isEmpty() || arguments.first() == "list") result = invoke("project.list", {}, &error);
     else if (arguments.first() == "open" && arguments.size() >= 2) result = invoke("project.open", {{"root", arguments.at(1)}}, &error);
-    else { QTextStream(stderr) << "Usage: cybersnapper projects [list|open <folder>]\n"; return 2; }
+    else { QTextStream(stderr) << "Usage: cybersnapper-cli projects [list|open <folder>]\n"; return 2; }
   } else if (command == "schedules") {
     if (arguments.isEmpty() || arguments.first() == "list") {
       result = invoke("schedule.list", {{"projectId", parser.value(projectOption)}}, &error);
     } else if (arguments.first() == "run" && arguments.size() >= 2) {
       result = invoke("schedule.runNow", {{"projectId", parser.value(projectOption)}, {"scheduleId", arguments.at(1)}}, &error);
-    } else { QTextStream(stderr) << "Usage: cybersnapper schedules [list|run <schedule-id>]\n"; return 2; }
+    } else { QTextStream(stderr) << "Usage: cybersnapper-cli schedules [list|run <schedule-id>]\n"; return 2; }
   } else if (command == "api") {
     const QString action = arguments.value(0, "status");
     if (action == "status") result = invoke("api.status", {}, &error);
     else if (action == "enable" || action == "disable") result = invoke("api.setEnabled", {{"enabled", action == "enable"}}, &error);
     else if (action == "token") result = invoke("api.regenerateToken", {}, &error);
-    else { QTextStream(stderr) << "Usage: cybersnapper api [status|enable|disable|token]\n"; return 2; }
+    else { QTextStream(stderr) << "Usage: cybersnapper-cli api [status|enable|disable|token]\n"; return 2; }
   } else if (command == "agent") {
     const QString action = arguments.value(0, "status");
     if (action == "status") result = invoke("agent.status", {}, &error);
     else if (action == "stop") result = invoke("agent.stop", {{"force", parser.isSet(forceOption)}}, &error);
-    else { QTextStream(stderr) << "Usage: cybersnapper agent [status|stop]\n"; return 2; }
+    else { QTextStream(stderr) << "Usage: cybersnapper-cli agent [status|stop]\n"; return 2; }
   } else {
     QTextStream(stderr) << "Unknown command: " << command << '\n';
     return 2;
@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
 
   if (!error.isEmpty()) {
     if (json) printJson(QJsonObject{{"error", error}});
-    else QTextStream(stderr) << "cybersnapper: " << error << '\n';
+    else QTextStream(stderr) << "cybersnapper-cli: " << error << '\n';
     return 1;
   }
   if (json) {

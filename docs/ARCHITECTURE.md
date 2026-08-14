@@ -8,7 +8,7 @@ CyberSnapper separates presentation, orchestration, and untrusted web execution:
 |---|---|---|
 | `CyberSnapper` | Native Qt Widgets UI | Window/UI preferences only |
 | `cybersnapper-agent` | Single project owner, queue, schedules, REST API, tray | QSettings and project SQLite databases |
-| `cybersnapper` | Native automation CLI | None; talks to the agent |
+| `cybersnapper-cli` | Native automation CLI | None; talks to the agent |
 | `worker/dist/main.cjs` | One capture job using Playwright and Sharp | Artifacts inside the selected project |
 
 GUI and CLI requests use versioned, length-prefixed JSON over `QLocalSocket`. The OS user is the IPC security boundary. The protocol rejects frames larger than 16 MiB.

@@ -57,17 +57,18 @@ target_link_libraries(cybersnapper-agent PRIVATE
   cybersnapper_core Qt6::Widgets Qt6::Svg
 )
 
-qt_add_executable(cybersnapper src/cli/main.cpp)
-target_link_libraries(cybersnapper PRIVATE cybersnapper_core Qt6::Core Qt6::Network)
+qt_add_executable(cybersnapper_cli src/cli/main.cpp)
+target_link_libraries(cybersnapper_cli PRIVATE cybersnapper_core Qt6::Core Qt6::Network)
+set_target_properties(cybersnapper_cli PROPERTIES OUTPUT_NAME cybersnapper-cli)
 
 if(APPLE)
   install(TARGETS CyberSnapper BUNDLE DESTINATION .)
-  install(TARGETS cybersnapper-agent cybersnapper
+  install(TARGETS cybersnapper-agent cybersnapper_cli
     RUNTIME DESTINATION CyberSnapper.app/Contents/MacOS)
   set(CYBERSNAPPER_RUNTIME_DESTINATION CyberSnapper.app/Contents/Resources)
   set(CYBERSNAPPER_NODE_DESTINATION CyberSnapper.app/Contents/Resources/runtime)
 else()
-  install(TARGETS CyberSnapper cybersnapper-agent cybersnapper RUNTIME DESTINATION bin)
+  install(TARGETS CyberSnapper cybersnapper-agent cybersnapper_cli RUNTIME DESTINATION bin)
   if(WIN32)
     set(CYBERSNAPPER_RUNTIME_DESTINATION bin)
     set(CYBERSNAPPER_NODE_DESTINATION bin/runtime)

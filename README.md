@@ -8,7 +8,7 @@ CyberSnapper 2 is a clean break from the original script. It does not read, impo
 
 - Native Qt Widgets application with Capture, History, Compare, Schedules, and Settings workflows.
 - Background tray/headless agent with a persistent FIFO job queue and crash recovery.
-- Native `cybersnapper` CLI using the same jobs and project history as the GUI.
+- Native `cybersnapper-cli` using the same jobs and project history as the GUI.
 - Portable folder projects backed by SQLite, with captures, baselines, diffs, reports, and event history.
 - Chromium, Firefox, and WebKit support through Playwright; Chromium is bundled in release packages and other engines install on demand.
 - Full-page, viewport, and CSS-element capture modes.
@@ -38,8 +38,8 @@ The development binaries are under `build/native/native/`:
 
 ```bash
 build/native/native/CyberSnapper
-build/native/native/cybersnapper agent status
-build/native/native/cybersnapper capture https://example.com
+build/native/native/cybersnapper-cli agent status
+build/native/native/cybersnapper-cli capture https://example.com
 ```
 
 Install browser engines into CyberSnapper's managed browser cache from Settings, or use Playwright for a source checkout:
@@ -54,23 +54,23 @@ See [Building and packaging](docs/BUILDING.md) for platform and release details.
 
 ```bash
 # Capture and wait for completion
-cybersnapper capture https://example.com https://example.org
+cybersnapper-cli capture https://example.com https://example.org
 
 # Batch URLs, multiple engines/formats, JSON result
-cybersnapper capture --file urls.txt --engine chromium --engine firefox \
+cybersnapper-cli capture --file urls.txt --engine chromium --engine firefox \
   --format png --format webp --json
 
-cybersnapper jobs --limit 25
-cybersnapper job show JOB_ID --json
-cybersnapper job cancel JOB_ID
-cybersnapper job retry JOB_ID
-cybersnapper projects list
-cybersnapper projects open /path/to/project
-cybersnapper schedules list
-cybersnapper schedules run SCHEDULE_ID
-cybersnapper api enable
-cybersnapper api token
-cybersnapper agent stop
+cybersnapper-cli jobs --limit 25
+cybersnapper-cli job show JOB_ID --json
+cybersnapper-cli job cancel JOB_ID
+cybersnapper-cli job retry JOB_ID
+cybersnapper-cli projects list
+cybersnapper-cli projects open /path/to/project
+cybersnapper-cli schedules list
+cybersnapper-cli schedules run SCHEDULE_ID
+cybersnapper-cli api enable
+cybersnapper-cli api token
+cybersnapper-cli agent stop
 ```
 
 Press Ctrl+C while waiting for a CLI capture to request cancellation. Add `--no-wait` to return as soon as a job is queued.
@@ -83,7 +83,7 @@ See [Project format](docs/PROJECT_FORMAT.md) for the on-disk contract.
 
 ## REST API
 
-The API is disabled by default. Enable it in Settings or with `cybersnapper api enable`. The generated bearer token is shown once; only its SHA-256 digest is stored.
+The API is disabled by default. Enable it in Settings or with `cybersnapper-cli api enable`. The generated bearer token is shown once; only its SHA-256 digest is stored.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \

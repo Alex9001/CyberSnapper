@@ -52,4 +52,4 @@ Terminal event types are `job_succeeded`, `job_partial`, `job_failed`, and `job_
 
 ## Token lifecycle
 
-`cybersnapper api enable` generates a token when none exists. `cybersnapper api token` invalidates the current token and prints a replacement. Tokens are only displayed at creation/regeneration time.
+`cybersnapper-cli api enable` generates a token when none exists. `cybersnapper-cli api token` invalidates the current token and prints a replacement. Tokens are only displayed at creation/regeneration time.
