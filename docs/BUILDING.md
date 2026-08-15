@@ -54,6 +54,10 @@ On Windows, stage `node.exe` as `.runtime/node.exe`.
 
 ## Packages
 
+The mechanics of the release pipeline — workflow jobs, platform tooling, the
+package smoke test, and publishing — are documented in
+[PACKAGING.md](PACKAGING.md).
+
 Release packaging produces an install-friendly package and a portable archive for every supported architecture:
 
 | Platform | Architectures | Primary package | Portable archive |

@@ -1,6 +1,6 @@
 # Release process
 
-CyberSnapper 2 uses the native cross-platform workflow at `.github/workflows/release.yml`.
+CyberSnapper 2 uses the native cross-platform workflow at `.github/workflows/release.yml`. How the packaging and publishing pipeline works under the hood is documented in [docs/PACKAGING.md](docs/PACKAGING.md).
 
 The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup executables and portable ZIPs for Windows x64 and arm64, and DMGs and ZIPs for macOS x64 and arm64. It also publishes SHA-256 checksums and GitHub/Sigstore provenance attestations. macOS application bundles use ad-hoc signing but are not notarized; Windows and Linux packages are unsigned. No paid signing identity is required. CyberSnapper 2 is a clean break from 1.x; do not add migration steps to a 2.x release.
 
