@@ -108,8 +108,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -version "[17.0,18.0)" -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          . "$visualStudio\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -SkipAutomaticLocation
           windeployqt --release --no-translations stage/bin/CyberSnapper.exe
           windeployqt --release --no-translations stage/bin/cybersnapper-agent.exe
+          Remove-Item stage/bin/sqldrivers/qsqlmimer.dll,stage/bin/sqldrivers/qsqlodbc.dll,stage/bin/sqldrivers/qsqlpsql.dll -ErrorAction SilentlyContinue
           Compress-Archive -Path stage/* -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Deploy Qt and sign (macOS)
@@ -119,6 +124,13 @@ jobs:
           macdeployqt stage/CyberSnapper.app \
             -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
             -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli
+          frameworks=stage/CyberSnapper.app/Contents/Frameworks
+          cp -L "$QT_ROOT_DIR/lib/libbrotlicommon.1.dylib" "$frameworks/libbrotlicommon.1.dylib"
+          for library in "$frameworks/libbrotlidec.1.dylib" "$frameworks/libbrotlienc.1.dylib"; do
+            install_name_tool -change @rpath/libbrotlicommon.1.dylib \
+              @loader_path/libbrotlicommon.1.dylib "$library"
+          done
+          rm -f stage/CyberSnapper.app/Contents/PlugIns/sqldrivers/libqsql{mimer,odbc,psql}.dylib
           codesign --force --deep --sign - stage/CyberSnapper.app
           ditto -c -k --sequesterRsrc --keepParent stage/CyberSnapper.app ${{ matrix.artifact }}.zip
 
@@ -147,16 +159,23 @@ jobs:
 
       - name: Smoke test package (Linux)
         if: runner.os == 'Linux'
-        run: stage/bin/cybersnapper-cli --version
+        timeout-minutes: 1
+        run: env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH stage/bin/cybersnapper-cli --version
 
       - name: Smoke test package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: stage/bin/cybersnapper-cli.exe --version
+        timeout-minutes: 1
+        run: |
+          Remove-Item Env:QT_PLUGIN_PATH -ErrorAction SilentlyContinue
+          Remove-Item Env:QML2_IMPORT_PATH -ErrorAction SilentlyContinue
+          & ".\stage\bin\cybersnapper-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Packaged CLI exited with $LASTEXITCODE" }
 
       - name: Smoke test package (macOS)
         if: runner.os == 'macOS'
-        run: stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli --version
+        timeout-minutes: 1
+        run: env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli --version
 
       - name: Attest package provenance
         uses: actions/attest-build-provenance@v2
