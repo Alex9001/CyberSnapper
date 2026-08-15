@@ -139,7 +139,7 @@ jobs:
         shell: bash
         timeout-minutes: 15
         run: |
-          node scripts/smoke-packaged-capture.mjs \
+          env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH node scripts/smoke-packaged-capture.mjs \
             build/native/AppDir/usr/bin/cybersnapper-cli \
             build/native/AppDir/usr/bin/cybersnapper-agent \
             build/native/AppDir/usr/share/cybersnapper/worker/main.cjs \
@@ -257,6 +257,8 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
+          Remove-Item Env:QT_PLUGIN_PATH -ErrorAction SilentlyContinue
+          Remove-Item Env:QML2_IMPORT_PATH -ErrorAction SilentlyContinue
           node scripts/smoke-packaged-capture.mjs `
             stage\bin\cybersnapper-cli.exe `
             stage\bin\cybersnapper-agent.exe `
@@ -387,7 +389,7 @@ jobs:
         shell: bash
         timeout-minutes: 15
         run: |
-          node scripts/smoke-packaged-capture.mjs \
+          env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH node scripts/smoke-packaged-capture.mjs \
             stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli \
             stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
             stage/CyberSnapper.app/Contents/Resources/worker/main.cjs \
