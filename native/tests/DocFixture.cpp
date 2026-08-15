@@ -7,109 +7,83 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
-#include <QPainter>
-#include <QPen>
 #include <QTextStream>
 #include <QThread>
+
+#include <cmath>
 
 using namespace CyberSnapper;
 
 namespace {
 
-constexpr auto DemoUrl = "https://example.com";
+constexpr auto ShowcaseUrl = "https://cyberbrand.net/";
 
-bool drawDemoPage(const QString &path, bool changed) {
-  QImage image(960, 620, QImage::Format_ARGB32_Premultiplied);
-  image.fill(QColor("#f4f7fb"));
-  QPainter painter(&image);
-  painter.setRenderHint(QPainter::Antialiasing);
+QString sourceCapture(const QString &name) {
+  return QStringLiteral(CYBERSNAPPER_SOURCE_ROOT "/docs/fixtures/") + name;
+}
 
-  painter.fillRect(0, 0, image.width(), 88, QColor("#07111f"));
-  painter.setPen(QColor("#39d7ff"));
-  painter.setFont(QFont("Sans Serif", 20, QFont::Bold));
-  painter.drawText(QRect(38, 18, 430, 50), Qt::AlignVCenter, "NORTHSTAR / FIELD NOTES");
-  painter.setPen(QColor("#d6e6f3"));
-  painter.setFont(QFont("Sans Serif", 11));
-  painter.drawText(QRect(660, 18, 260, 50), Qt::AlignRight | Qt::AlignVCenter,
-                   "EXPLORE    STORIES    JOURNAL");
-
-  painter.setPen(QColor("#13253a"));
-  painter.setFont(QFont("Sans Serif", 33, QFont::Bold));
-  painter.drawText(QRect(52, 126, 520, 100), Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap,
-                   changed ? "Gear for the next horizon." : "Built for the next horizon.");
-  painter.setPen(QColor("#52677c"));
-  painter.setFont(QFont("Sans Serif", 14));
-  painter.drawText(QRect(54, 222, 520, 70), Qt::AlignLeft | Qt::TextWordWrap,
-                   "Field-tested essentials, captured across every viewport and checked against a trusted visual baseline.");
-
-  const QColor accent = changed ? QColor("#925cff") : QColor("#0bbfe9");
-  painter.setBrush(accent);
-  painter.setPen(Qt::NoPen);
-  painter.drawRoundedRect(QRect(54, 308, 205, 52), 9, 9);
-  painter.setPen(Qt::white);
-  painter.setFont(QFont("Sans Serif", 13, QFont::DemiBold));
-  painter.drawText(QRect(54, 308, 205, 52), Qt::AlignCenter,
-                   changed ? "VIEW NEW COLLECTION" : "EXPLORE COLLECTION");
-
-  painter.setBrush(QColor("#dce8f2"));
-  painter.setPen(Qt::NoPen);
-  painter.drawRoundedRect(QRect(610, 126, 292, 250), 24, 24);
-  painter.setBrush(QColor("#0b1d32"));
-  painter.drawRoundedRect(QRect(668, 165, 176, 170), 16, 16);
-  painter.setBrush(accent);
-  painter.drawEllipse(QPoint(756, 250), changed ? 62 : 52, changed ? 62 : 52);
-  painter.setBrush(QColor("#f4f7fb"));
-  painter.drawEllipse(QPoint(756, 250), 28, 28);
-
-  const QList<QString> labels{"DESKTOP 1440", "TABLET 768", "MOBILE 390"};
-  for (int index = 0; index < labels.size(); ++index) {
-    const QRect card(54 + index * 292, 425, 260, 130);
-    painter.setBrush(Qt::white);
-    painter.setPen(QPen(QColor("#d4e1ec"), 2));
-    painter.drawRoundedRect(card, 14, 14);
-    painter.setPen(QColor("#13253a"));
-    painter.setFont(QFont("Sans Serif", 12, QFont::Bold));
-    painter.drawText(card.adjusted(18, 16, -18, -70), Qt::AlignLeft | Qt::AlignVCenter, labels.at(index));
-    painter.setPen(QColor("#6d8194"));
-    painter.setFont(QFont("Sans Serif", 10));
-    painter.drawText(card.adjusted(18, 58, -18, -14), Qt::AlignLeft | Qt::TextWordWrap,
-                     index == 2 && changed ? "Navigation wraps cleanly\nTouch target updated" : "Layout stable\nBaseline matched");
-  }
-  painter.end();
+bool copySourceCapture(const QString &name, const QString &path) {
+  const QImage image(sourceCapture(name));
+  if (image.isNull()) return false;
   QDir().mkpath(QFileInfo(path).absolutePath());
   return image.save(path, "PNG");
 }
 
-bool drawDiff(const QString &path) {
-  QImage image(960, 620, QImage::Format_ARGB32_Premultiplied);
-  image.fill(QColor("#06101d"));
-  QPainter painter(&image);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setPen(QPen(QColor("#ff4fd8"), 6));
-  painter.setBrush(QColor(255, 79, 216, 42));
-  painter.drawRoundedRect(QRect(46, 120, 535, 250), 18, 18);
-  painter.setPen(QPen(QColor("#39d7ff"), 6));
-  painter.setBrush(QColor(57, 215, 255, 38));
-  painter.drawRoundedRect(QRect(630, 145, 252, 210), 18, 18);
-  painter.setPen(QColor("#d7f7ff"));
-  painter.setFont(QFont("Sans Serif", 22, QFont::Bold));
-  painter.drawText(QRect(0, 470, 960, 50), Qt::AlignCenter, "CHANGED REGIONS");
-  painter.setPen(QColor("#7f9aad"));
-  painter.setFont(QFont("Sans Serif", 12));
-  painter.drawText(QRect(0, 520, 960, 36), Qt::AlignCenter, "Headline, action color, and product art changed");
-  painter.end();
+struct DiffResult {
+  bool ok = false;
+  qint64 mismatchedPixels = 0;
+  qint64 analyzedPixels = 0;
+  int width = 0;
+  int height = 0;
+};
+
+DiffResult drawDiff(const QString &baselinePath, const QString &currentPath, const QString &path,
+                    double pixelThreshold) {
+  const QImage baselineSource(baselinePath);
+  const QImage currentSource(currentPath);
+  if (baselineSource.isNull() || currentSource.isNull() || baselineSource.size() != currentSource.size()) return {};
+  const QImage baseline = baselineSource.convertToFormat(QImage::Format_RGBA8888);
+  const QImage current = currentSource.convertToFormat(QImage::Format_RGBA8888);
+  QImage image(baseline.size(), QImage::Format_RGBA8888);
+  DiffResult result{true, 0, qint64(image.width()) * image.height(), image.width(), image.height()};
+  const double channelThreshold = pixelThreshold * 255.0;
+  for (int y = 0; y < image.height(); ++y) {
+    const uchar *left = baseline.constScanLine(y);
+    const uchar *right = current.constScanLine(y);
+    uchar *output = image.scanLine(y);
+    for (int x = 0; x < image.width(); ++x) {
+      const int offset = x * 4;
+      const int delta = qMax(qMax(std::abs(int(left[offset]) - int(right[offset])),
+                                  std::abs(int(left[offset + 1]) - int(right[offset + 1]))),
+                             qMax(std::abs(int(left[offset + 2]) - int(right[offset + 2])),
+                                  std::abs(int(left[offset + 3]) - int(right[offset + 3]))));
+      if (delta > channelThreshold) {
+        ++result.mismatchedPixels;
+        output[offset] = 255;
+        output[offset + 1] = 0;
+        output[offset + 2] = 96;
+      } else {
+        const int gray = (int(right[offset]) + int(right[offset + 1]) + int(right[offset + 2])) / 6 + 96;
+        output[offset] = uchar(gray);
+        output[offset + 1] = uchar(gray);
+        output[offset + 2] = uchar(gray);
+      }
+      output[offset + 3] = 255;
+    }
+  }
   QDir().mkpath(QFileInfo(path).absolutePath());
-  return image.save(path, "PNG");
+  result.ok = image.save(path, "PNG");
+  return result;
 }
 
 QJsonObject artifact(const QString &id, const QString &relativePath, const QString &viewport,
                      const QString &engine = "chromium", const QString &status = "succeeded") {
-  return {{"id", id}, {"url", DemoUrl}, {"engine", engine}, {"viewportId", viewport.toLower()},
+  return {{"id", id}, {"url", ShowcaseUrl}, {"engine", engine}, {"viewportId", viewport.toLower()},
           {"targetId", "home"}, {"targetName", "Homepage"}, {"targetSetId", "target-set-production"},
           {"targetSetName", "Production site"},
           {"viewportName", viewport}, {"captureMode", "fullPage"}, {"format", "png"},
-          {"relativePath", relativePath}, {"width", viewport == "Mobile" ? 780 : 1440},
-          {"height", viewport == "Mobile" ? 1688 : 900}, {"sha256", id + "-fixture"},
+          {"relativePath", relativePath}, {"width", viewport == "Mobile" ? 390 : 1440},
+          {"height", viewport == "Mobile" ? 844 : 900}, {"sha256", id + "-fixture"},
           {"status", status}, {"error", status == "failed" ? "Navigation timed out" : QString{}},
           {"createdAt", utcNow()}};
 }
@@ -123,7 +97,7 @@ bool addJob(ProjectStore &store, const CaptureProfile &profile, const QString &i
   request.projectRoot = store.root();
   request.profileId = profile.id;
   request.source = source;
-  request.urls = {DemoUrl, "https://example.org/pricing"};
+  request.urls = {ShowcaseUrl, "https://cyberbrand.net/pricing"};
   request.profile = profile;
   QString error;
   if (!store.insertJob(request, &error) || !store.updateJob(id, "running")) return false;
@@ -149,7 +123,7 @@ int main(int argc, char **argv) {
 
   ProjectStore store;
   QString error;
-  if (!store.create(root, "Portfolio Studio Demo", &error)) return fail(error);
+  if (!store.create(root, "CYBER BRAND Portfolio", &error)) return fail(error);
   CaptureProfile profile = defaultProfile();
   profile.name = "Portfolio Capture";
   profile.viewports = {{"desktop", "Desktop", 1440, 900, 1.0, false, true},
@@ -170,25 +144,32 @@ int main(int argc, char **argv) {
   if (!store.saveProfile(profile, &error)) return fail(error);
   if (store.saveTargetSet({{"id", "target-set-production"}, {"name", "Portfolio projects"},
       {"description", "Websites and pages ready for portfolio capture"},
-      {"targets", QJsonArray{QJsonObject{{"id", "home"}, {"label", "Homepage"}, {"url", DemoUrl}, {"enabled", true}},
-                               QJsonObject{{"id", "pricing"}, {"label", "Pricing"}, {"url", "https://example.org/pricing"}, {"enabled", true}},
-                               QJsonObject{{"id", "journal"}, {"label", "Journal"}, {"url", "https://example.org/journal"}, {"enabled", false}}}}}, &error).isEmpty()) return fail(error);
+      {"targets", QJsonArray{QJsonObject{{"id", "home"}, {"label", "Homepage"}, {"url", ShowcaseUrl}, {"enabled", true}},
+                               QJsonObject{{"id", "pricing"}, {"label", "Pricing"}, {"url", "https://cyberbrand.net/pricing"}, {"enabled", true}},
+                               QJsonObject{{"id", "journal"}, {"label", "Insights"}, {"url", "https://cyberbrand.net/blog"}, {"enabled", false}}}}}, &error).isEmpty()) return fail(error);
   if (store.saveTargetSet({{"id", "target-set-campaign"}, {"name", "Case study pages"},
       {"description", "Alternate pages used in detailed project stories"},
-      {"targets", QJsonArray{QJsonObject{{"id", "detail"}, {"label", "Project detail"}, {"url", "https://example.org/project-details"}, {"enabled", true}}}}}, &error).isEmpty()) return fail(error);
+      {"targets", QJsonArray{QJsonObject{{"id", "detail"}, {"label", "The Forge"}, {"url", "https://cyberbrand.net/forge/"}, {"enabled", true}}}}}, &error).isEmpty()) return fail(error);
 
   const QString baseRelative = "captures/showcase/baseline.png";
   const QString currentRelative = "captures/showcase/current.png";
+  const QString mobileRelative = "captures/showcase/mobile-dark.png";
   const QString diffRelative = "captures/showcase/difference.png";
-  if (!drawDemoPage(QDir(root).filePath(baseRelative), false) ||
-      !drawDemoPage(QDir(root).filePath(currentRelative), true) ||
-      !drawDiff(QDir(root).filePath(diffRelative))) return fail("could not draw fixture images");
+  const QString baselinePath = QDir(root).filePath(baseRelative);
+  const QString currentPath = QDir(root).filePath(currentRelative);
+  if (!copySourceCapture("cyberbrand-light-desktop.png", baselinePath) ||
+      !copySourceCapture("cyberbrand-dark-desktop.png", currentPath) ||
+      !copySourceCapture("cyberbrand-dark-mobile.png", QDir(root).filePath(mobileRelative))) {
+    return fail("could not copy CYBER BRAND source captures");
+  }
+  const DiffResult diff = drawDiff(baselinePath, currentPath, QDir(root).filePath(diffRelative), profile.pixelThreshold);
+  if (!diff.ok) return fail("could not compare CYBER BRAND source captures");
 
   if (!addJob(store, profile, "job-api-failure", "api", "failed", 0, 1, {}, "DNS lookup failed")) return fail("could not add API job");
   if (!addJob(store, profile, "job-weekday-schedule", "schedule:weekday", "succeeded", 12, 0,
               {artifact("artifact-schedule", currentRelative, "Tablet", "firefox")})) return fail("could not add scheduled job");
   if (!addJob(store, profile, "job-partial", "gui", "partial", 5, 1,
-              {artifact("artifact-partial", currentRelative, "Mobile"),
+              {artifact("artifact-partial", mobileRelative, "Mobile"),
                artifact("artifact-timeout", "captures/showcase/missing.png", "Desktop", "firefox", "failed")},
               "One Firefox target timed out")) return fail("could not add partial job");
   if (!addJob(store, profile, "job-baseline", "gui", "succeeded", 1, 0,
@@ -196,30 +177,30 @@ int main(int argc, char **argv) {
   if (!addJob(store, profile, "job-visual-change", "schedule:release-watch", "succeeded", 1, 0,
               {artifact("artifact-current", currentRelative, "Desktop")})) return fail("could not add comparison job");
 
-  const QString key = QString(DemoUrl) + "|chromium|desktop|fullPage|png";
+  const QString key = QString(ShowcaseUrl) + "|chromium|desktop|fullPage|png";
   if (!store.setBaseline(key, "artifact-baseline", baseRelative)) return fail("could not set baseline");
   if (!store.insertComparison({{"id", "comparison-release"}, {"jobId", "job-visual-change"},
                                {"comparisonKey", key}, {"baselineArtifactId", "artifact-baseline"},
                                {"currentArtifactId", "artifact-current"}, {"status", "changed"},
-                               {"mismatchRatio", 0.02437}, {"diffRelativePath", diffRelative},
-                               {"url", DemoUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
+                               {"mismatchRatio", double(diff.mismatchedPixels) / double(diff.analyzedPixels)}, {"diffRelativePath", diffRelative},
+                               {"url", ShowcaseUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
                                {"targetSetId", "target-set-production"}, {"targetSetName", "Production site"},
                                {"engine", "chromium"}, {"viewportId", "desktop"}, {"viewportName", "Desktop"},
                                {"captureMode", "fullPage"}, {"format", "png"},
-                               {"analysisWidth", 960}, {"analysisHeight", 620}, {"analysisScale", 1.0},
-                               {"mismatchedPixels", 14502}, {"analyzedPixels", 595200}, {"algorithmVersion", 2},
+                               {"analysisWidth", diff.width}, {"analysisHeight", diff.height}, {"analysisScale", 1.0},
+                               {"mismatchedPixels", diff.mismatchedPixels}, {"analyzedPixels", diff.analyzedPixels}, {"algorithmVersion", 2},
                                {"baselineRelativePath", baseRelative},
                                {"createdAt", utcNow()}})) return fail("could not add comparison");
   if (!store.insertComparison({{"id", "comparison-mobile-baseline"}, {"jobId", "job-partial"},
-                               {"comparisonKey", QString(DemoUrl) + "|chromium|mobile|fullPage|png"},
+                               {"comparisonKey", QString(ShowcaseUrl) + "|chromium|mobile|fullPage|png"},
                                {"currentArtifactId", "artifact-partial"}, {"status", "missing_baseline"},
-                               {"url", DemoUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
+                               {"url", ShowcaseUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
                                {"targetSetId", "target-set-production"}, {"targetSetName", "Production site"},
                                {"engine", "chromium"}, {"viewportId", "mobile"}, {"viewportName", "Mobile"},
-                               {"captureMode", "fullPage"}, {"format", "png"}, {"analysisWidth", 780},
-                               {"analysisHeight", 1688}, {"analysisScale", 1.0}, {"createdAt", utcNow()}})) return fail("could not add missing baseline");
+                               {"captureMode", "fullPage"}, {"format", "png"}, {"analysisWidth", 390},
+                               {"analysisHeight", 844}, {"analysisScale", 1.0}, {"createdAt", utcNow()}})) return fail("could not add missing baseline");
 
-  const QJsonArray urls{DemoUrl, "https://example.org/pricing"};
+  const QJsonArray urls{ShowcaseUrl, "https://cyberbrand.net/pricing"};
   const QList<QJsonObject> schedules{
       {{"id", "schedule-release"}, {"name", "Release candidate watch"}, {"enabled", true},
        {"profileId", "default"}, {"targetSetId", "target-set-production"}, {"urls", QJsonArray{}},
@@ -231,7 +212,7 @@ int main(int argc, char **argv) {
        {"recurrence", QJsonObject{{"type", "daily"}, {"time", "02:00"}, {"timeZone", "UTC"}}},
        {"lastRun", "2026-08-14T02:00:00.000Z"}, {"nextRun", "2030-01-03T02:00:00.000Z"}, {"lastStatus", "succeeded"}},
       {{"id", "schedule-monthly"}, {"name", "Monthly compliance archive"}, {"enabled", false},
-       {"profileId", "default"}, {"urls", QJsonArray{DemoUrl}},
+       {"profileId", "default"}, {"urls", QJsonArray{ShowcaseUrl}},
        {"recurrence", QJsonObject{{"type", "monthly"}, {"day", 1}, {"time", "09:00"}, {"timeZone", "UTC"}}},
        {"lastRun", "2026-08-01T09:00:00.000Z"}, {"nextRun", "2030-02-01T09:00:00.000Z"}, {"lastStatus", "succeeded"}},
   };

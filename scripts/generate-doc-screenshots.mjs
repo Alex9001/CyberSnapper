@@ -109,9 +109,21 @@ try {
   process.stdout.write(`generated ${path.relative(root, presentationUiDestination)}\n`);
 
   const { renderPresentation } = require(path.join(root, 'worker', 'dist', 'testing.cjs'));
-  const portfolioSource = await sharp(path.join(projectRoot, 'captures', 'showcase', 'current.png')).png().toBuffer();
-  const portfolio = await renderPresentation(portfolioSource, {
-    enabled: true, scene: 'aurora', frame: 'lightBrowser', aspect: '16:9',
+  const sourceRoot = path.join(root, 'docs', 'fixtures');
+  const loadSource = async (name, width, height) => {
+    const source = path.join(sourceRoot, name);
+    const metadata = await sharp(source).metadata();
+    if (metadata.width !== width || metadata.height !== height || metadata.format !== 'png') {
+      throw new Error(`Unexpected CYBER BRAND source ${name}: ${metadata.width}x${metadata.height} ${metadata.format}`);
+    }
+    return sharp(source).png().toBuffer();
+  };
+  const lightDesktopSource = await loadSource('cyberbrand-light-desktop.png', 1440, 900);
+  const darkDesktopSource = await loadSource('cyberbrand-dark-desktop.png', 1440, 900);
+  const lightMobileSource = await loadSource('cyberbrand-light-mobile.png', 390, 844);
+  const darkMobileSource = await loadSource('cyberbrand-dark-mobile.png', 390, 844);
+  const portfolio = await renderPresentation(darkDesktopSource, {
+    enabled: true, scene: 'aurora', frame: 'darkBrowser', aspect: '16:9',
     padding: 'balanced', shadow: 'soft', solidColor: '#0B1220',
   }, { mobile: false }, 'viewport');
   const portfolioDestination = path.join(outputRoot, 'portfolio-aurora-browser.png');
@@ -122,28 +134,13 @@ try {
   }
   process.stdout.write(`generated ${path.relative(root, portfolioDestination)}\n`);
 
-  const mobileSource = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844">
-    <rect width="390" height="844" fill="#F4F7FB"/><rect width="390" height="76" fill="#07111F"/>
-    <text x="24" y="47" fill="#39D7FF" font-family="Arial,sans-serif" font-size="20" font-weight="700">NORTHSTAR</text>
-    <circle cx="344" cy="38" r="4" fill="#D6E6F3"/><circle cx="360" cy="38" r="4" fill="#D6E6F3"/>
-    <text x="28" y="150" fill="#13253A" font-family="Arial,sans-serif" font-size="38" font-weight="700">Gear for the</text>
-    <text x="28" y="196" fill="#13253A" font-family="Arial,sans-serif" font-size="38" font-weight="700">next horizon.</text>
-    <text x="28" y="238" fill="#52677C" font-family="Arial,sans-serif" font-size="16">Field-tested essentials for every</text>
-    <text x="28" y="262" fill="#52677C" font-family="Arial,sans-serif" font-size="16">viewport and every adventure.</text>
-    <rect x="28" y="300" width="334" height="220" rx="28" fill="#DCE8F2"/><rect x="103" y="340" width="184" height="142" rx="20" fill="#0B1D32"/>
-    <circle cx="195" cy="411" r="54" fill="#925CFF"/><circle cx="195" cy="411" r="23" fill="#F4F7FB"/>
-    <rect x="28" y="560" width="334" height="72" rx="12" fill="#FFFFFF" stroke="#D4E1EC" stroke-width="2"/>
-    <text x="48" y="590" fill="#13253A" font-family="Arial,sans-serif" font-size="15" font-weight="700">MOBILE 390</text>
-    <text x="48" y="614" fill="#6D8194" font-family="Arial,sans-serif" font-size="12">Navigation wraps cleanly</text>
-    <rect x="28" y="664" width="224" height="56" rx="10" fill="#925CFF"/><text x="140" y="699" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" font-weight="700">VIEW COLLECTION</text>
-  </svg>`)).png().toBuffer();
   const galleryChoices = [
-    { label: 'Clean', detail: 'Light browser', scene: 'clean', frame: 'lightBrowser', source: portfolioSource, mobile: false },
-    { label: 'Aurora', detail: 'Light browser', scene: 'aurora', frame: 'lightBrowser', source: portfolioSource, mobile: false },
-    { label: 'Sunset', detail: 'Rounded card', scene: 'sunset', frame: 'roundedCard', source: portfolioSource, mobile: false },
-    { label: 'Midnight', detail: 'Dark browser', scene: 'midnight', frame: 'darkBrowser', source: portfolioSource, mobile: false },
-    { label: 'Graphite', detail: 'Dark phone', scene: 'graphite', frame: 'darkPhone', source: mobileSource, mobile: true },
-    { label: 'Custom solid', detail: 'No frame', scene: 'customSolid', frame: 'none', source: portfolioSource, mobile: false },
+    { label: 'Clean', detail: 'Clearnet · Light browser', scene: 'clean', frame: 'lightBrowser', source: lightDesktopSource, mobile: false },
+    { label: 'Aurora', detail: 'Darkweb · Dark browser', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
+    { label: 'Sunset', detail: 'Clearnet · Rounded card', scene: 'sunset', frame: 'roundedCard', source: lightDesktopSource, mobile: false },
+    { label: 'Midnight', detail: 'Darkweb · Dark browser', scene: 'midnight', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
+    { label: 'Graphite', detail: 'Darkweb · Dark phone', scene: 'graphite', frame: 'darkPhone', source: darkMobileSource, mobile: true },
+    { label: 'Custom solid', detail: 'Clearnet · No frame', scene: 'customSolid', frame: 'none', source: lightDesktopSource, mobile: false },
   ];
   const galleryWidth = 1800;
   const galleryHeight = 940;
@@ -182,18 +179,18 @@ try {
     process.stdout.write(`generated ${path.relative(root, destination)}\n`);
   };
   await generateGallery(galleryChoices, 'Portfolio presentation, six ways',
-    'Generated locally from the same capture — backgrounds, browser chrome, cards, phone hardware, and custom color.',
+    'Real cyberbrand.net Clearnet and Darkweb captures — scenes, browser chrome, cards, phone hardware, and custom color.',
     'portfolio-scene-gallery.png');
   const frameChoices = [
-    { label: 'None', detail: 'Screenshot only', scene: 'aurora', frame: 'none', source: portfolioSource, mobile: false },
-    { label: 'Rounded card', detail: 'Desktop capture', scene: 'aurora', frame: 'roundedCard', source: portfolioSource, mobile: false },
-    { label: 'Light browser', detail: 'Desktop capture', scene: 'aurora', frame: 'lightBrowser', source: portfolioSource, mobile: false },
-    { label: 'Dark browser', detail: 'Desktop capture', scene: 'aurora', frame: 'darkBrowser', source: portfolioSource, mobile: false },
-    { label: 'Light phone', detail: 'Mobile capture', scene: 'aurora', frame: 'lightPhone', source: mobileSource, mobile: true },
-    { label: 'Dark phone', detail: 'Mobile capture', scene: 'aurora', frame: 'darkPhone', source: mobileSource, mobile: true },
+    { label: 'None', detail: 'Clearnet', scene: 'aurora', frame: 'none', source: lightDesktopSource, mobile: false },
+    { label: 'Rounded card', detail: 'Darkweb', scene: 'aurora', frame: 'roundedCard', source: darkDesktopSource, mobile: false },
+    { label: 'Light browser', detail: 'Clearnet', scene: 'aurora', frame: 'lightBrowser', source: lightDesktopSource, mobile: false },
+    { label: 'Dark browser', detail: 'Darkweb', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
+    { label: 'Light phone', detail: 'Clearnet', scene: 'aurora', frame: 'lightPhone', source: lightMobileSource, mobile: true },
+    { label: 'Dark phone', detail: 'Darkweb', scene: 'aurora', frame: 'darkPhone', source: darkMobileSource, mobile: true },
   ];
   await generateGallery(frameChoices, 'Frame comparison — every option',
-    'The same Aurora scene isolates the frame itself: none, card, light and dark browser chrome, and light and dark phone hardware.',
+    'Real Clearnet and Darkweb captures on the same Aurora scene isolate every desktop and mobile frame.',
     'portfolio-frame-gallery.png');
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }

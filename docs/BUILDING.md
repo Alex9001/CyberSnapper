@@ -18,7 +18,7 @@ ctest --test-dir build/native --output-on-failure
 
 ## Documentation screenshots and website
 
-The repository can seed a deterministic project, start an isolated agent, and capture the real Qt interface without live URLs or customer data. Build the native targets first, then run:
+The repository can seed a deterministic project, start an isolated agent, and capture the real Qt interface without contacting live URLs during normal docs or CI builds. It uses committed light and dark captures of the public CYBER BRAND homepage. Build the native targets first, then run:
 
 ```bash
 npm run screenshots:docs
@@ -26,6 +26,8 @@ npm run build:site
 ```
 
 The screenshot source files are written to `docs/images/`. The Pages build is staged and validated under `build/pages/`; all temporary configuration, database, socket, and preview state stays under `build/test-runtime/`.
+
+To intentionally refresh the four committed CYBER BRAND desktop/mobile source captures from `https://cyberbrand.net/`, run `npm run screenshots:sources`. That explicit command is the only documentation step that requires network access; it fixes the site theme and pauses motion before capture. Review the resulting light and dark images before regenerating `docs/images/`.
 
 On Linux, the screenshot command uses Qt's offscreen platform automatically. If the host applies a local-socket sandbox, grant the command permission to create its isolated IPC socket while keeping its filesystem state inside the repository.
 

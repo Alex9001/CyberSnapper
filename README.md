@@ -61,20 +61,20 @@ Turn on **Portfolio style** to save two files for each raster capture: the untou
 
 Automatic framing understands the capture: mobile viewports receive a phone frame, desktop viewports receive browser chrome, and full-page or element captures receive a rounded card. Fixed ratios only expand the background—they never crop or upscale the screenshot. Original files remain the source for visual comparison.
 
-![Six portfolio presentation combinations generated locally from CyberSnapper captures](docs/images/portfolio-scene-gallery.png)
+![Six portfolio presentation combinations using real CYBER BRAND Clearnet and Darkweb captures](docs/images/portfolio-scene-gallery.png)
 
 ### Frame comparison
 
-These are the actual six explicit frame choices. **Auto** selects among them based on the capture: browser chrome for desktop viewports, phone hardware for mobile viewports, and a rounded card for full-page or element captures.
+These are the actual six explicit frame choices, demonstrated with real light and dark captures of [cyberbrand.net](https://cyberbrand.net/). **Auto** selects among them based on the capture: browser chrome for desktop viewports, phone hardware for mobile viewports, and a rounded card for full-page or element captures.
 
 ![CyberSnapper frame comparison showing no frame, rounded card, light browser, dark browser, light phone, and dark phone](docs/images/portfolio-frame-gallery.png)
 
 | Presentation settings | Finished `-portfolio` file |
 | --- | --- |
 | The complete profile editor makes every choice explicit and explains automatic framing. | This 16:9 Aurora scene and browser frame came directly from the production renderer. |
-| ![CyberSnapper Presentation profile settings](docs/images/app-presentation.png) | ![Portfolio-ready Aurora scene with a light browser frame](docs/images/portfolio-aurora-browser.png) |
+| ![CyberSnapper Presentation profile settings](docs/images/app-presentation.png) | ![CYBER BRAND Darkweb capture on an Aurora scene with a dark browser frame](docs/images/portfolio-aurora-browser.png) |
 
-The application and output images above are generated automatically by `npm run screenshots:docs`, using the same Qt interface and Sharp renderer that ship with CyberSnapper.
+The application and output images above are generated automatically by `npm run screenshots:docs`, using the same Qt interface and Sharp renderer that ship with CyberSnapper. The committed CYBER BRAND source captures keep normal docs and CI builds offline and deterministic; maintainers can explicitly refresh them from the live site with `npm run screenshots:sources`.
 
 ## The portfolio capture workflow
 
@@ -85,12 +85,12 @@ The application and output images above are generated automatically by `npm run 
 
 | History | Optional Review |
 | --- | --- |
-| Find completed runs, open their screenshot files, retry a batch, and see exactly what succeeded. | When monitoring a live project, compare revisions with synchronized pan/zoom, overlay, wipe, and generated differences. |
+| Find completed runs, open their screenshot files, retry a batch, and see exactly what succeeded. | The real CYBER BRAND Clearnet and Darkweb captures demonstrate synchronized pan/zoom, overlay, wipe, and generated differences. |
 | ![CyberSnapper capture history](docs/images/app-history.png) | ![CyberSnapper optional visual Review workspace](docs/images/app-review.png) |
 
 The Dashboard and Schedules pages summarize background activity for people who use those optional workflows; neither is required to capture a portfolio.
 
-The screenshots above are generated automatically from a deterministic demo project. They contain no live or customer data. Regenerate them with `npm run screenshots:docs` after building the native test targets.
+The screenshots above are generated automatically from a deterministic project built around committed captures of the public CYBER BRAND homepage. `npm run screenshots:docs` never contacts the live site. Run `npm run screenshots:sources` only when intentionally refreshing those source captures, then regenerate the docs after building the native test targets.
 
 ## How it fits together
 

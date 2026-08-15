@@ -5,6 +5,7 @@
   "scripts": {
     "build:worker": "node worker/build.mjs",
     "build:site": "node scripts/build-site.mjs",
+    "screenshots:sources": "playwright test scripts/capture-cyberbrand-sources.spec.cjs --workers=1 --reporter=line --output=build/playwright-source-capture",
     "screenshots:docs": "node scripts/generate-doc-screenshots.mjs",
     "test:site": "node scripts/build-site.mjs",
     "typecheck:worker": "tsc -p worker/tsconfig.json --noEmit",
