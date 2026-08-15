@@ -46,6 +46,12 @@ QJsonArray asJson(const QStringList &values) {
   return result;
 }
 
+QString normalizeCaptureUrl(const QString &input) {
+  const QString value = input.trimmed();
+  if (value.isEmpty() || value.contains("://")) return value;
+  return QStringLiteral("https://") + value;
+}
+
 QString comparisonKey(const QJsonObject &artifact) {
   return artifact.value("url").toString() + "|" + artifact.value("engine").toString() + "|" +
          artifact.value("viewportId").toString() + "|" + artifact.value("captureMode").toString() +
@@ -535,10 +541,10 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     QJsonArray normalized;
     for (const auto &value : targetSet.value("targets").toArray()) {
       QJsonObject target = value.toObject();
-      const QUrl parsed(target.value("url").toString().trimmed(), QUrl::StrictMode);
+      const QUrl parsed(normalizeCaptureUrl(target.value("url").toString()), QUrl::StrictMode);
       if (!parsed.isValid() || !QStringList{"http", "https"}.contains(parsed.scheme().toLower()) ||
           parsed.host().isEmpty() || !parsed.userInfo().isEmpty()) {
-        return failure("invalid_target", "Targets require explicit HTTP or HTTPS URLs without credentials");
+        return failure("invalid_target", "Targets require valid HTTP or HTTPS URLs without credentials");
       }
       const QString canonical = parsed.adjusted(QUrl::NormalizePathSegments | QUrl::RemoveFragment).toString();
       if (seen.contains(canonical)) return failure("duplicate_target", "A target set cannot contain duplicate URLs");
@@ -821,14 +827,17 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       for (const auto &value : targetSet.value("targets").toArray()) enabled = enabled || value.toObject().value("enabled").toBool(true);
       if (targetSet.isEmpty() || !enabled) return failure("invalid_schedule", "The selected target set has no enabled targets", 409);
     }
+    QStringList normalizedUrls;
     for (const QString &urlText : urls) {
-      const QUrl url(urlText, QUrl::StrictMode);
+      const QString normalized = normalizeCaptureUrl(urlText);
+      const QUrl url(normalized, QUrl::StrictMode);
       if (!url.isValid() || !QStringList{"http", "https"}.contains(url.scheme().toLower()) ||
           url.host().isEmpty() || !url.userInfo().isEmpty()) {
-        return failure("invalid_schedule", "Schedules require explicit HTTP or HTTPS URLs without credentials");
+        return failure("invalid_schedule", "Schedules require valid HTTP or HTTPS URLs without credentials");
       }
+      normalizedUrls.append(normalized);
     }
-    schedule.insert("urls", asJson(urls));
+    schedule.insert("urls", asJson(normalizedUrls));
     schedule.insert("targetSetId", targetSetId);
     const QString profileId = schedule.value("profileId").toString("default");
     if (store->profile(profileId).id.isEmpty()) return failure("invalid_schedule", "The selected profile no longer exists", 409);

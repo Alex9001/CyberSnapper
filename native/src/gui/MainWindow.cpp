@@ -214,6 +214,12 @@ QWidget *scrollable(QWidget *contents) {
   return scroll;
 }
 
+QString normalizeCaptureUrl(const QString &input) {
+  const QString value = input.trimmed();
+  if (value.isEmpty() || value.contains("://")) return value;
+  return QStringLiteral("https://") + value;
+}
+
 QString displayTime(const QString &iso) {
   const QDateTime value = QDateTime::fromString(iso, Qt::ISODate);
   return value.isValid() ? value.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : iso;
@@ -720,10 +726,10 @@ QWidget *MainWindow::buildCapturePage() {
   targetLayout->addWidget(m_captureTargetSet, 1, 2);
   targetLayout->addWidget(editTargetSet, 1, 3);
   m_urls = new QTextEdit;
-  m_urls->setPlaceholderText("https://example.com\nhttps://example.org/about");
+  m_urls->setPlaceholderText("example.com\nhttps://example.org/about");
   m_urls->setAcceptRichText(false);
   m_urls->setMinimumHeight(90);
-  explain(m_urls, "Enter one public HTTP or HTTPS address per line. Each URL is captured with every enabled viewport, browser, and format.");
+  explain(m_urls, "Enter one address per line; a missing scheme defaults to https. Each URL is captured with every enabled viewport, browser, and format.");
   auto *urlsLabel = new QLabel("URLs");
   urlsLabel->setBuddy(m_urls);
   explain(urlsLabel, m_urls->toolTip());
@@ -1067,13 +1073,14 @@ QWidget *MainWindow::buildHistoryPage() {
   layout->addWidget(m_historySplit);
   auto *buttons = new QHBoxLayout;
   auto *open = new QPushButton("Open Artifact");
+  auto *openFolder = new QPushButton("Open Containing Folder");
   auto *baseline = new QPushButton("Set as Baseline");
   auto *retry = new QPushButton("Retry Job");
   auto *cancel = new QPushButton("Cancel Job");
   auto *refresh = new QPushButton("Refresh");
   baseline->setEnabled(false);
   explain(baseline, "Select a successful original PNG, WebP, or AVIF file to use as the reference image. Portfolio-styled copies are intentionally excluded.");
-  for (auto *button : {open, baseline, retry, cancel, refresh}) buttons->addWidget(button);
+  for (auto *button : {open, openFolder, baseline, retry, cancel, refresh}) buttons->addWidget(button);
   buttons->addStretch();
   layout->addLayout(buttons);
   connect(m_history, &QTableWidget::itemSelectionChanged, this, &MainWindow::showJobDetails);
@@ -1090,6 +1097,7 @@ QWidget *MainWindow::buildHistoryPage() {
   });
   connect(m_artifacts, &QTableWidget::cellDoubleClicked, this, [this] { openSelectedArtifact(); });
   connect(open, &QPushButton::clicked, this, &MainWindow::openSelectedArtifact);
+  connect(openFolder, &QPushButton::clicked, this, &MainWindow::openSelectedArtifactFolder);
   connect(baseline, &QPushButton::clicked, this, &MainWindow::setSelectedArtifactAsBaseline);
   connect(refresh, &QPushButton::clicked, this, &MainWindow::refreshJobs);
   connect(retry, &QPushButton::clicked, this, [this] {
@@ -2233,12 +2241,12 @@ void MainWindow::updateCapturePlan() {
   const bool setMode = m_targetSource && m_targetSource->currentData().toString() == "targetSet";
   for (const QString &line : m_urls->toPlainText().split('\n')) {
     if (setMode) break;
-    const QString value = line.trimmed();
+    const QString value = normalizeCaptureUrl(line);
     if (value.isEmpty()) continue;
     urls.append(value);
     const QUrl url(value, QUrl::StrictMode);
     if (!url.isValid() || !QStringList{"http", "https"}.contains(url.scheme().toLower()) || url.host().isEmpty()) {
-      errors.append("Use explicit HTTP or HTTPS URLs");
+      errors.append("Enter a valid HTTP or HTTPS address");
     }
     const QString host = url.host().toLower();
     if ((host == "localhost" || host.endsWith(".localhost") || host.startsWith("127.") || host == "::1") &&
@@ -2598,8 +2606,8 @@ void MainWindow::submitCapture() {
   const bool setMode = m_targetSource->currentData().toString() == "targetSet";
   for (const auto &line : m_urls->toPlainText().split('\n')) {
     if (setMode) break;
-    const QString trimmed = line.trimmed();
-    if (!trimmed.isEmpty()) urls.append(trimmed);
+    const QString normalized = normalizeCaptureUrl(line);
+    if (!normalized.isEmpty()) urls.append(normalized);
   }
   if (!setMode && urls.isEmpty()) {
     QMessageBox::information(this, "URLs required", "Enter at least one URL.");
@@ -2678,6 +2686,19 @@ void MainWindow::openSelectedArtifact() {
       return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+  });
+}
+
+void MainWindow::openSelectedArtifactFolder() {
+  const QString id = selectedArtifactId();
+  if (id.isEmpty()) return;
+  rpcCall("artifact.resolve", {{"artifactId", id}}, [this](const QJsonObject &result) {
+    const QString path = result.value("absolutePath").toString();
+    if (!QFileInfo::exists(path)) {
+      QMessageBox::warning(this, "Missing artifact", "The artifact file no longer exists.");
+      return;
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
   });
 }
 

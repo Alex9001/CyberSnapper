@@ -184,6 +184,7 @@ private:
   QString selectedScheduleId() const;
   void showJobDetails();
   void openSelectedArtifact();
+  void openSelectedArtifactFolder();
   void setSelectedArtifactAsBaseline();
   void createSchedule();
   void editSchedule(const QJsonObject &schedule);
