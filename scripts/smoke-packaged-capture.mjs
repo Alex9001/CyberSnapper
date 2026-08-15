@@ -14,7 +14,7 @@ if (process.argv.length !== 8) {
   process.exit(2);
 }
 
-const [cli, agent, worker, nodeRuntime, browserCache, stateRoot] = process.argv.slice(2).map(path.resolve);
+const [cli, agent, worker, nodeRuntime, browserCache, stateRoot] = process.argv.slice(2).map((argument) => path.resolve(argument));
 const runRoot = path.join(stateRoot, `run-${process.pid}-${Date.now()}`);
 const projectRoot = path.join(runRoot, 'project');
 const projectState = path.join(projectRoot, '.cybersnapper');
