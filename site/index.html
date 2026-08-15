@@ -59,13 +59,13 @@
       <div class="hero-visual">
         <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
         <div class="app-window">
-          <div class="window-bar"><span></span><span></span><span></span><b>CyberSnapper / Compare</b></div>
+          <div class="window-bar"><span></span><span></span><span></span><b>CyberSnapper / Capture</b></div>
           <picture>
-            <source srcset="assets/screenshots/app-compare.webp" type="image/webp">
-            <img src="assets/screenshots/app-compare.png" alt="CyberSnapper Compare view showing baseline and current website captures side by side" width="1280" height="800">
+            <source srcset="assets/screenshots/app-capture.webp" type="image/webp">
+            <img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace showing targets, viewports, output, and visual comparison settings" width="1280" height="800">
           </picture>
         </div>
-        <div class="signal-card signal-top"><strong>2.437%</strong><span>visual change</span></div>
+        <div class="signal-card signal-top" aria-label="Example comparison result: changed, with 2.44 percent of pixels different"><span>Example comparison</span><strong>Changed</strong><small>2.44% of pixels differ</small></div>
         <div class="signal-card signal-bottom"><span class="pulse"></span><strong>Ready</strong><span>3 viewports · 2 browsers</span></div>
       </div>
     </section>
@@ -87,9 +87,13 @@
       </div>
       <div class="feature-grid">
         <article class="feature-card feature-wide">
-          <div class="feature-icon">▦</div>
-          <div><h3>Every viewport, one run</h3><p>Capture desktop, tablet, mobile, and your own exact dimensions. Pixel ratio and mobile browser behavior are explicit—not hidden magic.</p></div>
-          <div class="viewport-stack" aria-hidden="true"><span>1440 × 900</span><span>768 × 1024</span><span>390 × 844 @2×</span></div>
+          <div class="feature-copy"><div class="feature-icon">▦</div><h3>Every viewport, one run</h3><p>Capture desktop, tablet, mobile, and your own exact dimensions. Pixel ratio and mobile browser behavior are explicit—not hidden magic.</p></div>
+          <div class="viewport-grid" aria-label="Example viewport configuration">
+            <span><b>Desktop</b><small>1440 × 900 CSS px · 1×</small></span>
+            <span><b>Tablet</b><small>768 × 1024 CSS px · 1×</small></span>
+            <span><b>Mobile</b><small>390 × 844 CSS px · 2×</small></span>
+            <span><b>Custom</b><small>Any size · density · mode</small></span>
+          </div>
         </article>
         <article class="feature-card">
           <div class="feature-icon">◐</div><h3>Visual baselines</h3><p>Promote trusted captures, compare every new run, set sensitivity and allowed-difference thresholds, then inspect side-by-side, overlay, or generated diff views.</p>
@@ -131,17 +135,17 @@
         <p>These screenshots are generated automatically from a deterministic demo project during development.</p>
       </div>
       <div class="gallery">
-        <button class="shot shot-large" type="button" data-image="assets/screenshots/app-capture.png" data-alt="Capture workspace with targets, viewports, output, preparation, and visual comparison settings">
-          <picture><source srcset="assets/screenshots/app-capture.webp" type="image/webp"><img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace" width="1280" height="800"></picture><span><b>Capture</b> Configure the entire run without endless vertical scrolling.</span>
+        <button class="shot" type="button" data-image="assets/screenshots/app-capture.png" data-alt="Capture workspace with targets, viewports, output, preparation, and visual comparison settings">
+          <picture><source srcset="assets/screenshots/app-capture.webp" type="image/webp"><img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Capture</b> Configure the entire run without endless vertical scrolling.</span>
         </button>
         <button class="shot" type="button" data-image="assets/screenshots/app-history.png" data-alt="Capture history with job filters and selected artifacts">
-          <picture><source srcset="assets/screenshots/app-history.webp" type="image/webp"><img src="assets/screenshots/app-history.png" alt="CyberSnapper capture History" width="1280" height="800"></picture><span><b>History</b> Jobs and files stay connected.</span>
+          <picture><source srcset="assets/screenshots/app-history.webp" type="image/webp"><img src="assets/screenshots/app-history.png" alt="CyberSnapper capture History" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>History</b> Jobs and files stay connected.</span>
         </button>
         <button class="shot" type="button" data-image="assets/screenshots/app-compare.png" data-alt="Visual comparison with baseline and current captures side by side">
-          <picture><source srcset="assets/screenshots/app-compare.webp" type="image/webp"><img src="assets/screenshots/app-compare.png" alt="CyberSnapper visual Compare workspace" width="1280" height="800"></picture><span><b>Compare</b> Baseline, current, overlay, and diff.</span>
+          <picture><source srcset="assets/screenshots/app-compare.webp" type="image/webp"><img src="assets/screenshots/app-compare.png" alt="CyberSnapper visual Compare workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Compare</b> Baseline, current, overlay, and diff.</span>
         </button>
         <button class="shot" type="button" data-image="assets/screenshots/app-schedules.png" data-alt="Schedules workspace with recurring capture entries">
-          <picture><source srcset="assets/screenshots/app-schedules.webp" type="image/webp"><img src="assets/screenshots/app-schedules.png" alt="CyberSnapper Schedules workspace" width="1280" height="800"></picture><span><b>Schedules</b> Repeatable monitoring in local time.</span>
+          <picture><source srcset="assets/screenshots/app-schedules.webp" type="image/webp"><img src="assets/screenshots/app-schedules.png" alt="CyberSnapper Schedules workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Schedules</b> Repeatable monitoring in local time.</span>
         </button>
       </div>
     </section>
@@ -193,7 +197,7 @@
       <div><strong>Developers</strong><a href="https://github.com/Alex9001/CyberSnapper/blob/master/docs/API.md">REST API</a><a href="https://github.com/Alex9001/CyberSnapper/blob/master/docs/BUILDING.md">Build guide</a><a href="https://github.com/Alex9001/CyberSnapper">Source code</a></div>
       <div><strong>Project</strong><a href="https://github.com/Alex9001/CyberSnapper/releases">Releases</a><a href="https://github.com/Alex9001/CyberSnapper/issues">Issues</a><a href="https://github.com/Alex9001/CyberSnapper/releases/tag/v1.0.0">Frozen 1.x archive</a></div>
     </div>
-    <div class="shell footer-bottom"><span>CyberSnapper is open source under the ISC license.</span><span>Built with Qt + Playwright.</span></div>
+    <div class="shell footer-bottom"><span>CyberSnapper is open source under the ISC license.</span><a href="https://cyberbrand.net">Built by <strong>CYBER BRAND</strong> <span aria-hidden="true">↗</span></a></div>
   </footer>
 
   <dialog class="lightbox" aria-label="Screenshot preview">
