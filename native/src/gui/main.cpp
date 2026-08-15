@@ -176,9 +176,10 @@ int main(int argc, char **argv) {
           return;
         }
         poll->stop();
-        QTimer::singleShot(200, &window, [&application, &window, screenshotPath, elapsed] {
+        QTimer::singleShot(200, &window, [&application, &window, screenshotPath, scene, elapsed] {
           QDir().mkpath(QFileInfo(screenshotPath).absolutePath());
-          const bool saved = window.grab().save(screenshotPath, "PNG");
+          QWidget *target = scene == "presentation" ? QApplication::activeModalWidget() : &window;
+          const bool saved = target && target->grab().save(screenshotPath, "PNG");
           delete elapsed;
           application.exit(saved ? 0 : 4);
         });

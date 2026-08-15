@@ -98,6 +98,16 @@ try {
     }
     process.stdout.write(`generated ${path.relative(root, destination)}\n`);
   }
+  const presentationUiDestination = path.join(outputRoot, 'app-presentation.png');
+  process.stdout.write('capturing presentation settings\n');
+  await run(gui, [], { env: { ...env, CYBERSNAPPER_UI_SCENE: 'presentation', CYBERSNAPPER_UI_SCREENSHOT: presentationUiDestination } });
+  const presentationUiMetadata = await sharp(presentationUiDestination).metadata();
+  if (presentationUiMetadata.format !== 'png' || (presentationUiMetadata.width ?? 0) < 700 ||
+      (presentationUiMetadata.height ?? 0) < 500) {
+    throw new Error(`Unexpected presentation UI screenshot: ${presentationUiMetadata.width}x${presentationUiMetadata.height} ${presentationUiMetadata.format}`);
+  }
+  process.stdout.write(`generated ${path.relative(root, presentationUiDestination)}\n`);
+
   const { renderPresentation } = require(path.join(root, 'worker', 'dist', 'testing.cjs'));
   const portfolioSource = await sharp(path.join(projectRoot, 'captures', 'showcase', 'current.png')).png().toBuffer();
   const portfolio = await renderPresentation(portfolioSource, {
@@ -111,6 +121,64 @@ try {
     throw new Error(`Unexpected portfolio presentation example: ${portfolioMetadata.width}x${portfolioMetadata.height} ${portfolioMetadata.format}`);
   }
   process.stdout.write(`generated ${path.relative(root, portfolioDestination)}\n`);
+
+  const mobileSource = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844">
+    <rect width="390" height="844" fill="#F4F7FB"/><rect width="390" height="76" fill="#07111F"/>
+    <text x="24" y="47" fill="#39D7FF" font-family="Arial,sans-serif" font-size="20" font-weight="700">NORTHSTAR</text>
+    <circle cx="344" cy="38" r="4" fill="#D6E6F3"/><circle cx="360" cy="38" r="4" fill="#D6E6F3"/>
+    <text x="28" y="150" fill="#13253A" font-family="Arial,sans-serif" font-size="38" font-weight="700">Gear for the</text>
+    <text x="28" y="196" fill="#13253A" font-family="Arial,sans-serif" font-size="38" font-weight="700">next horizon.</text>
+    <text x="28" y="238" fill="#52677C" font-family="Arial,sans-serif" font-size="16">Field-tested essentials for every</text>
+    <text x="28" y="262" fill="#52677C" font-family="Arial,sans-serif" font-size="16">viewport and every adventure.</text>
+    <rect x="28" y="300" width="334" height="220" rx="28" fill="#DCE8F2"/><rect x="103" y="340" width="184" height="142" rx="20" fill="#0B1D32"/>
+    <circle cx="195" cy="411" r="54" fill="#925CFF"/><circle cx="195" cy="411" r="23" fill="#F4F7FB"/>
+    <rect x="28" y="560" width="334" height="72" rx="12" fill="#FFFFFF" stroke="#D4E1EC" stroke-width="2"/>
+    <text x="48" y="590" fill="#13253A" font-family="Arial,sans-serif" font-size="15" font-weight="700">MOBILE 390</text>
+    <text x="48" y="614" fill="#6D8194" font-family="Arial,sans-serif" font-size="12">Navigation wraps cleanly</text>
+    <rect x="28" y="664" width="224" height="56" rx="10" fill="#925CFF"/><text x="140" y="699" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" font-weight="700">VIEW COLLECTION</text>
+  </svg>`)).png().toBuffer();
+  const galleryChoices = [
+    { label: 'Clean', detail: 'Light browser', scene: 'clean', frame: 'lightBrowser', source: portfolioSource, mobile: false },
+    { label: 'Aurora', detail: 'Light browser', scene: 'aurora', frame: 'lightBrowser', source: portfolioSource, mobile: false },
+    { label: 'Sunset', detail: 'Rounded card', scene: 'sunset', frame: 'roundedCard', source: portfolioSource, mobile: false },
+    { label: 'Midnight', detail: 'Dark browser', scene: 'midnight', frame: 'darkBrowser', source: portfolioSource, mobile: false },
+    { label: 'Graphite', detail: 'Dark phone', scene: 'graphite', frame: 'darkPhone', source: mobileSource, mobile: true },
+    { label: 'Custom solid', detail: 'No frame', scene: 'customSolid', frame: 'none', source: portfolioSource, mobile: false },
+  ];
+  const galleryWidth = 1800;
+  const galleryHeight = 940;
+  const cellWidth = 540;
+  const imageHeight = 304;
+  const cellHeight = 360;
+  const galleryBackground = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${galleryWidth}" height="${galleryHeight}">
+    <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111F"/><stop offset="1" stop-color="#101D31"/></linearGradient></defs>
+    <rect width="100%" height="100%" fill="url(#bg)"/><text x="60" y="62" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="34" font-weight="700">Portfolio presentation, six ways</text>
+    <text x="60" y="96" fill="#8FA5B8" font-family="Arial,sans-serif" font-size="18">Generated locally from the same capture — backgrounds, browser chrome, cards, phone hardware, and custom color.</text>
+    ${galleryChoices.map((choice, index) => {
+      const x = 60 + (index % 3) * 570;
+      const y = 140 + Math.floor(index / 3) * 380;
+      return `<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" rx="16" fill="#0C192A" stroke="#243A50"/>
+        <text x="${x + 18}" y="${y + 336}" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="18" font-weight="700">${choice.label}</text>
+        <text x="${x + cellWidth - 18}" y="${y + 336}" text-anchor="end" fill="#58DDFE" font-family="Arial,sans-serif" font-size="14">${choice.detail}</text>`;
+    }).join('')}
+  </svg>`);
+  const galleryComposites = [];
+  for (const [index, choice] of galleryChoices.entries()) {
+    const rendered = await renderPresentation(choice.source, {
+      enabled: true, scene: choice.scene, frame: choice.frame, aspect: '16:9',
+      padding: 'balanced', shadow: 'soft', solidColor: '#0F766E',
+    }, { mobile: choice.mobile }, 'viewport');
+    const thumbnail = await sharp(rendered.bytes).resize(cellWidth, imageHeight, { fit: 'fill' }).png().toBuffer();
+    galleryComposites.push({ input: thumbnail, left: 60 + (index % 3) * 570,
+      top: 140 + Math.floor(index / 3) * 380 });
+  }
+  const galleryDestination = path.join(outputRoot, 'portfolio-scene-gallery.png');
+  await sharp(galleryBackground).composite(galleryComposites).png({ compressionLevel: 9 }).toFile(galleryDestination);
+  const galleryMetadata = await sharp(galleryDestination).metadata();
+  if (galleryMetadata.width !== galleryWidth || galleryMetadata.height !== galleryHeight || galleryMetadata.format !== 'png') {
+    throw new Error(`Unexpected portfolio scene gallery: ${galleryMetadata.width}x${galleryMetadata.height} ${galleryMetadata.format}`);
+  }
+  process.stdout.write(`generated ${path.relative(root, galleryDestination)}\n`);
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }
   if (agentProcess.exitCode === null) agentProcess.kill('SIGTERM');

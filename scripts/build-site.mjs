@@ -40,6 +40,23 @@ if (!portfolioMetadata.width || !portfolioMetadata.height ||
 await cp(portfolioExample, path.join(outputScreenshots, 'portfolio-aurora-browser.png'));
 await sharp(portfolioExample).webp({ quality: 86, effort: 5 })
   .toFile(path.join(outputScreenshots, 'portfolio-aurora-browser.webp'));
+const presentationUi = path.join(screenshotSource, 'app-presentation.png');
+const presentationUiMetadata = await sharp(presentationUi).metadata();
+if ((presentationUiMetadata.width ?? 0) < 700 || (presentationUiMetadata.height ?? 0) < 500) {
+  throw new Error('Presentation settings screenshot is unexpectedly small');
+}
+await cp(presentationUi, path.join(outputScreenshots, 'app-presentation.png'));
+await sharp(presentationUi).webp({ quality: 86, effort: 5 })
+  .toFile(path.join(outputScreenshots, 'app-presentation.webp'));
+
+const sceneGallery = path.join(screenshotSource, 'portfolio-scene-gallery.png');
+const sceneGalleryMetadata = await sharp(sceneGallery).metadata();
+if (sceneGalleryMetadata.width !== 1800 || sceneGalleryMetadata.height !== 940) {
+  throw new Error('Portfolio scene gallery must be 1800x940');
+}
+await cp(sceneGallery, path.join(outputScreenshots, 'portfolio-scene-gallery.png'));
+await sharp(sceneGallery).webp({ quality: 86, effort: 5 })
+  .toFile(path.join(outputScreenshots, 'portfolio-scene-gallery.webp'));
 
 const socialText = Buffer.from(`
   <svg width="1280" height="640" xmlns="http://www.w3.org/2000/svg">

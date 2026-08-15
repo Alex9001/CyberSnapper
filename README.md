@@ -61,7 +61,14 @@ Turn on **Portfolio style** to save two files for each raster capture: the untou
 
 Automatic framing understands the capture: mobile viewports receive a phone frame, desktop viewports receive browser chrome, and full-page or element captures receive a rounded card. Fixed ratios only expand the background—they never crop or upscale the screenshot. Original files remain the source for visual comparison.
 
-![Portfolio-ready Aurora scene with a light browser frame generated locally by CyberSnapper](docs/images/portfolio-aurora-browser.png)
+![Six portfolio presentation combinations generated locally from CyberSnapper captures](docs/images/portfolio-scene-gallery.png)
+
+| Presentation settings | Finished `-portfolio` file |
+| --- | --- |
+| The complete profile editor makes every choice explicit and explains automatic framing. | This 16:9 Aurora scene and browser frame came directly from the production renderer. |
+| ![CyberSnapper Presentation profile settings](docs/images/app-presentation.png) | ![Portfolio-ready Aurora scene with a light browser frame](docs/images/portfolio-aurora-browser.png) |
+
+The application and output images above are generated automatically by `npm run screenshots:docs`, using the same Qt interface and Sharp renderer that ship with CyberSnapper.
 
 ## The portfolio capture workflow
 

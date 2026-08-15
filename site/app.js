@@ -17,7 +17,7 @@ navLinks?.addEventListener('click', (event) => {
 
 const lightbox = document.querySelector('.lightbox');
 const lightboxImage = lightbox?.querySelector('img');
-document.querySelectorAll('.shot').forEach((shot) => {
+document.querySelectorAll('.shot, .showcase-shot').forEach((shot) => {
   shot.addEventListener('click', () => {
     if (!lightbox || !lightboxImage) return;
     lightboxImage.src = shot.dataset.image;

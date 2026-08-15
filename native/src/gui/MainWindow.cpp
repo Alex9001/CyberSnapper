@@ -303,6 +303,7 @@ void MainWindow::connectToAgent() {
 bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
   const QString scene = requestedScene.trimmed().toLower();
   const QHash<QString, int> scenes{{"dashboard", 0}, {"capture", 1}, {"review", 2}, {"compare", 2},
+                                  {"presentation", 1},
                                   {"history", 3}, {"targets", 4}, {"schedules", 5},
                                   {"settings", 6}, {"help", 7}};
   if (!scenes.contains(scene) || !m_tabs) return false;
@@ -311,6 +312,11 @@ bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
     m_urls->setPlainText("https://example.com\nhttps://example.org/pricing");
   }
   if (!m_connectionStatus || m_connectionStatus->text() != "Ready" || m_projectId.isEmpty()) return false;
+  if (scene == "presentation") {
+    if (!m_profileCombo || m_profileCombo->count() == 0 || !m_viewports || m_viewports->rowCount() == 0) return false;
+    QTimer::singleShot(0, this, &MainWindow::openProfileManager);
+    return true;
+  }
   if (scene == "capture") {
     return m_profileCombo && m_profileCombo->count() > 0 && m_viewports && m_viewports->rowCount() >= 3 &&
            m_startCapture && m_startCapture->isEnabled();
@@ -2429,6 +2435,9 @@ void MainWindow::openProfileManager() {
   presentationForm->addRow(presentationSummary);
   presentationForm->addRow(helperText("Auto uses a phone frame for mobile viewport captures, browser chrome for desktop viewport captures, and a rounded card for full-page or element captures. Fixed canvas ratios expand the background and never crop the screenshot. PDF output is unchanged."));
   tabs->addTab(presentationPage, "Presentation");
+  if (qEnvironmentVariable("CYBERSNAPPER_UI_SCENE").compare("presentation", Qt::CaseInsensitive) == 0) {
+    tabs->setCurrentWidget(presentationPage);
+  }
 
   const auto updatePresentationControls = [=] {
     const bool enabled = presentationEnabled->isChecked();
