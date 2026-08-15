@@ -1,12 +1,13 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { mkdir, rename, statfs, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, statfs, writeFile } from 'node:fs/promises';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 import sharp from 'sharp';
 import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './network.js';
 import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
 import { normalizePresentation, renderPresentation } from './presentation.js';
 import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
+import { windowsBinaryIsX64 } from './windows.js';
 
 export interface JobRuntime {
   cancelled: boolean;
@@ -18,6 +19,39 @@ type Emit = (event: Omit<WorkerEvent, 'protocolVersion' | 'sequence' | 'timestam
 interface CaptureTarget { index: number; target: TargetSnapshot; engine: BrowserEngine; viewport: Viewport; formats: OutputFormat[]; }
 
 const browserTypes: Record<BrowserEngine, BrowserType> = { chromium, firefox, webkit };
+
+async function launchEngine(engine: BrowserEngine, proxyUrl: string): Promise<Browser> {
+  const args = engine === 'chromium' ? ['--proxy-bypass-list=<-loopback>'] : [];
+  if (engine === 'chromium') {
+    return launchChromiumWithSystemFallback(proxyUrl, args);
+  }
+  return browserTypes[engine].launch({ headless: true, proxy: { server: proxyUrl }, args });
+}
+
+async function launchChromiumWithSystemFallback(proxyUrl: string, args: string[]): Promise<Browser> {
+  const executablePath = chromium.executablePath();
+  const bundled = await access(executablePath).then(() => true).catch(() => false);
+  // On Windows arm64 a bundled x64 Chromium runs under emulation, so prefer a
+  // native system Chrome or Edge when one is available.
+  const preferSystem = bundled && process.platform === 'win32' && process.arch === 'arm64'
+    && await windowsBinaryIsX64(executablePath);
+  if (bundled && !preferSystem) {
+    return chromium.launch({ headless: true, proxy: { server: proxyUrl }, args });
+  }
+  for (const channel of ['chrome', 'msedge']) {
+    try {
+      return await chromium.launch({ headless: true, proxy: { server: proxyUrl }, args, channel });
+    } catch {
+      // The channel browser is not installed; try the next system browser.
+    }
+  }
+  if (bundled) {
+    // No native system browser found; keep the bundled (possibly emulated) Chromium.
+    return chromium.launch({ headless: true, proxy: { server: proxyUrl }, args });
+  }
+  throw new Error('Chromium is not installed and no system browser (Google Chrome or Microsoft Edge) is available. Install Chromium from Settings, or install Chrome or Edge.');
+}
+
 const popupSelectors = [
   '[aria-label*="cookie" i]', '[id*="cookie" i]', '[class*="cookie" i]',
   '[id*="newsletter" i]', '[class*="newsletter" i]', '[class*="modal" i]',
@@ -446,8 +480,7 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
   try {
     for (const engine of new Set(targets.map((target) => target.engine))) {
       if (runtime.cancelled) break;
-      const browser = await browserTypes[engine].launch({ headless: true, proxy: { server: proxy.url },
-        args: engine === 'chromium' ? ['--proxy-bypass-list=<-loopback>'] : [] });
+      const browser = await launchEngine(engine, proxy.url);
       browsers.set(engine, browser);
       runtime.browsers.add(browser);
     }
