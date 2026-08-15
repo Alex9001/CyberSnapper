@@ -63,6 +63,12 @@ Automatic framing understands the capture: mobile viewports receive a phone fram
 
 ![Six portfolio presentation combinations generated locally from CyberSnapper captures](docs/images/portfolio-scene-gallery.png)
 
+### Frame comparison
+
+These are the actual six explicit frame choices. **Auto** selects among them based on the capture: browser chrome for desktop viewports, phone hardware for mobile viewports, and a rounded card for full-page or element captures.
+
+![CyberSnapper frame comparison showing no frame, rounded card, light browser, dark browser, light phone, and dark phone](docs/images/portfolio-frame-gallery.png)
+
 | Presentation settings | Finished `-portfolio` file |
 | --- | --- |
 | The complete profile editor makes every choice explicit and explains automatic framing. | This 16:9 Aurora scene and browser frame came directly from the production renderer. |

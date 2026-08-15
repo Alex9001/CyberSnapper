@@ -57,6 +57,14 @@ if (sceneGalleryMetadata.width !== 1800 || sceneGalleryMetadata.height !== 940) 
 await cp(sceneGallery, path.join(outputScreenshots, 'portfolio-scene-gallery.png'));
 await sharp(sceneGallery).webp({ quality: 86, effort: 5 })
   .toFile(path.join(outputScreenshots, 'portfolio-scene-gallery.webp'));
+const frameGallery = path.join(screenshotSource, 'portfolio-frame-gallery.png');
+const frameGalleryMetadata = await sharp(frameGallery).metadata();
+if (frameGalleryMetadata.width !== 1800 || frameGalleryMetadata.height !== 940) {
+  throw new Error('Portfolio frame gallery must be 1800x940');
+}
+await cp(frameGallery, path.join(outputScreenshots, 'portfolio-frame-gallery.png'));
+await sharp(frameGallery).webp({ quality: 86, effort: 5 })
+  .toFile(path.join(outputScreenshots, 'portfolio-frame-gallery.webp'));
 
 const socialText = Buffer.from(`
   <svg width="1280" height="640" xmlns="http://www.w3.org/2000/svg">

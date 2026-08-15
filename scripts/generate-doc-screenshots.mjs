@@ -150,35 +150,51 @@ try {
   const cellWidth = 540;
   const imageHeight = 304;
   const cellHeight = 360;
-  const galleryBackground = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${galleryWidth}" height="${galleryHeight}">
-    <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111F"/><stop offset="1" stop-color="#101D31"/></linearGradient></defs>
-    <rect width="100%" height="100%" fill="url(#bg)"/><text x="60" y="62" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="34" font-weight="700">Portfolio presentation, six ways</text>
-    <text x="60" y="96" fill="#8FA5B8" font-family="Arial,sans-serif" font-size="18">Generated locally from the same capture — backgrounds, browser chrome, cards, phone hardware, and custom color.</text>
-    ${galleryChoices.map((choice, index) => {
-      const x = 60 + (index % 3) * 570;
-      const y = 140 + Math.floor(index / 3) * 380;
-      return `<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" rx="16" fill="#0C192A" stroke="#243A50"/>
-        <text x="${x + 18}" y="${y + 336}" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="18" font-weight="700">${choice.label}</text>
-        <text x="${x + cellWidth - 18}" y="${y + 336}" text-anchor="end" fill="#58DDFE" font-family="Arial,sans-serif" font-size="14">${choice.detail}</text>`;
-    }).join('')}
-  </svg>`);
-  const galleryComposites = [];
-  for (const [index, choice] of galleryChoices.entries()) {
-    const rendered = await renderPresentation(choice.source, {
-      enabled: true, scene: choice.scene, frame: choice.frame, aspect: '16:9',
-      padding: 'balanced', shadow: 'soft', solidColor: '#0F766E',
-    }, { mobile: choice.mobile }, 'viewport');
-    const thumbnail = await sharp(rendered.bytes).resize(cellWidth, imageHeight, { fit: 'fill' }).png().toBuffer();
-    galleryComposites.push({ input: thumbnail, left: 60 + (index % 3) * 570,
-      top: 140 + Math.floor(index / 3) * 380 });
-  }
-  const galleryDestination = path.join(outputRoot, 'portfolio-scene-gallery.png');
-  await sharp(galleryBackground).composite(galleryComposites).png({ compressionLevel: 9 }).toFile(galleryDestination);
-  const galleryMetadata = await sharp(galleryDestination).metadata();
-  if (galleryMetadata.width !== galleryWidth || galleryMetadata.height !== galleryHeight || galleryMetadata.format !== 'png') {
-    throw new Error(`Unexpected portfolio scene gallery: ${galleryMetadata.width}x${galleryMetadata.height} ${galleryMetadata.format}`);
-  }
-  process.stdout.write(`generated ${path.relative(root, galleryDestination)}\n`);
+  const generateGallery = async (choices, title, subtitle, filename) => {
+    const background = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${galleryWidth}" height="${galleryHeight}">
+      <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111F"/><stop offset="1" stop-color="#101D31"/></linearGradient></defs>
+      <rect width="100%" height="100%" fill="url(#bg)"/><text x="60" y="62" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="34" font-weight="700">${title}</text>
+      <text x="60" y="96" fill="#8FA5B8" font-family="Arial,sans-serif" font-size="18">${subtitle}</text>
+      ${choices.map((choice, index) => {
+        const x = 60 + (index % 3) * 570;
+        const y = 140 + Math.floor(index / 3) * 380;
+        return `<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" rx="16" fill="#0C192A" stroke="#243A50"/>
+          <text x="${x + 18}" y="${y + 336}" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="18" font-weight="700">${choice.label}</text>
+          <text x="${x + cellWidth - 18}" y="${y + 336}" text-anchor="end" fill="#58DDFE" font-family="Arial,sans-serif" font-size="14">${choice.detail}</text>`;
+      }).join('')}
+    </svg>`);
+    const composites = [];
+    for (const [index, choice] of choices.entries()) {
+      const rendered = await renderPresentation(choice.source, {
+        enabled: true, scene: choice.scene, frame: choice.frame, aspect: '16:9',
+        padding: 'balanced', shadow: 'soft', solidColor: '#0F766E',
+      }, { mobile: choice.mobile }, 'viewport');
+      const thumbnail = await sharp(rendered.bytes).resize(cellWidth, imageHeight, { fit: 'fill' }).png().toBuffer();
+      composites.push({ input: thumbnail, left: 60 + (index % 3) * 570,
+        top: 140 + Math.floor(index / 3) * 380 });
+    }
+    const destination = path.join(outputRoot, filename);
+    await sharp(background).composite(composites).png({ compressionLevel: 9 }).toFile(destination);
+    const metadata = await sharp(destination).metadata();
+    if (metadata.width !== galleryWidth || metadata.height !== galleryHeight || metadata.format !== 'png') {
+      throw new Error(`Unexpected generated gallery: ${metadata.width}x${metadata.height} ${metadata.format}`);
+    }
+    process.stdout.write(`generated ${path.relative(root, destination)}\n`);
+  };
+  await generateGallery(galleryChoices, 'Portfolio presentation, six ways',
+    'Generated locally from the same capture — backgrounds, browser chrome, cards, phone hardware, and custom color.',
+    'portfolio-scene-gallery.png');
+  const frameChoices = [
+    { label: 'None', detail: 'Screenshot only', scene: 'aurora', frame: 'none', source: portfolioSource, mobile: false },
+    { label: 'Rounded card', detail: 'Desktop capture', scene: 'aurora', frame: 'roundedCard', source: portfolioSource, mobile: false },
+    { label: 'Light browser', detail: 'Desktop capture', scene: 'aurora', frame: 'lightBrowser', source: portfolioSource, mobile: false },
+    { label: 'Dark browser', detail: 'Desktop capture', scene: 'aurora', frame: 'darkBrowser', source: portfolioSource, mobile: false },
+    { label: 'Light phone', detail: 'Mobile capture', scene: 'aurora', frame: 'lightPhone', source: mobileSource, mobile: true },
+    { label: 'Dark phone', detail: 'Mobile capture', scene: 'aurora', frame: 'darkPhone', source: mobileSource, mobile: true },
+  ];
+  await generateGallery(frameChoices, 'Frame comparison — every option',
+    'The same Aurora scene isolates the frame itself: none, card, light and dark browser chrome, and light and dark phone hardware.',
+    'portfolio-frame-gallery.png');
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }
   if (agentProcess.exitCode === null) agentProcess.kill('SIGTERM');
