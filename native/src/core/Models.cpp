@@ -46,7 +46,7 @@ PresentationSettings presentationFromJson(const QJsonValue &value) {
     settings.scene = "aurora";
   }
   settings.frame = object.value("frame").toString(settings.frame);
-  if (!QStringList{"auto", "none", "roundedCard", "lightBrowser", "darkBrowser", "lightPhone", "darkPhone"}.contains(settings.frame)) {
+  if (!QStringList{"auto", "none", "roundedCard", "lightBrowser", "darkBrowser", "lightTablet", "darkTablet", "lightPhone", "darkPhone"}.contains(settings.frame)) {
     settings.frame = "auto";
   }
   settings.aspect = object.value("aspect").toString(settings.aspect);

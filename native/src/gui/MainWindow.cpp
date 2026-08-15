@@ -1490,7 +1490,7 @@ QWidget *MainWindow::buildHelpPage() {
 
     <h2>Portfolio presentation</h2>
     <p><b>Portfolio style</b> creates a second, presentation-ready copy of every PNG, WebP, or AVIF while always preserving the original. Choose a background scene on Capture, then use <b>Customize</b> or Manage → Presentation for the canvas ratio, padding, shadow, and frame.</p>
-    <p><b>Auto frame</b> uses phone hardware for mobile viewport captures, browser chrome for desktop viewport captures, and a rounded card for full-page or element captures. Fixed 16:9, 4:3, and square canvases expand the background without cropping or enlarging the screenshot. Styled files end in <code>-portfolio</code> and are not used as visual-comparison baselines.</p>
+    <p><b>Auto frame</b> uses tablet hardware for mobile-mode viewport captures whose shorter CSS dimension is at least 600 px, phone hardware for smaller mobile-mode captures, browser chrome for other viewport captures, and a rounded card for full-page or element captures. Fixed 16:9, 4:3, and square canvases expand the background without cropping or enlarging the screenshot. Styled files end in <code>-portfolio</code> and are not used as visual-comparison baselines.</p>
 
     <h2>Visual comparison</h2>
     <p>Select a non-PDF file in History and choose <b>Set as Baseline</b>, or accept a missing-baseline item in Review. Enable comparison in a capture profile. Future captures are matched by URL, browser, viewport, mode, and format. Review provides triage, notes, batch actions, synchronized side-by-side inspection, overlay, wipe, generated difference, and baseline management.</p>
@@ -2409,7 +2409,8 @@ void MainWindow::openProfileManager() {
   auto *frame = new QComboBox;
   frame->addItem("Auto — match the capture", "auto"); frame->addItem("None", "none");
   frame->addItem("Rounded card", "roundedCard"); frame->addItem("Light browser", "lightBrowser");
-  frame->addItem("Dark browser", "darkBrowser"); frame->addItem("Light phone", "lightPhone");
+  frame->addItem("Dark browser", "darkBrowser"); frame->addItem("Light tablet", "lightTablet");
+  frame->addItem("Dark tablet", "darkTablet"); frame->addItem("Light phone", "lightPhone");
   frame->addItem("Dark phone", "darkPhone");
   frame->setCurrentIndex(qMax(0, frame->findData(presentationSource.value("frame").toString("auto"))));
   auto *aspect = new QComboBox;
@@ -2433,7 +2434,7 @@ void MainWindow::openProfileManager() {
   presentationForm->addRow("Shadow", shadow);
   presentationForm->addRow("Custom solid color", solidColor);
   presentationForm->addRow(presentationSummary);
-  presentationForm->addRow(helperText("Auto uses a phone frame for mobile viewport captures, browser chrome for desktop viewport captures, and a rounded card for full-page or element captures. Fixed canvas ratios expand the background and never crop the screenshot. PDF output is unchanged."));
+  presentationForm->addRow(helperText("Auto uses a tablet frame when Mobile mode is on and the viewport's shorter CSS dimension is at least 600 px, a phone frame for smaller mobile viewports, browser chrome for other viewport captures, and a rounded card for full-page or element captures. Fixed canvas ratios expand the background and never crop the screenshot. PDF output is unchanged."));
   tabs->addTab(presentationPage, "Presentation");
   if (qEnvironmentVariable("CYBERSNAPPER_UI_SCENE").compare("presentation", Qt::CaseInsensitive) == 0) {
     tabs->setCurrentWidget(presentationPage);

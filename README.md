@@ -43,7 +43,7 @@ Every release includes SHA-256 checksums and GitHub build-provenance attestation
 - Capture full scrolling pages, exact viewports, or one CSS-selected element.
 - Produce desktop, tablet, mobile, and custom-sized images together with explicit pixel density and mobile-browser controls.
 - Wait for pages to settle, block common overlays, and hide chosen elements so banners and animation do not spoil the shot.
-- Create portfolio-ready copies with Clean, Aurora, Sunset, Midnight, Graphite, or custom-solid scenes; add browser, phone, or rounded-card frames; and target 16:9, 4:3, square, or content-fit canvases.
+- Create portfolio-ready copies with Clean, Aurora, Sunset, Midnight, Graphite, or custom-solid scenes; add browser, tablet, phone, or rounded-card frames; and target 16:9, 4:3, square, or content-fit canvases.
 - Save labeled target sets for all the projects and pages in a portfolio, then recapture them as one batch.
 - Export PNG, WebP, AVIF, and Chromium PDF with collision-safe names into ordinary folders.
 - Render through Chromium, Firefox, or WebKit and keep a searchable history of every resulting file.
@@ -55,19 +55,19 @@ Visual comparison, baselines, recurring schedules, retries, the native CLI, and 
 Turn on **Portfolio style** to save two files for each raster capture: the untouched original and a polished `-portfolio` copy. Scenes and frames are rendered locally with vector graphics—there is no upload, account, template service, or downloaded mockup pack.
 
 - Backgrounds: Clean, Aurora, Sunset, Midnight, Graphite, and a custom `#RRGGBB` solid color.
-- Frames: automatic, none, rounded card, light/dark browser, and light/dark phone.
+- Frames: automatic, none, rounded card, light/dark browser, light/dark tablet, and light/dark phone.
 - Canvases: fit content, 16:9, 4:3, and square, with compact, balanced, or generous padding.
 - Shadows: none, soft, or strong.
 
-Automatic framing understands the capture: mobile viewports receive a phone frame, desktop viewports receive browser chrome, and full-page or element captures receive a rounded card. Fixed ratios only expand the background—they never crop or upscale the screenshot. Original files remain the source for visual comparison.
+Automatic framing understands the capture: mobile-mode viewports at least 600 CSS pixels across their shorter dimension receive a tablet frame, smaller mobile-mode viewports receive a phone frame, other viewport captures receive browser chrome, and full-page or element captures receive a rounded card. Fixed ratios only expand the background—they never crop or upscale the screenshot. Original files remain the source for visual comparison.
 
 ![Six portfolio presentation combinations using real CYBER BRAND Clearnet and Darkweb captures](docs/images/portfolio-scene-gallery.png)
 
 ### Frame comparison
 
-These are the actual six explicit frame choices, demonstrated with real light and dark captures of [cyberbrand.net](https://cyberbrand.net/). **Auto** selects among them based on the capture: browser chrome for desktop viewports, phone hardware for mobile viewports, and a rounded card for full-page or element captures.
+These are the actual eight explicit frame choices, demonstrated with real light and dark captures of [cyberbrand.net](https://cyberbrand.net/). **Auto** selects among them based on the capture: browser chrome for desktop viewports, tablet hardware for larger mobile-mode viewports, phone hardware for smaller mobile-mode viewports, and a rounded card for full-page or element captures.
 
-![CyberSnapper frame comparison showing no frame, rounded card, light browser, dark browser, light phone, and dark phone](docs/images/portfolio-frame-gallery.png)
+![CyberSnapper frame comparison showing no frame, rounded card, and light and dark browser, tablet, and phone frames](docs/images/portfolio-frame-gallery.png)
 
 | Presentation settings | Finished `-portfolio` file |
 | --- | --- |

@@ -120,12 +120,17 @@ try {
   };
   const lightDesktopSource = await loadSource('cyberbrand-light-desktop.png', 1440, 900);
   const darkDesktopSource = await loadSource('cyberbrand-dark-desktop.png', 1440, 900);
+  const lightTabletSource = await loadSource('cyberbrand-light-tablet.png', 768, 1024);
+  const darkTabletSource = await loadSource('cyberbrand-dark-tablet.png', 768, 1024);
   const lightMobileSource = await loadSource('cyberbrand-light-mobile.png', 390, 844);
   const darkMobileSource = await loadSource('cyberbrand-dark-mobile.png', 390, 844);
+  const desktopViewport = { mobile: false, width: 1440, height: 900 };
+  const tabletViewport = { mobile: true, width: 768, height: 1024 };
+  const mobileViewport = { mobile: true, width: 390, height: 844 };
   const portfolio = await renderPresentation(darkDesktopSource, {
     enabled: true, scene: 'aurora', frame: 'darkBrowser', aspect: '16:9',
     padding: 'balanced', shadow: 'soft', solidColor: '#0B1220',
-  }, { mobile: false }, 'viewport');
+  }, desktopViewport, 'viewport');
   const portfolioDestination = path.join(outputRoot, 'portfolio-aurora-browser.png');
   await writeFile(portfolioDestination, portfolio.bytes);
   const portfolioMetadata = await sharp(portfolioDestination).metadata();
@@ -135,29 +140,30 @@ try {
   process.stdout.write(`generated ${path.relative(root, portfolioDestination)}\n`);
 
   const galleryChoices = [
-    { label: 'Clean', detail: 'Clearnet · Light browser', scene: 'clean', frame: 'lightBrowser', source: lightDesktopSource, mobile: false },
-    { label: 'Aurora', detail: 'Darkweb · Dark browser', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
-    { label: 'Sunset', detail: 'Clearnet · Rounded card', scene: 'sunset', frame: 'roundedCard', source: lightDesktopSource, mobile: false },
-    { label: 'Midnight', detail: 'Darkweb · Dark browser', scene: 'midnight', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
-    { label: 'Graphite', detail: 'Darkweb · Dark phone', scene: 'graphite', frame: 'darkPhone', source: darkMobileSource, mobile: true },
-    { label: 'Custom solid', detail: 'Clearnet · No frame', scene: 'customSolid', frame: 'none', source: lightDesktopSource, mobile: false },
+    { label: 'Clean', detail: 'Clearnet · Light browser', scene: 'clean', frame: 'lightBrowser', source: lightDesktopSource, viewport: desktopViewport },
+    { label: 'Aurora', detail: 'Darkweb · Dark browser', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, viewport: desktopViewport },
+    { label: 'Sunset', detail: 'Clearnet · Light tablet', scene: 'sunset', frame: 'lightTablet', source: lightTabletSource, viewport: tabletViewport },
+    { label: 'Midnight', detail: 'Darkweb · Rounded card', scene: 'midnight', frame: 'roundedCard', source: darkDesktopSource, viewport: desktopViewport },
+    { label: 'Graphite', detail: 'Darkweb · Dark phone', scene: 'graphite', frame: 'darkPhone', source: darkMobileSource, viewport: mobileViewport },
+    { label: 'Custom solid', detail: 'Clearnet · No frame', scene: 'customSolid', frame: 'none', source: lightDesktopSource, viewport: desktopViewport },
   ];
-  const galleryWidth = 1800;
-  const galleryHeight = 940;
-  const cellWidth = 540;
-  const imageHeight = 304;
-  const cellHeight = 360;
-  const generateGallery = async (choices, title, subtitle, filename) => {
+  const generateGallery = async (choices, title, subtitle, filename, layout = {}) => {
+    const {
+      galleryWidth = 1800, galleryHeight = 940, columns = 3, marginX = 60,
+      columnGap = 30, firstRowY = 140, rowGap = 380, cellWidth = 540,
+      imageHeight = 304, cellHeight = 360, captionY = 336,
+      labelFontSize = 18, detailFontSize = 14,
+    } = layout;
     const background = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${galleryWidth}" height="${galleryHeight}">
       <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111F"/><stop offset="1" stop-color="#101D31"/></linearGradient></defs>
       <rect width="100%" height="100%" fill="url(#bg)"/><text x="60" y="62" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="34" font-weight="700">${title}</text>
       <text x="60" y="96" fill="#8FA5B8" font-family="Arial,sans-serif" font-size="18">${subtitle}</text>
       ${choices.map((choice, index) => {
-        const x = 60 + (index % 3) * 570;
-        const y = 140 + Math.floor(index / 3) * 380;
+        const x = marginX + (index % columns) * (cellWidth + columnGap);
+        const y = firstRowY + Math.floor(index / columns) * rowGap;
         return `<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" rx="16" fill="#0C192A" stroke="#243A50"/>
-          <text x="${x + 18}" y="${y + 336}" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="18" font-weight="700">${choice.label}</text>
-          <text x="${x + cellWidth - 18}" y="${y + 336}" text-anchor="end" fill="#58DDFE" font-family="Arial,sans-serif" font-size="14">${choice.detail}</text>`;
+          <text x="${x + 18}" y="${y + captionY}" fill="#EAF7FF" font-family="Arial,sans-serif" font-size="${labelFontSize}" font-weight="700">${choice.label}</text>
+          <text x="${x + cellWidth - 18}" y="${y + captionY}" text-anchor="end" fill="#58DDFE" font-family="Arial,sans-serif" font-size="${detailFontSize}">${choice.detail}</text>`;
       }).join('')}
     </svg>`);
     const composites = [];
@@ -165,10 +171,10 @@ try {
       const rendered = await renderPresentation(choice.source, {
         enabled: true, scene: choice.scene, frame: choice.frame, aspect: '16:9',
         padding: 'balanced', shadow: 'soft', solidColor: '#0F766E',
-      }, { mobile: choice.mobile }, 'viewport');
+      }, choice.viewport, 'viewport');
       const thumbnail = await sharp(rendered.bytes).resize(cellWidth, imageHeight, { fit: 'fill' }).png().toBuffer();
-      composites.push({ input: thumbnail, left: 60 + (index % 3) * 570,
-        top: 140 + Math.floor(index / 3) * 380 });
+      composites.push({ input: thumbnail, left: marginX + (index % columns) * (cellWidth + columnGap),
+        top: firstRowY + Math.floor(index / columns) * rowGap });
     }
     const destination = path.join(outputRoot, filename);
     await sharp(background).composite(composites).png({ compressionLevel: 9 }).toFile(destination);
@@ -179,19 +185,24 @@ try {
     process.stdout.write(`generated ${path.relative(root, destination)}\n`);
   };
   await generateGallery(galleryChoices, 'Portfolio presentation, six ways',
-    'Real cyberbrand.net Clearnet and Darkweb captures — scenes, browser chrome, cards, phone hardware, and custom color.',
+    'Real cyberbrand.net Clearnet and Darkweb captures — scenes, browser, tablet, phone, cards, and custom color.',
     'portfolio-scene-gallery.png');
   const frameChoices = [
-    { label: 'None', detail: 'Clearnet', scene: 'aurora', frame: 'none', source: lightDesktopSource, mobile: false },
-    { label: 'Rounded card', detail: 'Darkweb', scene: 'aurora', frame: 'roundedCard', source: darkDesktopSource, mobile: false },
-    { label: 'Light browser', detail: 'Clearnet', scene: 'aurora', frame: 'lightBrowser', source: lightDesktopSource, mobile: false },
-    { label: 'Dark browser', detail: 'Darkweb', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, mobile: false },
-    { label: 'Light phone', detail: 'Clearnet', scene: 'aurora', frame: 'lightPhone', source: lightMobileSource, mobile: true },
-    { label: 'Dark phone', detail: 'Darkweb', scene: 'aurora', frame: 'darkPhone', source: darkMobileSource, mobile: true },
+    { label: 'None', detail: 'Clearnet', scene: 'aurora', frame: 'none', source: lightDesktopSource, viewport: desktopViewport },
+    { label: 'Rounded card', detail: 'Darkweb', scene: 'aurora', frame: 'roundedCard', source: darkDesktopSource, viewport: desktopViewport },
+    { label: 'Light browser', detail: 'Clearnet', scene: 'aurora', frame: 'lightBrowser', source: lightDesktopSource, viewport: desktopViewport },
+    { label: 'Dark browser', detail: 'Darkweb', scene: 'aurora', frame: 'darkBrowser', source: darkDesktopSource, viewport: desktopViewport },
+    { label: 'Light tablet', detail: 'Clearnet', scene: 'aurora', frame: 'lightTablet', source: lightTabletSource, viewport: tabletViewport },
+    { label: 'Dark tablet', detail: 'Darkweb', scene: 'aurora', frame: 'darkTablet', source: darkTabletSource, viewport: tabletViewport },
+    { label: 'Light phone', detail: 'Clearnet', scene: 'aurora', frame: 'lightPhone', source: lightMobileSource, viewport: mobileViewport },
+    { label: 'Dark phone', detail: 'Darkweb', scene: 'aurora', frame: 'darkPhone', source: darkMobileSource, viewport: mobileViewport },
   ];
   await generateGallery(frameChoices, 'Frame comparison — every option',
-    'Real Clearnet and Darkweb captures on the same Aurora scene isolate every desktop and mobile frame.',
-    'portfolio-frame-gallery.png');
+    'Real Clearnet and Darkweb captures on the same Aurora scene isolate desktop, tablet, and phone frames.',
+    'portfolio-frame-gallery.png', {
+      columns: 4, marginX: 45, columnGap: 25, cellWidth: 405, imageHeight: 228,
+      cellHeight: 320, captionY: 276, labelFontSize: 16, detailFontSize: 13,
+    });
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }
   if (agentProcess.exitCode === null) agentProcess.kill('SIGTERM');

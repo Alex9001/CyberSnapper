@@ -2,7 +2,8 @@ export type BrowserEngine = 'chromium' | 'firefox' | 'webkit';
 export type OutputFormat = 'png' | 'webp' | 'avif' | 'pdf';
 export type CaptureMode = 'fullPage' | 'viewport' | 'element';
 export type PresentationScene = 'clean' | 'aurora' | 'sunset' | 'midnight' | 'graphite' | 'customSolid';
-export type PresentationFrame = 'auto' | 'none' | 'roundedCard' | 'lightBrowser' | 'darkBrowser' | 'lightPhone' | 'darkPhone';
+export type PresentationFrame = 'auto' | 'none' | 'roundedCard' | 'lightBrowser' | 'darkBrowser' |
+  'lightTablet' | 'darkTablet' | 'lightPhone' | 'darkPhone';
 export type PresentationAspect = 'auto' | '16:9' | '4:3' | 'square';
 export type PresentationPadding = 'compact' | 'balanced' | 'generous';
 export type PresentationShadow = 'none' | 'soft' | 'strong';

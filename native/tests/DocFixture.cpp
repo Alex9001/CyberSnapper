@@ -78,12 +78,13 @@ DiffResult drawDiff(const QString &baselinePath, const QString &currentPath, con
 
 QJsonObject artifact(const QString &id, const QString &relativePath, const QString &viewport,
                      const QString &engine = "chromium", const QString &status = "succeeded") {
+  const int width = viewport == "Mobile" ? 390 : viewport == "Tablet" ? 768 : 1440;
+  const int height = viewport == "Mobile" ? 844 : viewport == "Tablet" ? 1024 : 900;
   return {{"id", id}, {"url", ShowcaseUrl}, {"engine", engine}, {"viewportId", viewport.toLower()},
           {"targetId", "home"}, {"targetName", "Homepage"}, {"targetSetId", "target-set-production"},
           {"targetSetName", "Production site"},
           {"viewportName", viewport}, {"captureMode", "fullPage"}, {"format", "png"},
-          {"relativePath", relativePath}, {"width", viewport == "Mobile" ? 390 : 1440},
-          {"height", viewport == "Mobile" ? 844 : 900}, {"sha256", id + "-fixture"},
+          {"relativePath", relativePath}, {"width", width}, {"height", height}, {"sha256", id + "-fixture"},
           {"status", status}, {"error", status == "failed" ? "Navigation timed out" : QString{}},
           {"createdAt", utcNow()}};
 }
@@ -135,7 +136,7 @@ int main(int argc, char **argv) {
   profile.blockPopups = true;
   profile.presentation.enabled = true;
   profile.presentation.scene = "aurora";
-  profile.presentation.frame = "auto";
+  profile.presentation.frame = "darkTablet";
   profile.presentation.aspect = "16:9";
   profile.presentation.padding = "balanced";
   profile.presentation.shadow = "soft";
@@ -153,12 +154,14 @@ int main(int argc, char **argv) {
 
   const QString baseRelative = "captures/showcase/baseline.png";
   const QString currentRelative = "captures/showcase/current.png";
+  const QString tabletRelative = "captures/showcase/tablet-dark.png";
   const QString mobileRelative = "captures/showcase/mobile-dark.png";
   const QString diffRelative = "captures/showcase/difference.png";
   const QString baselinePath = QDir(root).filePath(baseRelative);
   const QString currentPath = QDir(root).filePath(currentRelative);
   if (!copySourceCapture("cyberbrand-light-desktop.png", baselinePath) ||
       !copySourceCapture("cyberbrand-dark-desktop.png", currentPath) ||
+      !copySourceCapture("cyberbrand-dark-tablet.png", QDir(root).filePath(tabletRelative)) ||
       !copySourceCapture("cyberbrand-dark-mobile.png", QDir(root).filePath(mobileRelative))) {
     return fail("could not copy CYBER BRAND source captures");
   }
@@ -167,7 +170,7 @@ int main(int argc, char **argv) {
 
   if (!addJob(store, profile, "job-api-failure", "api", "failed", 0, 1, {}, "DNS lookup failed")) return fail("could not add API job");
   if (!addJob(store, profile, "job-weekday-schedule", "schedule:weekday", "succeeded", 12, 0,
-              {artifact("artifact-schedule", currentRelative, "Tablet", "firefox")})) return fail("could not add scheduled job");
+              {artifact("artifact-schedule", tabletRelative, "Tablet", "firefox")})) return fail("could not add scheduled job");
   if (!addJob(store, profile, "job-partial", "gui", "partial", 5, 1,
               {artifact("artifact-partial", mobileRelative, "Mobile"),
                artifact("artifact-timeout", "captures/showcase/missing.png", "Desktop", "firefox", "failed")},

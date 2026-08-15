@@ -46,6 +46,13 @@ void TestCore::profileNormalization() {
   QCOMPARE(profile.presentation.shadow, QString("soft"));
   QCOMPARE(profile.presentation.solidColor, QString("#0B1220"));
   QCOMPARE(toJson(profile).value("presentation").toObject().value("enabled").toBool(), true);
+
+  for (const QString &tabletFrame : {QString("lightTablet"), QString("darkTablet")}) {
+    const CaptureProfile tabletProfile = profileFromJson({
+        {"presentation", QJsonObject{{"frame", tabletFrame}}}});
+    QCOMPARE(tabletProfile.presentation.frame, tabletFrame);
+    QCOMPARE(toJson(tabletProfile).value("presentation").toObject().value("frame").toString(), tabletFrame);
+  }
 }
 
 void TestCore::projectPersistence() {

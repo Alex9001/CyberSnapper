@@ -73,7 +73,7 @@ Profiles may enable local portfolio rendering with:
 }
 ```
 
-Supported scenes are `clean`, `aurora`, `sunset`, `midnight`, `graphite`, and `customSolid`. Frames are `auto`, `none`, `roundedCard`, `lightBrowser`, `darkBrowser`, `lightPhone`, and `darkPhone`; aspects are `auto`, `16:9`, `4:3`, and `square`. Each non-PDF artifact produces an `original` plus a `portfolio` variant when enabled.
+Supported scenes are `clean`, `aurora`, `sunset`, `midnight`, `graphite`, and `customSolid`. Frames are `auto`, `none`, `roundedCard`, `lightBrowser`, `darkBrowser`, `lightTablet`, `darkTablet`, `lightPhone`, and `darkPhone`; aspects are `auto`, `16:9`, `4:3`, and `square`. For viewport captures, automatic framing uses tablet hardware when Mobile mode is enabled and the shorter CSS dimension is at least 600 px, phone hardware for smaller mobile-mode viewports, and browser chrome otherwise. Each non-PDF artifact produces an `original` plus a `portfolio` variant when enabled.
 
 To capture a reusable set, send `"targetSetId":"…"` instead of `urls`. The agent resolves enabled targets once and stores their IDs, labels, URLs, order, and set identity with the job. Later edits to the reusable set do not alter that run or its retries.
 

@@ -6,6 +6,8 @@ const sourceRoot = path.join(root, 'docs', 'fixtures');
 const captures = [
   { name: 'light desktop', file: 'cyberbrand-light-desktop.png', colorScheme: 'light', viewport: { width: 1440, height: 900 } },
   { name: 'dark desktop', file: 'cyberbrand-dark-desktop.png', colorScheme: 'dark', viewport: { width: 1440, height: 900 } },
+  { name: 'light tablet', file: 'cyberbrand-light-tablet.png', colorScheme: 'light', viewport: { width: 768, height: 1024 } },
+  { name: 'dark tablet', file: 'cyberbrand-dark-tablet.png', colorScheme: 'dark', viewport: { width: 768, height: 1024 } },
   { name: 'light mobile', file: 'cyberbrand-light-mobile.png', colorScheme: 'light', viewport: { width: 390, height: 844 } },
   { name: 'dark mobile', file: 'cyberbrand-dark-mobile.png', colorScheme: 'dark', viewport: { width: 390, height: 844 } },
 ];

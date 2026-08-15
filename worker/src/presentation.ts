@@ -8,7 +8,10 @@ const maximumDimension = 16_384;
 const maximumPixels = 64_000_000;
 
 const scenes: PresentationScene[] = ['clean', 'aurora', 'sunset', 'midnight', 'graphite', 'customSolid'];
-const frames: PresentationFrame[] = ['auto', 'none', 'roundedCard', 'lightBrowser', 'darkBrowser', 'lightPhone', 'darkPhone'];
+const frames: PresentationFrame[] = [
+  'auto', 'none', 'roundedCard', 'lightBrowser', 'darkBrowser',
+  'lightTablet', 'darkTablet', 'lightPhone', 'darkPhone',
+];
 const aspects: PresentationAspect[] = ['auto', '16:9', '4:3', 'square'];
 const paddings: PresentationPadding[] = ['compact', 'balanced', 'generous'];
 const shadows: PresentationShadow[] = ['none', 'soft', 'strong'];
@@ -61,11 +64,14 @@ function bounded(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, Math.round(value)));
 }
 
-function resolveFrame(frame: PresentationFrame, viewport: Pick<Viewport, 'mobile'>,
+type PresentationViewport = Pick<Viewport, 'mobile' | 'width' | 'height'>;
+
+function resolveFrame(frame: PresentationFrame, viewport: PresentationViewport,
                       captureMode: CaptureMode): ResolvedFrame {
   if (frame !== 'auto') return frame;
   if (captureMode === 'fullPage' || captureMode === 'element') return 'roundedCard';
-  return viewport.mobile ? 'darkPhone' : 'lightBrowser';
+  if (!viewport.mobile) return 'lightBrowser';
+  return Math.min(viewport.width, viewport.height) >= 600 ? 'darkTablet' : 'darkPhone';
 }
 
 function ratioFor(aspect: PresentationAspect): number | undefined {
@@ -76,7 +82,7 @@ function ratioFor(aspect: PresentationAspect): number | undefined {
 }
 
 export function planPresentation(width: number, height: number, settingsValue: Partial<PresentationSettings>,
-                                 viewport: Pick<Viewport, 'mobile'>, captureMode: CaptureMode): PresentationPlan {
+                                 viewport: PresentationViewport, captureMode: CaptureMode): PresentationPlan {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
     throw new Error('Presentation source has invalid dimensions');
   }
@@ -98,6 +104,11 @@ export function planPresentation(width: number, height: number, settingsValue: P
     frameTop = bounded(width * 0.042, 42, 76);
     frameBottom = frameSide;
     cornerRadius = bounded(width * 0.012, 12, 24);
+  } else if (resolvedFrame.endsWith('Tablet')) {
+    frameSide = bounded(width * 0.025, 14, 32);
+    frameTop = bounded(width * 0.035, 18, 40);
+    frameBottom = frameTop;
+    cornerRadius = bounded(width * 0.055, 24, 52);
   } else if (resolvedFrame.endsWith('Phone')) {
     frameSide = bounded(width * 0.058, 18, 42);
     frameTop = bounded(width * 0.09, 28, 58);
@@ -166,6 +177,7 @@ function renderSvg(plan: PresentationPlan, settings: PresentationSettings): Buff
   const { definitions, fill, accents } = sceneDefinitions(settings.scene, settings.solidColor);
   const dark = plan.resolvedFrame.startsWith('dark');
   const phone = plan.resolvedFrame.endsWith('Phone');
+  const tablet = plan.resolvedFrame.endsWith('Tablet');
   const browser = plan.resolvedFrame.endsWith('Browser');
   const frameFill = dark ? '#111827' : '#F8FAFC';
   const border = dark ? '#334155' : '#CBD5E1';
@@ -189,6 +201,13 @@ function renderSvg(plan: PresentationPlan, settings: PresentationSettings): Buff
     const pillWidth = Math.min(plan.frameWidth * 0.32, plan.frameTop * 2.4);
     const pillHeight = Math.max(3, plan.frameTop * 0.22);
     frame += `<rect x="${plan.frameX + (plan.frameWidth - pillWidth) / 2}" y="${plan.frameY + (plan.frameTop - pillHeight) / 2}" width="${pillWidth}" height="${pillHeight}" rx="${pillHeight / 2}" fill="${dark ? '#020617' : '#94A3B8'}"/>`;
+  } else if (tablet) {
+    const cameraRadius = Math.max(2, Math.min(5, plan.frameTop * 0.12));
+    const indicatorWidth = Math.min(plan.frameWidth * 0.14, plan.frameBottom * 2.2);
+    const indicatorHeight = Math.max(2, plan.frameBottom * 0.11);
+    const hardwareFill = dark ? '#020617' : '#94A3B8';
+    frame += `<circle cx="${plan.frameX + plan.frameWidth / 2}" cy="${plan.frameY + plan.frameTop / 2}" r="${cameraRadius}" fill="${hardwareFill}"/>`;
+    frame += `<rect x="${plan.frameX + (plan.frameWidth - indicatorWidth) / 2}" y="${plan.frameY + plan.frameHeight - (plan.frameBottom + indicatorHeight) / 2}" width="${indicatorWidth}" height="${indicatorHeight}" rx="${indicatorHeight / 2}" fill="${hardwareFill}"/>`;
   }
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${plan.canvasWidth}" height="${plan.canvasHeight}" viewBox="0 0 ${plan.canvasWidth} ${plan.canvasHeight}"><defs>${definitions}${shadow}</defs><rect width="100%" height="100%" fill="${fill}"/>${accents}${frame}</svg>`);
 }
@@ -202,7 +221,7 @@ export interface PresentationResult {
 }
 
 export async function renderPresentation(png: Buffer, settingsValue: Partial<PresentationSettings>,
-                                         viewport: Pick<Viewport, 'mobile'>,
+                                         viewport: PresentationViewport,
                                          captureMode: CaptureMode): Promise<PresentationResult> {
   const metadata = await sharp(png).metadata();
   if (!metadata.width || !metadata.height) throw new Error('Could not read screenshot dimensions for presentation styling');
@@ -210,7 +229,8 @@ export async function renderPresentation(png: Buffer, settingsValue: Partial<Pre
   const plan = planPresentation(metadata.width, metadata.height, settings, viewport, captureMode);
   let screenshot = sharp(png).ensureAlpha().resize(plan.screenshotWidth, plan.screenshotHeight, { fit: 'fill' });
   const screenshotRadius = plan.resolvedFrame === 'none' ? 0
-    : plan.resolvedFrame.endsWith('Phone') ? Math.max(2, plan.cornerRadius - plan.frameSide)
+    : plan.resolvedFrame.endsWith('Phone') || plan.resolvedFrame.endsWith('Tablet')
+      ? Math.max(2, plan.cornerRadius - plan.frameSide)
       : plan.resolvedFrame === 'roundedCard' ? plan.cornerRadius : Math.max(2, Math.floor(plan.cornerRadius * 0.45));
   if (screenshotRadius > 0) {
     const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${plan.screenshotWidth}" height="${plan.screenshotHeight}"><rect width="100%" height="100%" rx="${screenshotRadius}" fill="#fff"/></svg>`);
