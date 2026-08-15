@@ -159,6 +159,12 @@ int main(int argc, char **argv) {
   profile.formats = {"png", "webp"};
   profile.concurrency = 2;
   profile.blockPopups = true;
+  profile.presentation.enabled = true;
+  profile.presentation.scene = "aurora";
+  profile.presentation.frame = "auto";
+  profile.presentation.aspect = "16:9";
+  profile.presentation.padding = "balanced";
+  profile.presentation.shadow = "soft";
   profile.comparisonEnabled = true;
   profile.comparisonIgnoreSelectors = {".timestamp", ".rotating-promo"};
   if (!store.saveProfile(profile, &error)) return fail(error);

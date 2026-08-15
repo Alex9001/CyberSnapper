@@ -30,12 +30,22 @@ private slots:
 void TestCore::profileNormalization() {
   const CaptureProfile profile = profileFromJson({{"id", "custom"}, {"name", "Custom"},
       {"concurrency", 999}, {"captureMode", "invalid"}, {"formats", QJsonArray{"png", "webp"}},
+      {"presentation", QJsonObject{{"enabled", true}, {"scene", "unknown"}, {"frame", "laptop"},
+          {"aspect", "wide"}, {"padding", "huge"}, {"shadow", "fog"}, {"solidColor", "red"}}},
       {"viewports", QJsonArray{QJsonObject{{"id", "tiny"}, {"name", "Tiny"}, {"width", 1}, {"height", 999999}}}}});
   QCOMPARE(profile.id, QString("custom"));
   QCOMPARE(profile.concurrency, 10);
   QCOMPARE(profile.captureMode, QString("fullPage"));
   QCOMPARE(profile.viewports.first().width, 64);
   QCOMPARE(profile.viewports.first().height, 16384);
+  QVERIFY(profile.presentation.enabled);
+  QCOMPARE(profile.presentation.scene, QString("aurora"));
+  QCOMPARE(profile.presentation.frame, QString("auto"));
+  QCOMPARE(profile.presentation.aspect, QString("auto"));
+  QCOMPARE(profile.presentation.padding, QString("balanced"));
+  QCOMPARE(profile.presentation.shadow, QString("soft"));
+  QCOMPARE(profile.presentation.solidColor, QString("#0B1220"));
+  QCOMPARE(toJson(profile).value("presentation").toObject().value("enabled").toBool(), true);
 }
 
 void TestCore::projectPersistence() {

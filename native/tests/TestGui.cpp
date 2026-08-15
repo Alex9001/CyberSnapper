@@ -1,6 +1,7 @@
 #include "gui/MainWindow.h"
 
 #include <QAction>
+#include <QComboBox>
 #include <QPushButton>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -57,6 +58,11 @@ void TestGui::primaryNavigationAndWorkspaces() {
   QVERIFY(managerFound);
   QVERIFY(targetSetFound);
   QVERIFY(acceptFound);
+
+  auto *presentation = window.findChild<QComboBox *>("presentationScene");
+  QVERIFY(presentation);
+  QCOMPARE(presentation->currentData().toString(), QString("off"));
+  QVERIFY(presentation->findData("aurora") >= 0);
 }
 
 QTEST_MAIN(TestGui)

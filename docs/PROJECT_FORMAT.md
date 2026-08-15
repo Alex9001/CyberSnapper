@@ -17,7 +17,9 @@ baselines/
 
 `project.cybersnapper.json` contains a stable project UUID, display name, schema version, database path, capture root, creation timestamp, and the per-project localhost policy. It contains no credentials.
 
-SQLite schema v4 records profiles, named target sets and their ordered targets, jobs, ordered job events, artifacts, immutable baseline pointers, comparison results, review decisions, and schedules. Artifact metadata includes normalized target and target-set provenance alongside the original/final URL, browser engine, viewport, mode, format, relative path, dimensions, SHA-256 hash, status, and timestamp.
+SQLite schema v4 records profiles, named target sets and their ordered targets, jobs, ordered job events, artifacts, immutable baseline pointers, comparison results, review decisions, and schedules. Artifact metadata includes normalized target and target-set provenance alongside the original/final URL, browser engine, viewport, mode, format, relative path, dimensions, SHA-256 hash, status, timestamp, and the `original` or `portfolio` variant. Portfolio artifacts also retain the effective scene, frame, canvas, padding, shadow, and solid-color settings. These fields live in the existing JSON metadata, so presentation output does not require a schema migration.
+
+When portfolio styling is enabled, every raster original is preserved and a collision-safe `-portfolio` sibling is created. PDF output is not styled. Portfolio variants cannot become visual-comparison baselines; comparisons remain tied to the original capture pixels.
 
 Every submitted target set is expanded into a snapshot stored with the job. Editing or deleting the reusable set later therefore cannot change the meaning of an existing run or retry. Comparison rows record analyzed dimensions and scale, mismatched/analyzed pixel counts, algorithm version, changed-region metadata, and the exact baseline path used. Review decisions (`unreviewed`, `accepted`, or `ignored`) have notes and monotonically increasing revisions so concurrent clients cannot silently overwrite one another.
 

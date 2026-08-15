@@ -31,6 +31,15 @@ for (const name of screenshots) {
   await cp(input, path.join(outputScreenshots, `app-${name}.png`));
   await sharp(input).webp({ quality: 84, effort: 5 }).toFile(path.join(outputScreenshots, `app-${name}.webp`));
 }
+const portfolioExample = path.join(screenshotSource, 'portfolio-aurora-browser.png');
+const portfolioMetadata = await sharp(portfolioExample).metadata();
+if (!portfolioMetadata.width || !portfolioMetadata.height ||
+    Math.abs(portfolioMetadata.width / portfolioMetadata.height - 16 / 9) > 0.002) {
+  throw new Error('Portfolio presentation example must be a 16:9 image');
+}
+await cp(portfolioExample, path.join(outputScreenshots, 'portfolio-aurora-browser.png'));
+await sharp(portfolioExample).webp({ quality: 86, effort: 5 })
+  .toFile(path.join(outputScreenshots, 'portfolio-aurora-browser.webp'));
 
 const socialText = Buffer.from(`
   <svg width="1280" height="640" xmlns="http://www.w3.org/2000/svg">

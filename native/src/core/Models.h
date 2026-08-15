@@ -18,6 +18,16 @@ struct Viewport {
   bool enabled = true;
 };
 
+struct PresentationSettings {
+  bool enabled = false;
+  QString scene{"aurora"};
+  QString frame{"auto"};
+  QString aspect{"auto"};
+  QString padding{"balanced"};
+  QString shadow{"soft"};
+  QString solidColor{"#0B1220"};
+};
+
 struct CaptureProfile {
   QString id;
   QString name;
@@ -50,6 +60,7 @@ struct CaptureProfile {
   double pixelThreshold = 0.10;
   double mismatchThreshold = 0.001;
   QStringList comparisonIgnoreSelectors;
+  PresentationSettings presentation;
 };
 
 struct CaptureTarget {

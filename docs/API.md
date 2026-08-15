@@ -57,6 +57,24 @@ Errors use `{"error":{"code":"…","message":"…"}}` and an appropriate HTTP st
 
 An inline `profile` object may override the saved profile for this job. URLs must be explicit HTTP(S) URLs and follow the active project's network policy.
 
+Profiles may enable local portfolio rendering with:
+
+```json
+{
+  "presentation": {
+    "enabled": true,
+    "scene": "aurora",
+    "frame": "auto",
+    "aspect": "16:9",
+    "padding": "balanced",
+    "shadow": "soft",
+    "solidColor": "#0B1220"
+  }
+}
+```
+
+Supported scenes are `clean`, `aurora`, `sunset`, `midnight`, `graphite`, and `customSolid`. Frames are `auto`, `none`, `roundedCard`, `lightBrowser`, `darkBrowser`, `lightPhone`, and `darkPhone`; aspects are `auto`, `16:9`, `4:3`, and `square`. Each non-PDF artifact produces an `original` plus a `portfolio` variant when enabled.
+
 To capture a reusable set, send `"targetSetId":"…"` instead of `urls`. The agent resolves enabled targets once and stores their IDs, labels, URLs, order, and set identity with the job. Later edits to the reusable set do not alter that run or its retries.
 
 ## Target sets

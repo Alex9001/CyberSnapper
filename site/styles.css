@@ -91,6 +91,7 @@ h1 em { color: var(--cyan-2); font-style: normal; text-shadow: 0 0 30px rgba(27,
 .viewport-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .viewport-grid span { min-height: 76px; padding: 14px; display: flex; flex-direction: column; justify-content: center; gap: 5px; color: #b9d4e4; border: 1px solid var(--line); border-radius: 11px; background: #081321; }.viewport-grid b { color: var(--cyan-2); font-size: 12px; }.viewport-grid small { color: var(--muted); font: 600 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .feature-formats { grid-template-columns: 1.25fr .75fr; }.format-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }.format-row span { padding: 18px; color: var(--cyan-2); border: 1px solid var(--line); border-radius: 11px; text-align: center; background: #07121f; font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.portfolio-preview { position: relative; z-index: 1; display: block; overflow: hidden; border: 1px solid rgba(93, 219, 250, .2); border-radius: 13px; background: #130d35; box-shadow: 0 20px 48px rgba(0, 0, 0, .32); }.portfolio-preview img { display: block; width: 100%; height: auto; }
 .supporting-tools { max-width: 920px; margin: 28px auto 0; color: var(--muted); font-size: 14px; line-height: 1.7; text-align: center; }.supporting-tools strong { color: var(--ink); }
 
 .workflow-section { border-block: 1px solid var(--line); background: linear-gradient(180deg, rgba(11, 22, 37, .9), rgba(7, 14, 24, .9)); }

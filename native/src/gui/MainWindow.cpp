@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -25,6 +26,7 @@
 #include <QHeaderView>
 #include <QGridLayout>
 #include <QInputDialog>
+#include <QIcon>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
@@ -39,6 +41,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QSaveFile>
 #include <QSettings>
@@ -788,6 +791,16 @@ QWidget *MainWindow::buildCapturePage() {
   m_webp = new QCheckBox("WebP");
   m_avif = new QCheckBox("AVIF");
   m_pdf = new QCheckBox("PDF");
+  m_presentationScene = new QComboBox;
+  m_presentationScene->setObjectName("presentationScene");
+  m_presentationScene->addItem("Off — originals only", "off");
+  m_presentationScene->addItem("Clean", "clean");
+  m_presentationScene->addItem("Aurora", "aurora");
+  m_presentationScene->addItem("Sunset", "sunset");
+  m_presentationScene->addItem("Midnight", "midnight");
+  m_presentationScene->addItem("Graphite", "graphite");
+  m_presentationScene->addItem("Custom solid", "customSolid");
+  auto *customizePresentation = new QPushButton("Customize…");
   explain(m_chromium, "Capture using the Chromium browser engine.");
   explain(m_firefox, "Capture using the Firefox browser engine. Install it from Settings first.");
   explain(m_webkit, "Capture using the WebKit browser engine. Install it from Settings first.");
@@ -795,6 +808,8 @@ QWidget *MainWindow::buildCapturePage() {
   explain(m_webp, "Smaller modern raster image with profile-controlled quality.");
   explain(m_avif, "Highly compressed modern raster image with profile-controlled quality.");
   explain(m_pdf, "Printable PDF output. PDF capture is available only with Chromium.");
+  explain(m_presentationScene, "Save each raster screenshot twice: the untouched original and a portfolio-ready copy with the selected background scene.");
+  explain(customizePresentation, "Choose the canvas ratio, padding, shadow, frame, and custom solid color in the full profile editor.");
   outputLayout->addWidget(new QLabel("Browsers"), 0, 0);
   outputLayout->addWidget(m_chromium, 0, 1);
   outputLayout->addWidget(m_firefox, 0, 2);
@@ -804,6 +819,9 @@ QWidget *MainWindow::buildCapturePage() {
   outputLayout->addWidget(m_webp, 1, 2);
   outputLayout->addWidget(m_avif, 1, 3);
   outputLayout->addWidget(m_pdf, 1, 4);
+  outputLayout->addWidget(new QLabel("Portfolio style"), 2, 0);
+  outputLayout->addWidget(m_presentationScene, 2, 1, 1, 3);
+  outputLayout->addWidget(customizePresentation, 2, 4);
   outputLayout->setColumnStretch(5, 1);
   rightLayout->addWidget(outputGroup);
 
@@ -942,6 +960,7 @@ QWidget *MainWindow::buildCapturePage() {
   updateComparisonControls();
   connect(m_profileCombo, &QComboBox::currentIndexChanged, this, &MainWindow::loadSelectedProfile);
   connect(manageProfiles, &QPushButton::clicked, this, &MainWindow::openProfileManager);
+  connect(customizePresentation, &QPushButton::clicked, this, &MainWindow::openProfileManager);
   connect(addViewport, &QPushButton::clicked, this, [this] {
     const int row = m_viewports->rowCount();
     m_viewports->insertRow(row);
@@ -991,6 +1010,7 @@ QWidget *MainWindow::buildCapturePage() {
   }
   connect(m_concurrency, &QSpinBox::valueChanged, this, changed);
   connect(m_captureMode, &QComboBox::currentIndexChanged, this, changed);
+  connect(m_presentationScene, &QComboBox::currentIndexChanged, this, changed);
   connect(m_viewports, &QTableWidget::itemChanged, this, changed);
   connect(m_urls, &QTextEdit::textChanged, this, &MainWindow::updateCapturePlan);
   updateCapturePlan();
@@ -1046,7 +1066,7 @@ QWidget *MainWindow::buildHistoryPage() {
   auto *cancel = new QPushButton("Cancel Job");
   auto *refresh = new QPushButton("Refresh");
   baseline->setEnabled(false);
-  explain(baseline, "Select a successful PNG, WebP, or AVIF file to use as the reference image for future visual comparisons.");
+  explain(baseline, "Select a successful original PNG, WebP, or AVIF file to use as the reference image. Portfolio-styled copies are intentionally excluded.");
   for (auto *button : {open, baseline, retry, cancel, refresh}) buttons->addWidget(button);
   buttons->addStretch();
   layout->addLayout(buttons);
@@ -1057,7 +1077,8 @@ QWidget *MainWindow::buildHistoryPage() {
   connect(m_artifacts, &QTableWidget::itemSelectionChanged, this, [this, baseline] {
     const int row = m_artifacts->currentRow();
     const bool eligible = row >= 0 &&
-        m_artifacts->item(row, 2)->text().compare("pdf", Qt::CaseInsensitive) != 0 &&
+        m_artifacts->item(row, 2)->data(Qt::UserRole).toString().compare("pdf", Qt::CaseInsensitive) != 0 &&
+        m_artifacts->item(row, 2)->data(Qt::UserRole + 1).toString() == "original" &&
         m_artifacts->item(row, 4)->text() == "succeeded";
     baseline->setEnabled(eligible);
   });
@@ -1441,7 +1462,7 @@ QWidget *MainWindow::buildHelpPage() {
     <p><b>Capture</b> is the main workspace and opens with each project. A <b>Target Set</b> chooses which portfolio projects and pages to capture; a profile chooses how they should look. Target sets support labels, ordering, enable/disable, paste, and TXT/CSV import and export. <b>Dashboard</b> is an optional summary for background jobs, comparisons, and schedules.</p>
 
     <h2>Profiles</h2>
-    <p>A profile is a reusable set of capture options. The Capture page marks unsaved edits and offers Save, Revert, and Save As. <b>Manage</b> opens the complete tabbed editor for viewports, output naming, collision behavior, timeouts, compression, PDF, blocking, and comparison settings.</p>
+    <p>A profile is a reusable set of capture options. The Capture page marks unsaved edits and offers Save, Revert, and Save As. <b>Manage</b> opens the complete tabbed editor for viewports, output naming, presentation scenes, collision behavior, timeouts, compression, PDF, blocking, and comparison settings.</p>
 
     <h2>Viewports</h2>
     <table cellspacing="6">
@@ -1460,6 +1481,10 @@ QWidget *MainWindow::buildHelpPage() {
 
     <h2>Page preparation</h2>
     <p>The sequence is: load the page, wait After load, optionally auto-scroll, wait After scroll, hide requested elements and common overlays, wait Before capture, then capture. <b>Parallel pages</b> controls browser pages inside one job; Settings → Simultaneous jobs controls separate jobs.</p>
+
+    <h2>Portfolio presentation</h2>
+    <p><b>Portfolio style</b> creates a second, presentation-ready copy of every PNG, WebP, or AVIF while always preserving the original. Choose a background scene on Capture, then use <b>Customize</b> or Manage → Presentation for the canvas ratio, padding, shadow, and frame.</p>
+    <p><b>Auto frame</b> uses phone hardware for mobile viewport captures, browser chrome for desktop viewport captures, and a rounded card for full-page or element captures. Fixed 16:9, 4:3, and square canvases expand the background without cropping or enlarging the screenshot. Styled files end in <code>-portfolio</code> and are not used as visual-comparison baselines.</p>
 
     <h2>Visual comparison</h2>
     <p>Select a non-PDF file in History and choose <b>Set as Baseline</b>, or accept a missing-baseline item in Review. Enable comparison in a capture profile. Future captures are matched by URL, browser, viewport, mode, and format. Review provides triage, notes, batch actions, synchronized side-by-side inspection, overlay, wipe, generated difference, and baseline management.</p>
@@ -2077,6 +2102,11 @@ QJsonObject MainWindow::captureProfile() const {
     if (!part.trimmed().isEmpty()) comparisonIgnored.append(part.trimmed());
   }
   profile.insert("comparisonIgnoreSelectors", stringArray(comparisonIgnored));
+  QJsonObject presentation = profile.value("presentation").toObject();
+  const QString selectedScene = m_presentationScene->currentData().toString();
+  presentation.insert("enabled", selectedScene != "off");
+  if (selectedScene != "off") presentation.insert("scene", selectedScene);
+  profile.insert("presentation", presentation);
   QJsonArray viewports;
   for (int row = 0; row < m_viewports->rowCount(); ++row) {
     const QString id = m_viewports->item(row, 1)->data(Qt::UserRole).toString();
@@ -2136,6 +2166,11 @@ void MainWindow::loadSelectedProfile() {
   QStringList comparisonIgnored;
   for (const auto &value : profile.value("comparisonIgnoreSelectors").toArray()) comparisonIgnored.append(value.toString());
   m_comparisonIgnoreSelectors->setText(comparisonIgnored.join(", "));
+  const QJsonObject presentation = profile.value("presentation").toObject();
+  const QString presentationChoice = presentation.value("enabled").toBool(false)
+      ? presentation.value("scene").toString("aurora") : "off";
+  const int presentationIndex = m_presentationScene->findData(presentationChoice);
+  m_presentationScene->setCurrentIndex(presentationIndex >= 0 ? presentationIndex : 0);
   const QJsonArray viewports = profile.value("viewports").toArray();
   m_viewports->setRowCount(viewports.size());
   for (int row = 0; row < viewports.size(); ++row) {
@@ -2235,10 +2270,18 @@ void MainWindow::updateCapturePlan() {
     }
   }
   qint64 formatsAcrossEngines = 0;
+  qint64 rasterFormatsAcrossEngines = 0;
   for (const QString &engine : engines) {
-    for (const QString &format : formats) if (format != "pdf" || engine == "chromium") ++formatsAcrossEngines;
+    for (const QString &format : formats) if (format != "pdf" || engine == "chromium") {
+      ++formatsAcrossEngines;
+      if (format != "pdf") ++rasterFormatsAcrossEngines;
+    }
   }
-  const qint64 files = targetCount * enabledViewports * formatsAcrossEngines;
+  const qint64 originals = targetCount * enabledViewports * formatsAcrossEngines;
+  const bool presentationEnabled = m_presentationScene->currentData().toString() != "off";
+  const qint64 portfolioCopies = presentationEnabled
+      ? targetCount * enabledViewports * rasterFormatsAcrossEngines : 0;
+  const qint64 files = originals + portfolioCopies;
   if (files > 10000) errors.append("The 10,000-file job limit is exceeded");
   errors.removeDuplicates();
   QString summary = QStringLiteral("Plan: %1 page%2 × %3 viewport%4 × %5 browser%6 = %7 output file%8")
@@ -2246,6 +2289,11 @@ void MainWindow::updateCapturePlan() {
       .arg(enabledViewports).arg(enabledViewports == 1 ? "" : "s")
       .arg(engines.size()).arg(engines.size() == 1 ? "" : "s")
       .arg(files).arg(files == 1 ? "" : "s");
+  if (presentationEnabled) {
+    summary += QStringLiteral(" (%1 original%2 + %3 portfolio cop%4)")
+        .arg(originals).arg(originals == 1 ? "" : "s")
+        .arg(portfolioCopies).arg(portfolioCopies == 1 ? "y" : "ies");
+  }
   if (mobileWithFirefox && engines.contains("firefox")) {
     summary += "\nNote: Firefox uses touch input but does not support Playwright's mobile-layout flag.";
   }
@@ -2255,10 +2303,7 @@ void MainWindow::updateCapturePlan() {
 }
 
 void MainWindow::openProfileManager() {
-  QJsonObject source;
-  for (const auto &value : m_profiles) {
-    if (value.toObject().value("id").toString() == m_profileCombo->currentData().toString()) source = value.toObject();
-  }
+  QJsonObject source = captureProfile();
   if (source.isEmpty()) return;
 
   QDialog dialog(this);
@@ -2339,6 +2384,65 @@ void MainWindow::openProfileManager() {
   outputForm->addRow(helperText("Template tokens include {hostname}, {path}, {preset}, {width}, {height}, {engine}, {date}, {time}, {job}, and {index}. Use / to create subfolders."));
   tabs->addTab(output, "Browsers & Output");
 
+  auto *presentationPage = new QWidget;
+  auto *presentationForm = new QFormLayout(presentationPage);
+  const QJsonObject presentationSource = source.value("presentation").toObject();
+  auto *presentationEnabled = new QCheckBox("Create a portfolio-ready copy alongside every raster original");
+  presentationEnabled->setChecked(presentationSource.value("enabled").toBool(false));
+  auto *scene = new QComboBox;
+  const auto addScene = [scene](const QString &label, const QString &value, const QColor &color) {
+    QPixmap swatch(34, 18); swatch.fill(color); scene->addItem(QIcon(swatch), label, value);
+  };
+  addScene("Clean", "clean", QColor("#EEF3FA"));
+  addScene("Aurora", "aurora", QColor("#6D5BD0"));
+  addScene("Sunset", "sunset", QColor("#EE6A5C"));
+  addScene("Midnight", "midnight", QColor("#111B3A"));
+  addScene("Graphite", "graphite", QColor("#343A43"));
+  addScene("Custom solid", "customSolid", QColor(presentationSource.value("solidColor").toString("#0B1220")));
+  scene->setCurrentIndex(qMax(0, scene->findData(presentationSource.value("scene").toString("aurora"))));
+  auto *frame = new QComboBox;
+  frame->addItem("Auto — match the capture", "auto"); frame->addItem("None", "none");
+  frame->addItem("Rounded card", "roundedCard"); frame->addItem("Light browser", "lightBrowser");
+  frame->addItem("Dark browser", "darkBrowser"); frame->addItem("Light phone", "lightPhone");
+  frame->addItem("Dark phone", "darkPhone");
+  frame->setCurrentIndex(qMax(0, frame->findData(presentationSource.value("frame").toString("auto"))));
+  auto *aspect = new QComboBox;
+  aspect->addItem("Fit content", "auto"); aspect->addItem("16:9", "16:9");
+  aspect->addItem("4:3", "4:3"); aspect->addItem("Square", "square");
+  aspect->setCurrentIndex(qMax(0, aspect->findData(presentationSource.value("aspect").toString("auto"))));
+  auto *padding = new QComboBox;
+  padding->addItem("Compact", "compact"); padding->addItem("Balanced", "balanced"); padding->addItem("Generous", "generous");
+  padding->setCurrentIndex(qMax(0, padding->findData(presentationSource.value("padding").toString("balanced"))));
+  auto *shadow = new QComboBox;
+  shadow->addItem("None", "none"); shadow->addItem("Soft", "soft"); shadow->addItem("Strong", "strong");
+  shadow->setCurrentIndex(qMax(0, shadow->findData(presentationSource.value("shadow").toString("soft"))));
+  auto *solidColor = new QLineEdit(presentationSource.value("solidColor").toString("#0B1220"));
+  solidColor->setPlaceholderText("#0B1220");
+  auto *presentationSummary = helperText(QString{});
+  presentationForm->addRow(QString(), presentationEnabled);
+  presentationForm->addRow("Background scene", scene);
+  presentationForm->addRow("Frame", frame);
+  presentationForm->addRow("Canvas", aspect);
+  presentationForm->addRow("Padding", padding);
+  presentationForm->addRow("Shadow", shadow);
+  presentationForm->addRow("Custom solid color", solidColor);
+  presentationForm->addRow(presentationSummary);
+  presentationForm->addRow(helperText("Auto uses a phone frame for mobile viewport captures, browser chrome for desktop viewport captures, and a rounded card for full-page or element captures. Fixed canvas ratios expand the background and never crop the screenshot. PDF output is unchanged."));
+  tabs->addTab(presentationPage, "Presentation");
+
+  const auto updatePresentationControls = [=] {
+    const bool enabled = presentationEnabled->isChecked();
+    for (QWidget *control : QList<QWidget *>{scene, frame, aspect, padding, shadow}) control->setEnabled(enabled);
+    solidColor->setEnabled(enabled && scene->currentData().toString() == "customSolid");
+    presentationSummary->setText(enabled
+        ? QStringLiteral("%1 · %2 · %3 · %4 shadow · originals are always kept")
+              .arg(scene->currentText(), frame->currentText(), aspect->currentText(), shadow->currentText())
+        : "Off · only original screenshots will be saved");
+  };
+  connect(presentationEnabled, &QCheckBox::toggled, &dialog, updatePresentationControls);
+  connect(scene, &QComboBox::currentIndexChanged, &dialog, updatePresentationControls);
+  updatePresentationControls();
+
   auto *preparation = new QWidget;
   auto *preparationForm = new QFormLayout(preparation);
   const auto seconds = [&source](const char *key, double fallback) {
@@ -2394,6 +2498,10 @@ void MainWindow::openProfileManager() {
     profile.insert("namingTemplate", naming->text().trimmed()); profile.insert("collisionPolicy", collision->currentData().toString());
     profile.insert("webpQuality", webpQuality->value()); profile.insert("avifQuality", avifQuality->value());
     profile.insert("pdfFormat", pdfFormat->text().trimmed()); profile.insert("pdfLandscape", pdfLandscape->isChecked()); profile.insert("pdfMargin", pdfMargin->text().trimmed());
+    profile.insert("presentation", QJsonObject{{"enabled", presentationEnabled->isChecked()},
+        {"scene", scene->currentData().toString()}, {"frame", frame->currentData().toString()},
+        {"aspect", aspect->currentData().toString()}, {"padding", padding->currentData().toString()},
+        {"shadow", shadow->currentData().toString()}, {"solidColor", solidColor->text().trimmed().toUpper()}});
     profile.insert("initialDelay", initialDelay->value()); profile.insert("scrollDelay", scrollDelay->value()); profile.insert("finalDelay", finalDelay->value());
     profile.insert("navigationTimeoutSeconds", navigationTimeout->value()); profile.insert("selectorTimeoutSeconds", selectorTimeout->value());
     profile.insert("maxScrollSeconds", maxScroll->value()); profile.insert("maxPageHeight", maxHeight->value());
@@ -2422,6 +2530,11 @@ void MainWindow::openProfileManager() {
     QStringList profileFormats; for (const auto &value : profile.value("formats").toArray()) profileFormats.append(value.toString());
     if (profileFormats.contains("pdf") && !profileEngines.contains("chromium")) return QString("PDF output requires Chromium");
     if (profile.value("captureMode").toString() == "element" && profile.value("elementSelector").toString().isEmpty()) return QString("Element mode needs a CSS selector");
+    const QJsonObject presentation = profile.value("presentation").toObject();
+    if (presentation.value("enabled").toBool() && presentation.value("scene").toString() == "customSolid" &&
+        !QRegularExpression("^#[0-9A-Fa-f]{6}$").match(presentation.value("solidColor").toString()).hasMatch()) {
+      return QString("Custom solid color must use #RRGGBB format");
+    }
     bool enabled = false; for (const auto &value : profile.value("viewports").toArray()) enabled = enabled || value.toObject().value("enabled").toBool();
     if (!enabled) return QString("Enable at least one viewport");
     return QString{};
@@ -2516,7 +2629,14 @@ void MainWindow::showJobDetails() {
       const QString id = artifact.value("id").toString();
       m_artifacts->setItem(row, 0, item(artifact.value("viewportName").toString(), id));
       m_artifacts->setItem(row, 1, item(artifact.value("engine").toString()));
-      m_artifacts->setItem(row, 2, item(artifact.value("format").toString()));
+      const QString format = artifact.value("format").toString();
+      const QString variant = artifact.value("variant").toString("original");
+      const QHash<QString, QString> formatLabels{{"png", "PNG"}, {"webp", "WebP"}, {"avif", "AVIF"}, {"pdf", "PDF"}};
+      auto *formatItem = item(formatLabels.value(format, format.toUpper()) +
+                              (variant == "portfolio" ? " · Portfolio" : QString{}));
+      formatItem->setData(Qt::UserRole, format);
+      formatItem->setData(Qt::UserRole + 1, variant);
+      m_artifacts->setItem(row, 2, formatItem);
       m_artifacts->setItem(row, 3, item(QStringLiteral("%1×%2").arg(artifact.value("width").toInt()).arg(artifact.value("height").toInt())));
       m_artifacts->setItem(row, 4, item(artifact.value("status").toString()));
       m_artifacts->setItem(row, 5, item(artifact.value("url").toString()));

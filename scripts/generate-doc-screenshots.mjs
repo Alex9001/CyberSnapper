@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
-import { access, chmod, mkdir, rm } from 'node:fs/promises';
+import { access, chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -7,6 +8,7 @@ import sharp from 'sharp';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
 const runtimeRoot = path.join(root, 'build', 'test-runtime', 'docs-screenshots');
 const buildRoot = path.resolve(process.env.CYBERSNAPPER_NATIVE_BUILD || path.join(root, 'build', 'native'));
 const requestedOutput = process.argv.indexOf('--output');
@@ -96,6 +98,19 @@ try {
     }
     process.stdout.write(`generated ${path.relative(root, destination)}\n`);
   }
+  const { renderPresentation } = require(path.join(root, 'worker', 'dist', 'testing.cjs'));
+  const portfolioSource = await sharp(path.join(projectRoot, 'captures', 'showcase', 'current.png')).png().toBuffer();
+  const portfolio = await renderPresentation(portfolioSource, {
+    enabled: true, scene: 'aurora', frame: 'lightBrowser', aspect: '16:9',
+    padding: 'balanced', shadow: 'soft', solidColor: '#0B1220',
+  }, { mobile: false }, 'viewport');
+  const portfolioDestination = path.join(outputRoot, 'portfolio-aurora-browser.png');
+  await writeFile(portfolioDestination, portfolio.bytes);
+  const portfolioMetadata = await sharp(portfolioDestination).metadata();
+  if (portfolioMetadata.format !== 'png' || Math.abs((portfolioMetadata.width / portfolioMetadata.height) - (16 / 9)) > 0.002) {
+    throw new Error(`Unexpected portfolio presentation example: ${portfolioMetadata.width}x${portfolioMetadata.height} ${portfolioMetadata.format}`);
+  }
+  process.stdout.write(`generated ${path.relative(root, portfolioDestination)}\n`);
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }
   if (agentProcess.exitCode === null) agentProcess.kill('SIGTERM');

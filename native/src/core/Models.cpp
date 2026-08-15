@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QUuid>
 
 namespace CyberSnapper {
@@ -33,6 +34,36 @@ int boundedInt(const QJsonObject &o, const char *key, int fallback, int low, int
 double boundedDouble(const QJsonObject &o, const char *key, double fallback, double low, double high) {
   const double value = o.value(QLatin1String(key)).toDouble(fallback);
   return qBound(low, value, high);
+}
+
+PresentationSettings presentationFromJson(const QJsonValue &value) {
+  PresentationSettings settings;
+  if (!value.isObject()) return settings;
+  const QJsonObject object = value.toObject();
+  settings.enabled = object.value("enabled").toBool(false);
+  settings.scene = object.value("scene").toString(settings.scene);
+  if (!QStringList{"clean", "aurora", "sunset", "midnight", "graphite", "customSolid"}.contains(settings.scene)) {
+    settings.scene = "aurora";
+  }
+  settings.frame = object.value("frame").toString(settings.frame);
+  if (!QStringList{"auto", "none", "roundedCard", "lightBrowser", "darkBrowser", "lightPhone", "darkPhone"}.contains(settings.frame)) {
+    settings.frame = "auto";
+  }
+  settings.aspect = object.value("aspect").toString(settings.aspect);
+  if (!QStringList{"auto", "16:9", "4:3", "square"}.contains(settings.aspect)) settings.aspect = "auto";
+  settings.padding = object.value("padding").toString(settings.padding);
+  if (!QStringList{"compact", "balanced", "generous"}.contains(settings.padding)) settings.padding = "balanced";
+  settings.shadow = object.value("shadow").toString(settings.shadow);
+  if (!QStringList{"none", "soft", "strong"}.contains(settings.shadow)) settings.shadow = "soft";
+  const QString color = object.value("solidColor").toString(settings.solidColor).trimmed().toUpper();
+  settings.solidColor = QRegularExpression("^#[0-9A-F]{6}$").match(color).hasMatch() ? color : "#0B1220";
+  return settings;
+}
+
+QJsonObject presentationToJson(const PresentationSettings &settings) {
+  return {{"enabled", settings.enabled}, {"scene", settings.scene}, {"frame", settings.frame},
+          {"aspect", settings.aspect}, {"padding", settings.padding}, {"shadow", settings.shadow},
+          {"solidColor", settings.solidColor}};
 }
 
 } // namespace
@@ -104,7 +135,8 @@ QJsonObject toJson(const CaptureProfile &profile) {
           {"comparisonEnabled", profile.comparisonEnabled},
           {"pixelThreshold", profile.pixelThreshold},
           {"mismatchThreshold", profile.mismatchThreshold},
-          {"comparisonIgnoreSelectors", jsonList(profile.comparisonIgnoreSelectors)}};
+          {"comparisonIgnoreSelectors", jsonList(profile.comparisonIgnoreSelectors)},
+          {"presentation", presentationToJson(profile.presentation)}};
 }
 
 CaptureProfile profileFromJson(const QJsonObject &object) {
@@ -152,6 +184,7 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   profile.pixelThreshold = boundedDouble(object, "pixelThreshold", 0.10, 0.0, 1.0);
   profile.mismatchThreshold = boundedDouble(object, "mismatchThreshold", 0.001, 0.0, 1.0);
   profile.comparisonIgnoreSelectors = stringList(object.value("comparisonIgnoreSelectors"));
+  profile.presentation = presentationFromJson(object.value("presentation"));
   return profile;
 }
 

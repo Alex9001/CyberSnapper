@@ -66,7 +66,10 @@ QString JobManager::validate(const JobRequest &request) {
   qint64 formatsAcrossEngines = 0;
   for (const auto &engine : request.profile.engines) {
     for (const auto &format : request.profile.formats) {
-      if (format != "pdf" || engine == "chromium") ++formatsAcrossEngines;
+      if (format != "pdf" || engine == "chromium") {
+        ++formatsAcrossEngines;
+        if (request.profile.presentation.enabled && format != "pdf") ++formatsAcrossEngines;
+      }
     }
   }
   const qint64 totalArtifacts = request.urls.size() * enabledViewports * formatsAcrossEngines;

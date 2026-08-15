@@ -1,6 +1,21 @@
 export type BrowserEngine = 'chromium' | 'firefox' | 'webkit';
 export type OutputFormat = 'png' | 'webp' | 'avif' | 'pdf';
 export type CaptureMode = 'fullPage' | 'viewport' | 'element';
+export type PresentationScene = 'clean' | 'aurora' | 'sunset' | 'midnight' | 'graphite' | 'customSolid';
+export type PresentationFrame = 'auto' | 'none' | 'roundedCard' | 'lightBrowser' | 'darkBrowser' | 'lightPhone' | 'darkPhone';
+export type PresentationAspect = 'auto' | '16:9' | '4:3' | 'square';
+export type PresentationPadding = 'compact' | 'balanced' | 'generous';
+export type PresentationShadow = 'none' | 'soft' | 'strong';
+
+export interface PresentationSettings {
+  enabled: boolean;
+  scene: PresentationScene;
+  frame: PresentationFrame;
+  aspect: PresentationAspect;
+  padding: PresentationPadding;
+  shadow: PresentationShadow;
+  solidColor: string;
+}
 
 export interface Viewport {
   id: string;
@@ -44,6 +59,7 @@ export interface CaptureProfile {
   pixelThreshold: number;
   mismatchThreshold: number;
   comparisonIgnoreSelectors: string[];
+  presentation: PresentationSettings;
 }
 
 export interface BaselineRecord {
@@ -96,6 +112,8 @@ export interface Artifact {
   status: 'succeeded' | 'failed' | 'skipped';
   error?: string;
   createdAt: string;
+  variant?: 'original' | 'portfolio';
+  presentation?: PresentationSettings & { resolvedFrame?: Exclude<PresentationFrame, 'auto'> };
 }
 
 export interface WorkerEvent {

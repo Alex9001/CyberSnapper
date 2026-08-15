@@ -5,6 +5,7 @@ import { chromium, firefox, webkit, type Browser, type BrowserContext, type Brow
 import sharp from 'sharp';
 import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './network.js';
 import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
+import { normalizePresentation, renderPresentation } from './presentation.js';
 import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
 
 export interface JobRuntime {
@@ -240,6 +241,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
   let failed = 0;
   const { engine, viewport, formats } = target;
   const { url } = target.target;
+  const presentation = normalizePresentation(job.profile.presentation);
   try {
     if (runtime.cancelled) return { completed, failed };
     const networkPolicy = { allowLocalhost: job.allowLocalhost === true };
@@ -286,42 +288,84 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
             viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath,
             targetId: target.target.id, targetName: target.target.name,
             targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
-            width: viewport.width, height: viewport.height, sha256: '', status: 'skipped', createdAt: new Date().toISOString() };
-          emit({ type: 'artifact_completed', artifact }); completed += 1; continue;
+            width: viewport.width, height: viewport.height, sha256: '', status: 'skipped',
+            variant: 'original', createdAt: new Date().toISOString() };
+          emit({ type: 'artifact_completed', artifact }); completed += 1;
+        } else {
+          const bytes = format === 'pdf'
+            ? Buffer.from(await page.pdf({ format: job.profile.pdfFormat as 'A4', landscape: job.profile.pdfLandscape,
+                margin: { top: job.profile.pdfMargin, right: job.profile.pdfMargin,
+                          bottom: job.profile.pdfMargin, left: job.profile.pdfMargin }, printBackground: true }))
+            : await convertPng(png as Buffer, format, job);
+          await atomicWrite(selection.absolute, bytes);
+          let width = viewport.width;
+          let height = viewport.height;
+          if (format !== 'pdf') {
+            const metadata = await sharp(bytes).metadata();
+            width = metadata.width ?? width;
+            height = metadata.height ?? height;
+          }
+          const artifact: Artifact = { id: artifactId, jobId: job.id, url, finalUrl: page.url(), engine,
+            targetId: target.target.id, targetName: target.target.name,
+            targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
+            viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+            relativePath, width, height, variant: 'original',
+            sha256: sha256(bytes), status: 'succeeded', createdAt: new Date().toISOString() };
+          emit({ type: 'artifact_completed', artifact }); completed += 1;
+          if (job.profile.comparisonEnabled && format !== 'pdf') {
+            try { await compareArtifact(job, artifact, bytes, comparisonKey, emit); }
+            catch (comparisonError) {
+              emit({ type: 'comparison_completed', comparison: {
+                id: id(), jobId: job.id, comparisonKey, baselineArtifactId: job.baselines?.[comparisonKey]?.artifactId ?? '',
+                currentArtifactId: artifact.id, status: 'error', mismatchRatio: 0, diffRelativePath: '',
+                createdAt: new Date().toISOString(), url, targetId: artifact.targetId ?? '',
+                targetName: artifact.targetName ?? '', targetSetId: artifact.targetSetId ?? '',
+                targetSetName: artifact.targetSetName ?? '', engine, viewportId: viewport.id,
+                viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+                analysisWidth: 0, analysisHeight: 0, analysisScale: 1,
+                error: comparisonError instanceof Error ? comparisonError.message : String(comparisonError),
+              } });
+            }
+          }
         }
-        const bytes = format === 'pdf'
-          ? Buffer.from(await page.pdf({ format: job.profile.pdfFormat as 'A4', landscape: job.profile.pdfLandscape,
-              margin: { top: job.profile.pdfMargin, right: job.profile.pdfMargin,
-                        bottom: job.profile.pdfMargin, left: job.profile.pdfMargin }, printBackground: true }))
-          : await convertPng(png as Buffer, format, job);
-        await atomicWrite(selection.absolute, bytes);
-        let width = viewport.width;
-        let height = viewport.height;
-        if (format !== 'pdf') {
-          const metadata = await sharp(bytes).metadata();
-          width = metadata.width ?? width;
-          height = metadata.height ?? height;
-        }
-        const artifact: Artifact = { id: artifactId, jobId: job.id, url, finalUrl: page.url(), engine,
-          targetId: target.target.id, targetName: target.target.name,
-          targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
-          viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
-          relativePath, width, height,
-          sha256: sha256(bytes), status: 'succeeded', createdAt: new Date().toISOString() };
-        emit({ type: 'artifact_completed', artifact }); completed += 1;
-        if (job.profile.comparisonEnabled && format !== 'pdf') {
-          try { await compareArtifact(job, artifact, bytes, comparisonKey, emit); }
-          catch (comparisonError) {
-            emit({ type: 'comparison_completed', comparison: {
-              id: id(), jobId: job.id, comparisonKey, baselineArtifactId: job.baselines?.[comparisonKey]?.artifactId ?? '',
-              currentArtifactId: artifact.id, status: 'error', mismatchRatio: 0, diffRelativePath: '',
-              createdAt: new Date().toISOString(), url, targetId: artifact.targetId ?? '',
-              targetName: artifact.targetName ?? '', targetSetId: artifact.targetSetId ?? '',
-              targetSetName: artifact.targetSetName ?? '', engine, viewportId: viewport.id,
-              viewportName: viewport.name, captureMode: job.profile.captureMode, format,
-              analysisWidth: 0, analysisHeight: 0, analysisScale: 1,
-              error: comparisonError instanceof Error ? comparisonError.message : String(comparisonError),
-            } });
+        if (presentation.enabled && format !== 'pdf') {
+          const portfolioId = id();
+          try {
+            const portfolioSelection = await allocator.choose(targetDirectory, `${name.base}-portfolio`, format,
+              job.profile.collisionPolicy);
+            const portfolioRelativePath = path.relative(job.projectRoot, portfolioSelection.absolute);
+            if (portfolioSelection.skipped) {
+              const portfolioArtifact: Artifact = { id: portfolioId, jobId: job.id, url, finalUrl: page.url(), engine,
+                targetId: target.target.id, targetName: target.target.name,
+                targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
+                viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+                relativePath: portfolioRelativePath, width: 0, height: 0, sha256: '', status: 'skipped',
+                variant: 'portfolio', presentation, createdAt: new Date().toISOString() };
+              emit({ type: 'artifact_completed', artifact: portfolioArtifact }); completed += 1;
+            } else {
+              const styled = await renderPresentation(png as Buffer, presentation, viewport, job.profile.captureMode);
+              const portfolioBytes = await convertPng(styled.bytes, format, job);
+              await atomicWrite(portfolioSelection.absolute, portfolioBytes);
+              const effectivePresentation = { ...styled.settings, resolvedFrame: styled.resolvedFrame };
+              const portfolioArtifact: Artifact = { id: portfolioId, jobId: job.id, url, finalUrl: page.url(), engine,
+                targetId: target.target.id, targetName: target.target.name,
+                targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
+                viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+                relativePath: portfolioRelativePath, width: styled.width, height: styled.height,
+                sha256: sha256(portfolioBytes), status: 'succeeded', variant: 'portfolio',
+                presentation: effectivePresentation, createdAt: new Date().toISOString() };
+              emit({ type: 'artifact_completed', artifact: portfolioArtifact }); completed += 1;
+            }
+          } catch (presentationError) {
+            failed += 1;
+            const portfolioArtifact: Artifact = { id: portfolioId, jobId: job.id, url, engine,
+              targetId: target.target.id, targetName: target.target.name,
+              targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
+              viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+              relativePath: '', width: 0, height: 0, sha256: '', status: 'failed', variant: 'portfolio',
+              presentation, error: presentationError instanceof Error ? presentationError.message : String(presentationError),
+              createdAt: new Date().toISOString() };
+            emit({ type: 'artifact_failed', artifact: portfolioArtifact, message: portfolioArtifact.error });
           }
         }
       } catch (artifactError) {
@@ -330,9 +374,15 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
           targetId: target.target.id, targetName: target.target.name,
           targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath: '',
-          width: 0, height: 0, sha256: '', status: 'failed',
+          width: 0, height: 0, sha256: '', status: 'failed', variant: 'original',
           error: artifactError instanceof Error ? artifactError.message : String(artifactError), createdAt: new Date().toISOString() };
         emit({ type: 'artifact_failed', artifact, message: artifact.error });
+        if (presentation.enabled && format !== 'pdf') {
+          failed += 1;
+          const portfolioArtifact: Artifact = { ...artifact, id: id(), variant: 'portfolio', presentation,
+            error: `Portfolio copy not created because the original ${format.toUpperCase()} failed: ${artifact.error}` };
+          emit({ type: 'artifact_failed', artifact: portfolioArtifact, message: portfolioArtifact.error });
+        }
       }
     }
   } catch (targetError) {
@@ -343,9 +393,15 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
           targetId: target.target.id, targetName: target.target.name,
           targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath: '',
-          width: 0, height: 0, sha256: '', status: 'failed',
+          width: 0, height: 0, sha256: '', status: 'failed', variant: 'original',
           error: targetError instanceof Error ? targetError.message : String(targetError), createdAt: new Date().toISOString() };
         emit({ type: 'artifact_failed', artifact, message: artifact.error });
+        if (presentation.enabled && format !== 'pdf') {
+          failed += 1;
+          const portfolioArtifact: Artifact = { ...artifact, id: id(), variant: 'portfolio', presentation,
+            error: `Portfolio copy not created because the capture failed: ${artifact.error}` };
+          emit({ type: 'artifact_failed', artifact: portfolioArtifact, message: portfolioArtifact.error });
+        }
       }
     }
   } finally {
@@ -379,7 +435,9 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
       for (const [index, target] of snapshots.entries()) targets.push({ index, target, engine, viewport, formats });
     }
   }
-  const totalArtifacts = targets.reduce((sum, target) => sum + target.formats.length, 0);
+  const presentationEnabled = normalizePresentation(job.profile.presentation).enabled;
+  const totalArtifacts = targets.reduce((sum, target) => sum + target.formats.reduce(
+    (count, format) => count + (presentationEnabled && format !== 'pdf' ? 2 : 1), 0), 0);
   if (totalArtifacts === 0) throw new Error('The job has no enabled capture targets');
   if (totalArtifacts > maximumArtifacts) throw new Error(`A job may create at most ${maximumArtifacts.toLocaleString()} artifacts`);
   emit({ type: 'job_started', status: 'running', totalArtifacts });

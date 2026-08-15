@@ -628,6 +628,9 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     if (artifact.value("format").toString().compare("pdf", Qt::CaseInsensitive) == 0) {
       return failure("invalid_baseline", "PDF artifacts cannot be used as visual comparison baselines", 409);
     }
+    if (artifact.value("variant").toString("original") != "original") {
+      return failure("invalid_baseline", "Portfolio-styled files cannot be used as visual comparison baselines", 409);
+    }
     const QString key = params.value("comparisonKey").toString(comparisonKey(artifact));
     const QString root = QFileInfo(store->root()).absoluteFilePath();
     const QString source = QFileInfo(QDir(root).filePath(artifact.value("relativePath").toString())).absoluteFilePath();

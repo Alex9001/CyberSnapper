@@ -68,6 +68,7 @@ private:
   QCheckBox *m_webp = nullptr;
   QCheckBox *m_avif = nullptr;
   QCheckBox *m_pdf = nullptr;
+  QComboBox *m_presentationScene = nullptr;
   QDoubleSpinBox *m_initialDelay = nullptr;
   QDoubleSpinBox *m_scrollDelay = nullptr;
   QDoubleSpinBox *m_finalDelay = nullptr;
