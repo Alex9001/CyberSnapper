@@ -44,11 +44,12 @@ lightbox?.addEventListener('click', (event) => {
 
 function preferredAsset() {
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
-  const value = platform.toLowerCase();
-  if (value.includes('win')) return 'CyberSnapper-windows-x64.zip';
-  if (value.includes('linux')) return 'CyberSnapper-linux-x64.tar.gz';
+  const value = `${platform} ${navigator.userAgent}`.toLowerCase();
+  const arm64 = /(?:arm64|aarch64)/.test(value);
+  if (value.includes('win')) return `CyberSnapper-windows-${arm64 ? 'arm64' : 'x64'}-setup.exe`;
+  if (value.includes('linux')) return `CyberSnapper-linux-${arm64 ? 'arm64' : 'x64'}.AppImage`;
   if (value.includes('mac')) {
-    return navigator.userAgent.includes('Intel') ? 'CyberSnapper-macos-x64.zip' : 'CyberSnapper-macos-arm64.zip';
+    return `CyberSnapper-macos-${arm64 ? 'arm64' : 'x64'}.dmg`;
   }
   return null;
 }

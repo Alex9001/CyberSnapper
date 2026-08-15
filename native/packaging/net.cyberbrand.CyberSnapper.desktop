@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CyberSnapper
+GenericName=Website Screenshot Studio
+Comment=Capture responsive websites and create portfolio-ready mockups
+Exec=CyberSnapper
+Icon=net.cyberbrand.CyberSnapper
+Terminal=false
+Categories=Graphics;Development;
+Keywords=Screenshot;Website;Portfolio;Mockup;Responsive;Browser;
+StartupNotify=true

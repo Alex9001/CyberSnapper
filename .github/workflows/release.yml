@@ -11,23 +11,36 @@ on:
     types: [published]
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
-  package:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+  linux:
+    name: Linux ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, name: Linux x64, artifact: CyberSnapper-linux-x64 }
-          - { os: windows-2022, name: Windows x64, artifact: CyberSnapper-windows-x64 }
-          - { os: macos-15-intel, name: macOS x64, artifact: CyberSnapper-macos-x64 }
-          - { os: macos-15, name: macOS arm64, artifact: CyberSnapper-macos-arm64 }
-
+          - runner: ubuntu-24.04
+            arch: x64
+            linuxdeploy_asset: 497463883
+            linuxdeploy_sha256: 421ca71d5c69ea97c6309276232990d43df1dcece0edfaa26bbf926ff96ed12e
+            qt_plugin_asset: 421996681
+            qt_plugin_sha256: be1b7e166bf9975cfb694ebe6759ba40502ffc6196440d3e64aa90c4dbd67e9f
+            appimagetool_asset: 324406736
+            appimagetool_sha256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+            runtime_asset: 456065460
+            runtime_sha256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            linuxdeploy_asset: 497463664
+            linuxdeploy_sha256: 9f04c4c2a8b69c392c4bbcc1a88bdd4d0a8ac03f587cf5242814cb7ae47b78e5
+            qt_plugin_asset: 421996594
+            qt_plugin_sha256: 5525e6c49c3c774c02b8864d2acc2ae4c5c0ccc3327f7dce626deaa36348e5c6
+            appimagetool_asset: 324406707
+            appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+            runtime_asset: 456064894
+            runtime_sha256: 7d5d772b7c32f0c84caf0a452a3072a5709027d7eac5856feb89a7a7a8881372
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,11 +62,12 @@ jobs:
           version: '6.8.3'
           cache: true
 
-      - name: Linux build tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+      - name: Install Linux build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libfuse2 file desktop-file-utils
 
-      - name: Install and verify worker
+      - name: Worker checks
         shell: bash
         run: |
           npm ci
@@ -68,70 +82,287 @@ jobs:
         run: npx playwright install chromium
 
       - name: Install Chromium host dependencies
-        if: runner.os == 'Linux'
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
         run: npx playwright install-deps chromium
 
-      - name: Stage Node runtime (Unix)
-        if: runner.os != 'Windows'
+      - name: Stage Node runtime
         shell: bash
         run: mkdir -p .runtime && cp "$(command -v node)" .runtime/node && chmod +x .runtime/node
 
-      - name: Stage Node runtime (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: New-Item -ItemType Directory -Force .runtime; Copy-Item (Get-Command node).Source .runtime/node.exe
-
-      - name: Configure and build (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure, build, and test
         shell: bash
         run: |
           cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCYBERSNAPPER_BUILD_TESTS=ON
           cmake --build build/native --parallel
           ctest --test-dir build/native --output-on-failure
 
-      - name: Configure and build (Windows)
-        if: runner.os == 'Windows'
+      - name: Keep production worker dependencies
+        run: npm prune --omit=dev
+
+      # Each tool is pinned by immutable release-asset id plus its SHA-256 so a
+      # replaced "continuous" asset cannot silently change what we package.
+      - name: Install pinned packaging tools
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p tools
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/linuxdeploy/linuxdeploy/releases/assets/${{ matrix.linuxdeploy_asset }}" > tools/linuxdeploy
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/${{ matrix.qt_plugin_asset }}" > tools/linuxdeploy-plugin-qt
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/AppImage/appimagetool/releases/assets/${{ matrix.appimagetool_asset }}" > tools/appimagetool
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/AppImage/type2-runtime/releases/assets/${{ matrix.runtime_asset }}" > tools/AppImage-runtime
+          printf '%s  %s\n' "${{ matrix.linuxdeploy_sha256 }}" tools/linuxdeploy | sha256sum --check --strict
+          printf '%s  %s\n' "${{ matrix.qt_plugin_sha256 }}" tools/linuxdeploy-plugin-qt | sha256sum --check --strict
+          printf '%s  %s\n' "${{ matrix.appimagetool_sha256 }}" tools/appimagetool | sha256sum --check --strict
+          printf '%s  %s\n' "${{ matrix.runtime_sha256 }}" tools/AppImage-runtime | sha256sum --check --strict
+          chmod +x tools/linuxdeploy tools/linuxdeploy-plugin-qt tools/appimagetool
+
+      - name: Package AppImage and portable archive
+        shell: bash
+        env:
+          LINUXDEPLOY: ${{ github.workspace }}/tools/linuxdeploy
+          APPIMAGETOOL: ${{ github.workspace }}/tools/appimagetool
+          APPIMAGE_RUNTIME: ${{ github.workspace }}/tools/AppImage-runtime
+        run: |
+          export PATH="${{ github.workspace }}/tools:$PATH"
+          export QMAKE="${QT_ROOT_DIR}/bin/qmake"
+          version=$(node -p "require('./package.json').version")
+          scripts/package-linux.sh build/native release-assets "${{ matrix.arch }}" "$version"
+
+      - name: Smoke-test packaged capture
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          node scripts/smoke-packaged-capture.mjs \
+            build/native/AppDir/usr/bin/cybersnapper-cli \
+            build/native/AppDir/usr/bin/cybersnapper-agent \
+            build/native/AppDir/usr/share/cybersnapper/worker/main.cjs \
+            build/native/AppDir/usr/lib/cybersnapper/runtime/node \
+            build/native/AppDir/usr/share/cybersnapper/browsers \
+            build/native/smoke-state
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberSnapper-linux-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+            qt_arch: win64_msvc2022_64
+            msvc_arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+            qt_arch: win64_msvc2022_arm64
+            msvc_arch: amd64_arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify release version
+        shell: bash
+        env:
+          CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+        run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+
+      - name: Worker checks
+        shell: bash
+        run: |
+          npm ci
+          npm run typecheck:worker
+          npm run build:worker
+          npm run test:worker
+
+      - name: Bundle Chromium
+        shell: bash
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+        run: npx playwright install chromium
+
+      - name: Stage Node runtime
         shell: pwsh
         run: |
-          cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64 -DCYBERSNAPPER_BUILD_TESTS=ON
-          cmake --build build/native --config Release --parallel
-          ctest --test-dir build/native -C Release --output-on-failure
+          New-Item -ItemType Directory -Force .runtime
+          Copy-Item (Get-Command node).Source .runtime/node.exe
+
+      - name: Configure, build, and test
+        shell: pwsh
+        run: |
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCYBERSNAPPER_BUILD_TESTS=ON
+          cmake --build build/native --parallel
+          ctest --test-dir build/native --output-on-failure
 
       - name: Keep production worker dependencies
         run: npm prune --omit=dev
 
-      - name: Install application (Unix)
-        if: runner.os != 'Windows'
+      - name: Install application
+        shell: pwsh
+        run: cmake --install build/native --prefix stage --config Release
+
+      - name: Deploy Qt
+        shell: pwsh
+        run: |
+          windeployqt --release --no-translations stage/bin/CyberSnapper.exe
+          windeployqt --release --no-translations stage/bin/cybersnapper-agent.exe
+          Remove-Item stage/bin/sqldrivers/qsqlmimer.dll, stage/bin/sqldrivers/qsqlodbc.dll, stage/bin/sqldrivers/qsqlpsql.dll -ErrorAction SilentlyContinue
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Compress-Archive -Path stage/* -DestinationPath release-assets/CyberSnapper-windows-${{ matrix.arch }}-portable.zip
+
+      - name: Build setup executable
+        shell: pwsh
+        run: |
+          $version = (node -p "require('./package.json').version")
+          $makensis = & "$PWD/scripts/install-nsis.ps1"
+          & $makensis `
+            "/DAPP_SOURCE=$PWD\stage" `
+            "/DAPP_ICON=$PWD\native\resources\cybersnapper.ico" `
+            "/DVERSION=$version" `
+            "/DOUTPUT_FILE=$PWD\release-assets\CyberSnapper-windows-${{ matrix.arch }}-setup.exe" `
+            native/packaging/windows/installer.nsi
+
+      - name: Smoke-test packaged capture
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          node scripts/smoke-packaged-capture.mjs `
+            stage\bin\cybersnapper-cli.exe `
+            stage\bin\cybersnapper-agent.exe `
+            stage\bin\worker\main.cjs `
+            stage\bin\runtime\node.exe `
+            stage\bin\browsers `
+            build\native\smoke-state
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberSnapper-windows-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify release version
+        shell: bash
+        env:
+          CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+        run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+
+      - name: Worker checks
+        shell: bash
+        run: |
+          npm ci
+          npm run typecheck:worker
+          npm run build:worker
+          npm run test:worker
+
+      - name: Bundle Chromium
+        shell: bash
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+        run: npx playwright install chromium
+
+      - name: Stage Node runtime
+        shell: bash
+        run: mkdir -p .runtime && cp "$(command -v node)" .runtime/node && chmod +x .runtime/node
+
+      - name: Generate macOS icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          iconset="$RUNNER_TEMP/CyberSnapper.iconset"
+          mkdir -p "$iconset"
+          sips -z 16 16 assets/logo.png --out "$iconset/icon_16x16.png" >/dev/null
+          sips -z 32 32 assets/logo.png --out "$iconset/icon_16x16@2x.png" >/dev/null
+          sips -z 32 32 assets/logo.png --out "$iconset/icon_32x32.png" >/dev/null
+          sips -z 64 64 assets/logo.png --out "$iconset/icon_32x32@2x.png" >/dev/null
+          sips -z 128 128 assets/logo.png --out "$iconset/icon_128x128.png" >/dev/null
+          sips -z 256 256 assets/logo.png --out "$iconset/icon_128x128@2x.png" >/dev/null
+          sips -z 256 256 assets/logo.png --out "$iconset/icon_256x256.png" >/dev/null
+          sips -z 512 512 assets/logo.png --out "$iconset/icon_256x256@2x.png" >/dev/null
+          sips -z 512 512 assets/logo.png --out "$iconset/icon_512x512.png" >/dev/null
+          sips -z 1024 1024 assets/logo.png --out "$iconset/icon_512x512@2x.png" >/dev/null
+          iconutil -c icns "$iconset" -o "$RUNNER_TEMP/CyberSnapper.icns"
+
+      - name: Configure, build, and test
+        shell: bash
+        run: |
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCYBERSNAPPER_BUILD_TESTS=ON \
+            -DCYBERSNAPPER_MACOS_ICON="$RUNNER_TEMP/CyberSnapper.icns"
+          cmake --build build/native --parallel
+          ctest --test-dir build/native --output-on-failure
+
+      - name: Keep production worker dependencies
+        run: npm prune --omit=dev
+
+      - name: Install application
         shell: bash
         run: cmake --install build/native --prefix stage --config Release
 
-      - name: Install application (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: cmake --install "$env:GITHUB_WORKSPACE/build/native" --prefix "$env:GITHUB_WORKSPACE/stage" --config Release
-
-      - name: Deploy Qt (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $visualStudio = & $vswhere -latest -version "[17.0,18.0)" -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          . "$visualStudio\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -SkipAutomaticLocation
-          windeployqt --release --no-translations stage/bin/CyberSnapper.exe
-          windeployqt --release --no-translations stage/bin/cybersnapper-agent.exe
-          Remove-Item stage/bin/sqldrivers/qsqlmimer.dll,stage/bin/sqldrivers/qsqlodbc.dll,stage/bin/sqldrivers/qsqlpsql.dll -ErrorAction SilentlyContinue
-          Compress-Archive -Path stage/* -DestinationPath ${{ matrix.artifact }}.zip
-
-      - name: Deploy Qt and sign (macOS)
-        if: runner.os == 'macOS'
+      - name: Deploy Qt and sign
         shell: bash
         run: |
+          set -euo pipefail
           macdeployqt stage/CyberSnapper.app \
             -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
-            -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli
+            -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli \
+            -always-overwrite
           frameworks=stage/CyberSnapper.app/Contents/Frameworks
           brew list brotli >/dev/null 2>&1 || brew install brotli
           brotli_prefix="$(brew --prefix brotli)"
@@ -142,74 +373,63 @@ jobs:
           done
           rm -f stage/CyberSnapper.app/Contents/PlugIns/sqldrivers/libqsql{mimer,odbc,psql}.dylib
           codesign --force --deep --sign - stage/CyberSnapper.app
-          ditto -c -k --sequesterRsrc --keepParent stage/CyberSnapper.app ${{ matrix.artifact }}.zip
 
-      - name: Deploy Qt (Linux)
-        if: runner.os == 'Linux'
+      - name: Build DMG and ZIP
         shell: bash
         run: |
-          mkdir -p build/release-qt-plugins/{platforms,sqldrivers,imageformats,iconengines,platforminputcontexts,xcbglintegrations,tls}
-          cp "$QT_ROOT_DIR/plugins/platforms/libqxcb.so" build/release-qt-plugins/platforms/
-          cp "$QT_ROOT_DIR/plugins/sqldrivers/libqsqlite.so" build/release-qt-plugins/sqldrivers/
-          cp "$QT_ROOT_DIR"/plugins/imageformats/libq{gif,ico,jpeg,svg}.so build/release-qt-plugins/imageformats/
-          cp "$QT_ROOT_DIR/plugins/iconengines/libqsvgicon.so" build/release-qt-plugins/iconengines/
-          cp "$QT_ROOT_DIR/plugins/platforminputcontexts/libcomposeplatforminputcontextplugin.so" build/release-qt-plugins/platforminputcontexts/
-          cp "$QT_ROOT_DIR"/plugins/xcbglintegrations/libqxcb-{egl,glx}-integration.so build/release-qt-plugins/xcbglintegrations/
-          cp "$QT_ROOT_DIR"/plugins/tls/libq{certonly,openssl}backend.so build/release-qt-plugins/tls/
-          curl -L -o linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-          chmod +x linuxdeployqt.AppImage
-          export CYBERSNAPPER_REAL_QMAKE="$QT_ROOT_DIR/bin/qmake"
-          export CYBERSNAPPER_RELEASE_PLUGINS="$PWD/build/release-qt-plugins"
-          ./linuxdeployqt.AppImage --appimage-extract-and-run stage/bin/CyberSnapper \
-            -qmake="$PWD/scripts/release-qmake-wrapper.sh" \
-            -executable=stage/bin/cybersnapper-agent \
-            -executable=stage/bin/cybersnapper-cli \
-            -bundle-non-qt-libs -unsupported-allow-new-glibc
-          tar -C stage -czf ${{ matrix.artifact }}.tar.gz .
+          mkdir -p release-assets
+          hdiutil create -volname CyberSnapper -srcfolder stage/CyberSnapper.app -ov -format UDZO \
+            "release-assets/CyberSnapper-macos-${{ matrix.arch }}.dmg"
+          ditto -c -k --sequesterRsrc --keepParent stage/CyberSnapper.app \
+            "release-assets/CyberSnapper-macos-${{ matrix.arch }}.zip"
 
-      - name: Smoke test package (Linux)
-        if: runner.os == 'Linux'
-        timeout-minutes: 1
-        run: env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH stage/bin/cybersnapper-cli --version
-
-      - name: Smoke test package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        timeout-minutes: 1
+      - name: Smoke-test packaged capture
+        shell: bash
+        timeout-minutes: 15
         run: |
-          Remove-Item Env:QT_PLUGIN_PATH -ErrorAction SilentlyContinue
-          Remove-Item Env:QML2_IMPORT_PATH -ErrorAction SilentlyContinue
-          & ".\stage\bin\cybersnapper-cli.exe" --version
-          if ($LASTEXITCODE -ne 0) { throw "Packaged CLI exited with $LASTEXITCODE" }
-
-      - name: Smoke test package (macOS)
-        if: runner.os == 'macOS'
-        timeout-minutes: 1
-        run: env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli --version
-
-      - name: Attest package provenance
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: ${{ matrix.artifact }}.*
+          node scripts/smoke-packaged-capture.mjs \
+            stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli \
+            stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
+            stage/CyberSnapper.app/Contents/Resources/worker/main.cjs \
+            stage/CyberSnapper.app/Contents/Resources/runtime/node \
+            stage/CyberSnapper.app/Contents/Resources/browsers \
+            build/native/smoke-state
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.*
+          name: CyberSnapper-macos-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
 
   publish:
-    needs: package
+    name: Assemble and publish
+    needs: [linux, windows, macos]
     if: github.event_name == 'release' || inputs.release_tag != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+
       - name: Create SHA-256 checksums
         shell: bash
-        run: sha256sum artifacts/* > artifacts/SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+        run: (cd artifacts && sha256sum -- * > SHA256SUMS.txt)
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || inputs.release_tag }}
-          files: artifacts/*
+          subject-path: artifacts/*
+
+      - name: Publish packages to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}"
+          gh release upload "$tag" artifacts/* --clobber

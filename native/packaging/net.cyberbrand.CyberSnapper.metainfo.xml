@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.cyberbrand.CyberSnapper</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>ISC</project_license>
+  <name>CyberSnapper</name>
+  <summary>Capture responsive websites and create portfolio-ready mockups</summary>
+  <description>
+    <p>
+      CyberSnapper is a native website screenshot studio for capturing complete
+      responsive portfolios across desktop, tablet, mobile, and custom viewports.
+    </p>
+    <p>
+      It keeps untouched source captures and can create polished browser, tablet,
+      and phone presentations locally with configurable scenes and backgrounds.
+    </p>
+  </description>
+  <launchable type="desktop-id">net.cyberbrand.CyberSnapper.desktop</launchable>
+  <developer id="net.cyberbrand">
+    <name>CYBER BRAND</name>
+  </developer>
+  <url type="homepage">https://alex9001.github.io/CyberSnapper/</url>
+  <url type="bugtracker">https://github.com/Alex9001/CyberSnapper/issues</url>
+  <url type="vcs-browser">https://github.com/Alex9001/CyberSnapper</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Alex9001/CyberSnapper/master/docs/images/app-capture.png</image>
+      <caption>Responsive website capture workspace</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Alex9001/CyberSnapper/master/docs/images/app-presentation.png</image>
+      <caption>Portfolio presentation scene and frame editor</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+</component>

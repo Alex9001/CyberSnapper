@@ -54,12 +54,20 @@ On Windows, stage `node.exe` as `.runtime/node.exe`.
 
 ## Packages
 
-CPack is configured for TGZ on Linux, ZIP/NSIS on Windows, and ZIP/DragNDrop on macOS. Platform deployment tools must run before creating a truly portable package:
+Release packaging produces an install-friendly package and a portable archive for every supported architecture:
+
+| Platform | Architectures | Primary package | Portable archive |
+| --- | --- | --- | --- |
+| Linux | x64, arm64 | AppImage | tar.gz |
+| Windows | x64, arm64 | NSIS setup executable | ZIP |
+| macOS | x64, arm64 | DMG | ZIP |
+
+Platform deployment tools must run before creating these self-contained packages:
 
 - Linux: deploy Qt libraries/plugins and preserve executable rpaths.
 - Windows: run `windeployqt` for the GUI and agent.
-- macOS: run `macdeployqt`, then sign/notarize the complete app bundle for production.
+- macOS: run `macdeployqt`, then ad-hoc sign the complete app bundle. A future Developer ID release would also require Apple notarization.
 
-The release workflow in `.github/workflows/release.yml` performs builds for Linux x64, Windows x64, macOS x64, and macOS arm64. It publishes SHA-256 checksums and GitHub/Sigstore build-provenance attestations. macOS packages use ad-hoc signing and Windows packages remain unsigned because the project does not require paid signing credentials.
+The release workflow in `.github/workflows/release.yml` performs native builds for Linux x64 and arm64, Windows x64 and arm64, and macOS x64 and arm64. It publishes SHA-256 checksums and GitHub/Sigstore build-provenance attestations for all twelve packages. macOS application bundles use ad-hoc signing but are not notarized; Windows installers and Linux packages remain unsigned because the project does not require paid signing credentials.
 
 GitHub documents the Sigstore-backed attestation model at <https://docs.github.com/en/actions/concepts/security/artifact-attestations>. Apple ties Developer ID distribution/notarization to its paid developer program (<https://developer.apple.com/support/developer-id/>). If CyberSnapper later adopts MSIX/Store distribution, Microsoft documents Store-managed signing as a no-certificate-cost path at <https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options>.
