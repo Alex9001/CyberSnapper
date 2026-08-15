@@ -47,6 +47,21 @@ async function waitForAgent(cli, env, agentProcess, readAgentErrors) {
   throw new Error(`Documentation agent did not become ready: ${lastError?.message || 'unknown error'}`);
 }
 
+async function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null) return true;
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      child.off('exit', onExit);
+      resolve(child.exitCode !== null);
+    }, timeoutMs);
+    child.once('exit', onExit);
+  });
+}
+
 await rm(runtimeRoot, { recursive: true, force: true });
 await mkdir(path.join(runtimeRoot, 'r'), { recursive: true });
 await chmod(path.join(runtimeRoot, 'r'), 0o700);
@@ -205,7 +220,13 @@ try {
     });
 } finally {
   try { await run(cli, ['--force', 'agent', 'stop'], { env }); } catch { agentProcess.kill('SIGTERM'); }
-  if (agentProcess.exitCode === null) agentProcess.kill('SIGTERM');
+  if (!(await waitForExit(agentProcess, 3000))) {
+    agentProcess.kill('SIGTERM');
+    if (!(await waitForExit(agentProcess, 2000))) {
+      agentProcess.kill('SIGKILL');
+      await waitForExit(agentProcess, 1000);
+    }
+  }
 }
 
 if (agentErrors.trim() && !agentErrors.includes('QStandardPaths')) process.stderr.write(agentErrors);
