@@ -1,7 +1,7 @@
 {
   "name": "CyberSnapper",
   "short_name": "CyberSnapper",
-  "description": "Native website capture and visual regression for macOS, Windows, and Linux.",
+  "description": "Native website screenshot studio for polished portfolio images on macOS, Windows, and Linux.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#07111f",

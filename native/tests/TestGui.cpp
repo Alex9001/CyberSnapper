@@ -27,6 +27,7 @@ void TestGui::primaryNavigationAndWorkspaces() {
   QCOMPARE(tabs->tabText(2), QString("Review"));
   QCOMPARE(tabs->tabText(4), QString("Targets"));
   QCOMPARE(tabs->tabText(7), QString("Help"));
+  QCOMPARE(tabs->currentIndex(), 1);
 
   auto *toolbar = window.findChild<QToolBar *>("mainNavigation");
   QVERIFY(toolbar);

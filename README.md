@@ -1,8 +1,8 @@
 <div align="center">
   <img src="assets/logo.png" width="190" alt="CyberSnapper camera logo">
   <h1>CyberSnapper</h1>
-  <p><strong>Capture every viewport. Catch every change.</strong></p>
-  <p>Native website capture and visual regression for macOS, Windows, and Linux.</p>
+  <p><strong>Capture your work. Build your portfolio.</strong></p>
+  <p>Native website screenshot capture for macOS, Windows, and Linux.</p>
 
   <p>
     <a href="https://github.com/Alex9001/CyberSnapper/actions/workflows/ci.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/Alex9001/CyberSnapper/ci.yml?branch=master&style=for-the-badge&logo=githubactions&logoColor=white&label=Build"></a>
@@ -19,11 +19,11 @@
   </p>
 </div>
 
-![CyberSnapper Dashboard showing review work, failed runs, active jobs, schedules, and recent captures](docs/images/app-dashboard.png)
+![CyberSnapper Capture workspace creating portfolio screenshots across desktop, tablet, and mobile](docs/images/app-capture.png)
 
-CyberSnapper is a local-first visual QA studio. Define a capture once, reuse it from the native Qt interface, CLI, scheduler, or authenticated localhost API, and keep every artifact in a portable project folder you control.
+CyberSnapper is a local-first screenshot studio for designers and developers who need polished images of their websites. Give it one project or an entire portfolio, choose the exact desktop, tablet, and mobile views, and create a consistent set of full-page, viewport, or element screenshots in one run.
 
-It is not a web UI wrapped in a desktop shell. The interface is native Qt Widgets; a private Playwright worker exists only to drive browser captures.
+The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder you control. It is not a web UI wrapped in a desktop shell: the interface is native Qt Widgets, and a private Playwright worker exists only to render and capture your pages.
 
 ## Download
 
@@ -38,32 +38,30 @@ CyberSnapper 2.2 is the current development line. The latest published 2.1 packa
 
 Every release includes SHA-256 checksums and GitHub build-provenance attestations. macOS archives are ad-hoc signed and Windows archives are currently unsigned; see the [packaging notes](docs/BUILDING.md#packages).
 
-## Why CyberSnapper
+## Built for portfolio screenshots
 
-- Capture desktop, tablet, mobile, and custom viewports with explicit pixel ratio and mobile-mode controls.
-- Organize reusable sites into named target sets, then use the same frozen target snapshot from Capture, schedules, retries, the CLI, or the API.
-- Run Chromium, Firefox, and WebKit across full-page, viewport, or CSS-element captures.
-- Export PNG, WebP, AVIF, and Chromium PDF with collision-safe output naming.
-- Triage a persistent review queue, accept a result as the new baseline, ignore expected change, or return it to unreviewed.
-- Inspect baseline and current captures side by side with synchronized pan/zoom, overlay, wipe, and generated-difference views.
-- Control pixel sensitivity, allowed mismatch, and dynamic-element exclusion per profile.
-- Schedule once, interval, daily, weekly, or monthly runs in real IANA time zones.
-- Share one durable job queue and project history across the GUI, CLI, scheduler, and REST API.
-- Move or archive a project as one normal folder containing its manifest, captures, baselines, diffs, and SQLite state.
+- Capture full scrolling pages, exact viewports, or one CSS-selected element.
+- Produce desktop, tablet, mobile, and custom-sized images together with explicit pixel density and mobile-browser controls.
+- Wait for pages to settle, block common overlays, and hide chosen elements so banners and animation do not spoil the shot.
+- Save labeled target sets for all the projects and pages in a portfolio, then recapture them as one batch.
+- Export PNG, WebP, AVIF, and Chromium PDF with collision-safe names into ordinary folders.
+- Render through Chromium, Firefox, or WebKit and keep a searchable history of every resulting file.
 
-## A complete visual workflow
+Visual comparison, baselines, recurring schedules, retries, the native CLI, and the authenticated localhost API are optional power tools. They support larger workflows without redefining the application’s primary job: making portfolio-ready website screenshots.
 
-| Dashboard | Capture |
+## The portfolio capture workflow
+
+| Capture | Targets |
 | --- | --- |
-| See review work, failed or partial runs, active jobs, the next schedule, and recent activity at a glance. | Combine one-time URLs or a saved target set with explicit viewports, browsers, formats, and comparison rules. |
-| ![CyberSnapper Dashboard](docs/images/app-dashboard.png) | ![CyberSnapper Capture workspace](docs/images/app-capture.png) |
+| Combine one-time URLs or a saved project set with exact viewports, capture modes, browsers, formats, and page clean-up rules. | Maintain labeled portfolio projects with paste, TXT/CSV import and export, ordering, and per-page enable controls. |
+| ![CyberSnapper Capture workspace](docs/images/app-capture.png) | ![CyberSnapper target sets](docs/images/app-targets.png) |
 
-| Targets | Review |
+| History | Optional Review |
 | --- | --- |
-| Maintain labeled, reusable site collections with paste, TXT/CSV import and export, ordering, and per-target enable controls. | Work through detected changes with plain-language metrics, keyboard review actions, synchronized inspection, and immutable baseline history. |
-| ![CyberSnapper target sets](docs/images/app-targets.png) | ![CyberSnapper visual Review workspace](docs/images/app-review.png) |
+| Find completed runs, open their screenshot files, retry a batch, and see exactly what succeeded. | When monitoring a live project, compare revisions with synchronized pan/zoom, overlay, wipe, and generated differences. |
+| ![CyberSnapper capture history](docs/images/app-history.png) | ![CyberSnapper optional visual Review workspace](docs/images/app-review.png) |
 
-History and persistent local-time schedules remain first-class workspaces, backed by the same durable project queue.
+The Dashboard and Schedules pages summarize background activity for people who use those optional workflows; neither is required to capture a portfolio.
 
 The screenshots above are generated automatically from a deterministic demo project. They contain no live or customer data. Regenerate them with `npm run screenshots:docs` after building the native test targets.
 

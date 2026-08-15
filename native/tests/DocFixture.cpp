@@ -149,9 +149,9 @@ int main(int argc, char **argv) {
 
   ProjectStore store;
   QString error;
-  if (!store.create(root, "Visual QA Demo", &error)) return fail(error);
+  if (!store.create(root, "Portfolio Studio Demo", &error)) return fail(error);
   CaptureProfile profile = defaultProfile();
-  profile.name = "Responsive Visual QA";
+  profile.name = "Portfolio Capture";
   profile.viewports = {{"desktop", "Desktop", 1440, 900, 1.0, false, true},
                        {"tablet", "Tablet", 768, 1024, 1.0, true, true},
                        {"mobile", "Mobile", 390, 844, 2.0, true, true}};
@@ -162,14 +162,14 @@ int main(int argc, char **argv) {
   profile.comparisonEnabled = true;
   profile.comparisonIgnoreSelectors = {".timestamp", ".rotating-promo"};
   if (!store.saveProfile(profile, &error)) return fail(error);
-  if (store.saveTargetSet({{"id", "target-set-production"}, {"name", "Production site"},
-      {"description", "Primary public pages checked before every release"},
+  if (store.saveTargetSet({{"id", "target-set-production"}, {"name", "Portfolio projects"},
+      {"description", "Websites and pages ready for portfolio capture"},
       {"targets", QJsonArray{QJsonObject{{"id", "home"}, {"label", "Homepage"}, {"url", DemoUrl}, {"enabled", true}},
                                QJsonObject{{"id", "pricing"}, {"label", "Pricing"}, {"url", "https://example.org/pricing"}, {"enabled", true}},
                                QJsonObject{{"id", "journal"}, {"label", "Journal"}, {"url", "https://example.org/journal"}, {"enabled", false}}}}}, &error).isEmpty()) return fail(error);
-  if (store.saveTargetSet({{"id", "target-set-campaign"}, {"name", "Campaign landing pages"},
-      {"description", "Pages owned by the growth team"},
-      {"targets", QJsonArray{QJsonObject{{"id", "summer"}, {"label", "Summer campaign"}, {"url", "https://example.org/summer"}, {"enabled", true}}}}}, &error).isEmpty()) return fail(error);
+  if (store.saveTargetSet({{"id", "target-set-campaign"}, {"name", "Case study pages"},
+      {"description", "Alternate pages used in detailed project stories"},
+      {"targets", QJsonArray{QJsonObject{{"id", "detail"}, {"label", "Project detail"}, {"url", "https://example.org/project-details"}, {"enabled", true}}}}}, &error).isEmpty()) return fail(error);
 
   const QString baseRelative = "captures/showcase/baseline.png";
   const QString currentRelative = "captures/showcase/current.png";

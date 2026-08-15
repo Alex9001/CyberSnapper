@@ -356,7 +356,7 @@ void MainWindow::buildUi() {
   m_projectCombo = new QComboBox;
   m_projectCombo->setMinimumWidth(190);
   m_projectCombo->setMaximumWidth(260);
-  explain(m_projectCombo, "The active project owns capture profiles, history, schedules, baselines, and output files.");
+  explain(m_projectCombo, "The active project keeps its screenshot targets, capture profiles, history, and output files together.");
   projectLayout->addWidget(m_projectCombo);
   m_projectWidgetAction = m_toolbar->addWidget(projectWidget);
   auto makeAction = [this](const QString &key, const QString &text, const QString &tip) {
@@ -391,8 +391,8 @@ void MainWindow::buildUi() {
   navigation->setExclusive(true);
   QList<QAction *> pageActions;
   const QList<QPair<QString, QString>> pages{
-      {"Dashboard", "Project health, pending reviews, recent runs, and quick actions"},
-      {"Capture", "Configure and start website captures"},
+      {"Dashboard", "Optional overview of background jobs, comparisons, and schedules"},
+      {"Capture", "Create portfolio-ready website screenshots"},
       {"Review", "Triage visual changes and manage baselines"},
       {"History", "Review capture jobs and open their artifacts"},
       {"Targets", "Manage reusable sets of pages to capture"},
@@ -409,10 +409,11 @@ void MainWindow::buildUi() {
     connect(action, &QAction::triggered, m_tabs, [this, index] { m_tabs->setCurrentIndex(index); });
     pageActions.append(action);
   }
-  pageActions.first()->setChecked(true);
   connect(m_tabs, &QTabWidget::currentChanged, this, [pageActions](int index) {
     if (index >= 0 && index < pageActions.size()) pageActions.at(index)->setChecked(true);
   });
+  m_tabs->setCurrentIndex(1);
+  pageActions.at(1)->setChecked(true);
   auto *spacer = new QWidget;
   spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   m_toolbarSpacerAction = m_toolbar->addWidget(spacer);
@@ -541,7 +542,7 @@ QWidget *MainWindow::buildDashboardPage() {
 QWidget *MainWindow::buildTargetsPage() {
   auto *page = new QWidget;
   auto *layout = new QVBoxLayout(page);
-  layout->addWidget(helperText("A target set chooses what to capture; a profile chooses how. Reuse target sets from Capture, Dashboard, and Schedules."));
+  layout->addWidget(helperText("A target set chooses what to capture; a profile chooses how. Reuse a saved set whenever you create or refresh portfolio screenshots."));
   auto *splitter = new QSplitter(Qt::Horizontal);
   auto *master = new QWidget;
   auto *masterLayout = new QVBoxLayout(master);
@@ -839,9 +840,9 @@ QWidget *MainWindow::buildCapturePage() {
   for (int column : {1, 3, 5}) timing->setColumnStretch(column, 1);
   rightLayout->addWidget(timingGroup);
 
-  auto *comparisonGroup = new QGroupBox("Visual comparison");
+  auto *comparisonGroup = new QGroupBox("Optional change monitoring");
   auto *comparisonLayout = new QGridLayout(comparisonGroup);
-  m_comparisonEnabled = new QCheckBox("Compare captures with a saved baseline");
+  m_comparisonEnabled = new QCheckBox("Compare future captures with a saved baseline");
   m_pixelThreshold = new QDoubleSpinBox;
   m_pixelThreshold->setRange(0, 100); m_pixelThreshold->setDecimals(1); m_pixelThreshold->setValue(10); m_pixelThreshold->setSuffix(" %");
   m_mismatchThreshold = new QDoubleSpinBox;
@@ -1436,8 +1437,8 @@ QWidget *MainWindow::buildHelpPage() {
     <h2>Navigation</h2>
     <p>The adaptive header contains project commands and application sections. Actions that do not fit move into More. Settings → Interface lets you reorder the toolbar and choose which actions always live in More. F1 opens Help.</p>
 
-    <h2>Dashboard and target sets</h2>
-    <p><b>Dashboard</b> opens with each project and summarizes pending reviews, failed runs, active work, schedules, and recent results. A <b>Target Set</b> chooses what pages to capture; a profile chooses how to capture them. Target sets support labels, ordering, enable/disable, paste, and TXT/CSV import and export.</p>
+    <h2>Capture and target sets</h2>
+    <p><b>Capture</b> is the main workspace and opens with each project. A <b>Target Set</b> chooses which portfolio projects and pages to capture; a profile chooses how they should look. Target sets support labels, ordering, enable/disable, paste, and TXT/CSV import and export. <b>Dashboard</b> is an optional summary for background jobs, comparisons, and schedules.</p>
 
     <h2>Profiles</h2>
     <p>A profile is a reusable set of capture options. The Capture page marks unsaved edits and offers Save, Revert, and Save As. <b>Manage</b> opens the complete tabbed editor for viewports, output naming, collision behavior, timeouts, compression, PDF, blocking, and comparison settings.</p>
@@ -1480,7 +1481,7 @@ void MainWindow::showAbout() {
   QMessageBox::about(
       this, "About CyberSnapper",
       QStringLiteral("<h2>CyberSnapper %1</h2>"
-                     "<p>Native cross-platform website capture and visual regression.</p>"
+                     "<p>Native cross-platform screenshot capture for website portfolios.</p>"
                      "<p>Qt %2 interface · background capture agent · private Playwright worker</p>"
                      "<p>Runs on macOS, Windows, and Linux.</p>"
                      "<p><a href=\"https://github.com/Alex9001/CyberSnapper\">github.com/Alex9001/CyberSnapper</a></p>"
@@ -1490,11 +1491,11 @@ void MainWindow::showAbout() {
 
 void MainWindow::applyToolbarPreferences() {
   if (!m_toolbar || !m_moreMenu) return;
-  const QStringList defaults{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings", "help", "about", "customize"};
+  const QStringList defaults{"new", "open", "refresh", "capture", "targets", "history", "review", "dashboard", "schedules", "settings", "help", "about", "customize"};
   QSettings settings("CyberBrand", "CyberSnapper");
   QStringList order = settings.value("ui/toolbarOrder", defaults).toStringList();
   for (const QString &key : defaults) if (!order.contains(key)) order.append(key);
-  QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}).toStringList();
+  QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "capture", "targets", "history", "review", "dashboard", "schedules", "settings"}).toStringList();
   for (auto *action : m_toolbarActions) m_toolbar->removeAction(action);
   if (m_toolbarSpacerAction) m_toolbar->removeAction(m_toolbarSpacerAction);
   if (m_moreWidgetAction) m_toolbar->removeAction(m_moreWidgetAction);
@@ -1510,11 +1511,11 @@ void MainWindow::applyToolbarPreferences() {
 }
 
 void MainWindow::openToolbarCustomizer() {
-  const QStringList defaults{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings", "help", "about", "customize"};
+  const QStringList defaults{"new", "open", "refresh", "capture", "targets", "history", "review", "dashboard", "schedules", "settings", "help", "about", "customize"};
   QSettings settings("CyberBrand", "CyberSnapper");
   QStringList order = settings.value("ui/toolbarOrder", defaults).toStringList();
   for (const QString &key : defaults) if (!order.contains(key)) order.append(key);
-  const QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}).toStringList();
+  const QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "capture", "targets", "history", "review", "dashboard", "schedules", "settings"}).toStringList();
   QDialog dialog(this); dialog.setWindowTitle("Customize Toolbar"); dialog.resize(460, 560);
   auto *layout = new QVBoxLayout(&dialog);
   layout->addWidget(helperText("Drag actions into your preferred order. Checked actions are requested on the toolbar; unchecked actions always appear under More. Requested actions still move into the native overflow when the window is narrow."));
@@ -1538,7 +1539,7 @@ void MainWindow::openToolbarCustomizer() {
     for (const QString &key : defaults) {
       QAction *action = m_toolbarActions.value(key); if (!action) continue;
       auto *row = new QTreeWidgetItem({QString{}, action->text()}); row->setData(0, Qt::UserRole, key);
-      row->setCheckState(0, QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}.contains(key) ? Qt::Checked : Qt::Unchecked);
+      row->setCheckState(0, QStringList{"new", "open", "refresh", "capture", "targets", "history", "review", "dashboard", "schedules", "settings"}.contains(key) ? Qt::Checked : Qt::Unchecked);
       row->setFlags(row->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsUserCheckable);
       tree->addTopLevelItem(row);
     }
@@ -1557,7 +1558,7 @@ void MainWindow::restoreUiState() {
   QSettings settings("CyberBrand", "CyberSnapper");
   restoreGeometry(settings.value("ui/vNext/geometry").toByteArray());
   restoreState(settings.value("ui/vNext/windowState").toByteArray());
-  if (m_tabs) m_tabs->setCurrentIndex(0);
+  if (m_tabs) m_tabs->setCurrentIndex(1);
   const auto restoreSplitter = [&settings](QSplitter *splitter, const char *key) {
     const QByteArray state = settings.value(QString::fromLatin1(key)).toByteArray();
     if (splitter && !state.isEmpty()) splitter->restoreState(state);
@@ -1607,11 +1608,11 @@ void MainWindow::showFirstRun() {
     layout->addWidget(text); layout->addStretch(); return result;
   };
   wizard.addPage(page("Projects keep work portable",
-      "Every capture belongs to a project folder containing profiles, history, schedules, baselines, and output files. Quick Captures is ready now; use New or Open in the header for other projects."));
+      "Every screenshot belongs to a normal project folder containing its targets, capture profiles, history, and finished files. Quick Captures is ready now; use New or Open in the header for other portfolios."));
   wizard.addPage(page("Build a capture plan",
       "Enter one URL per line, choose a saved profile, and adjust the visible options. The plan summary shows the exact output count and blocks invalid combinations before they reach the queue."));
-  wizard.addPage(page("Browsers and scheduled work",
-      "Chromium, Firefox, and WebKit are managed separately in Settings. When you enable your first schedule, CyberSnapper will ask whether its background agent should start at login."));
+  wizard.addPage(page("Create a portfolio-ready set",
+      "Combine full-page, viewport, or element capture with the desktop, tablet, and mobile sizes you want. Export PNG, WebP, AVIF, or PDF; comparison, scheduling, and automation remain optional when you need them."));
   if (wizard.exec() == QDialog::Accepted) settings.setValue("onboarding/completed", true);
 }
 

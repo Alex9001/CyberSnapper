@@ -1,7 +1,7 @@
 {
   "name": "cybersnapper",
   "version": "2.2.0",
-  "description": "Native cross-platform website capture and visual regression, powered by Qt and Playwright",
+  "description": "Native cross-platform website screenshot studio for portfolios, powered by Qt and Playwright",
   "scripts": {
     "build:worker": "node worker/build.mjs",
     "build:site": "node scripts/build-site.mjs",

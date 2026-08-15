@@ -23,7 +23,7 @@ endif()
 
 set(CPACK_PACKAGE_NAME "CyberSnapper")
 set(CPACK_PACKAGE_VENDOR "CyberBrand")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native cross-platform website capture and visual regression")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native cross-platform website screenshot studio for portfolios")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "CyberSnapper")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")

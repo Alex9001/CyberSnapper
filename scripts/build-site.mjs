@@ -21,7 +21,7 @@ await sharp(logo).resize(192, 192, { fit: 'cover' }).png({ compressionLevel: 9 }
 await sharp(logo).resize(96, 96, { fit: 'cover' }).png({ compressionLevel: 9 }).toFile(path.join(outputAssets, 'logo-96.png'));
 await sharp(logo).resize(48, 48, { fit: 'cover' }).png({ compressionLevel: 9 }).toFile(path.join(outputAssets, 'favicon.png'));
 
-const screenshots = ['dashboard', 'capture', 'targets', 'review'];
+const screenshots = ['capture', 'targets', 'history', 'review'];
 for (const name of screenshots) {
   const input = path.join(screenshotSource, `app-${name}.png`);
   const metadata = await sharp(input).metadata();
@@ -41,9 +41,9 @@ const socialText = Buffer.from(`
     </defs>
     <rect width="1280" height="640" fill="url(#bg)"/><circle cx="1020" cy="90" r="440" fill="url(#glow)"/><rect width="1280" height="640" fill="url(#grid)"/>
     <text x="420" y="226" fill="#eaf7ff" font-family="Arial,Helvetica,sans-serif" font-size="80" font-weight="700" letter-spacing="-4">Cyber<tspan fill="#56ddff">Snapper</tspan></text>
-    <text x="423" y="303" fill="#eaf7ff" font-family="Arial,Helvetica,sans-serif" font-size="38" font-weight="600">Capture every viewport.</text>
-    <text x="423" y="353" fill="#56ddff" font-family="Arial,Helvetica,sans-serif" font-size="38" font-weight="600">Catch every change.</text>
-    <text x="425" y="420" fill="#91a8ba" font-family="Arial,Helvetica,sans-serif" font-size="21">Native visual QA for macOS · Windows · Linux</text>
+    <text x="423" y="303" fill="#eaf7ff" font-family="Arial,Helvetica,sans-serif" font-size="38" font-weight="600">Capture your work.</text>
+    <text x="423" y="353" fill="#56ddff" font-family="Arial,Helvetica,sans-serif" font-size="38" font-weight="600">Build your portfolio.</text>
+    <text x="425" y="420" fill="#91a8ba" font-family="Arial,Helvetica,sans-serif" font-size="21">Portfolio-ready screenshots · macOS · Windows · Linux</text>
     <rect x="424" y="468" rx="21" width="184" height="43" fill="#1bc5ed"/><text x="516" y="497" text-anchor="middle" fill="#03131c" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700">OPEN SOURCE</text>
   </svg>`);
 const socialLogo = await sharp(logo).resize(300, 300).png().toBuffer();
