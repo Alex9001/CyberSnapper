@@ -39,9 +39,22 @@ qt_add_executable(CyberSnapper
   src/gui/MainWindow.cpp
   resources/native.qrc
 )
+if(WIN32)
+  target_sources(CyberSnapper PRIVATE resources/cybersnapper.rc)
+endif()
 target_link_libraries(CyberSnapper PRIVATE
   cybersnapper_core Qt6::Widgets Qt6::Svg
 )
+
+set(CYBERSNAPPER_MACOS_ICON "" CACHE FILEPATH "Generated CyberSnapper .icns file")
+if(APPLE AND CYBERSNAPPER_MACOS_ICON)
+  get_filename_component(CYBERSNAPPER_MACOS_ICON_NAME "${CYBERSNAPPER_MACOS_ICON}" NAME)
+  set_source_files_properties("${CYBERSNAPPER_MACOS_ICON}" PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources")
+  target_sources(CyberSnapper PRIVATE "${CYBERSNAPPER_MACOS_ICON}")
+  set_target_properties(CyberSnapper PROPERTIES
+    MACOSX_BUNDLE_ICON_FILE "${CYBERSNAPPER_MACOS_ICON_NAME}")
+endif()
 set_target_properties(CyberSnapper PROPERTIES
   WIN32_EXECUTABLE TRUE
   MACOSX_BUNDLE TRUE
@@ -74,6 +87,13 @@ else()
   else()
     set(CYBERSNAPPER_RUNTIME_DESTINATION share/cybersnapper)
     set(CYBERSNAPPER_NODE_DESTINATION lib/cybersnapper/runtime)
+    install(FILES packaging/net.cyberbrand.CyberSnapper.desktop
+      DESTINATION share/applications)
+    install(FILES packaging/net.cyberbrand.CyberSnapper.metainfo.xml
+      DESTINATION share/metainfo)
+    install(FILES ${CMAKE_SOURCE_DIR}/assets/cybersnapper-512.png
+      DESTINATION share/pixmaps
+      RENAME net.cyberbrand.CyberSnapper.png)
   endif()
 endif()
 

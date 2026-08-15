@@ -27,16 +27,18 @@ The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder
 
 ## Download
 
-CyberSnapper 2.2 is the current stable release. Each package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
+CyberSnapper 2.2.1 is the current stable release. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
 
-| Platform | Package |
-| --- | --- |
-| macOS · Apple silicon | [CyberSnapper-macos-arm64.zip](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-arm64.zip) |
-| macOS · Intel | [CyberSnapper-macos-x64.zip](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-x64.zip) |
-| Windows · x64 | [CyberSnapper-windows-x64.zip](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-x64.zip) |
-| Linux · x64 | [CyberSnapper-linux-x64.tar.gz](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-x64.tar.gz) |
+| Platform | Recommended | Portable archive |
+| --- | --- | --- |
+| macOS · Apple silicon | [DMG](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-arm64.dmg) | [ZIP](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-arm64.zip) |
+| macOS · Intel | [DMG](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-x64.dmg) | [ZIP](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-macos-x64.zip) |
+| Windows · x64 | [Setup](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-x64-setup.exe) | [ZIP](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-x64-portable.zip) |
+| Windows · arm64 | [Setup](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-arm64-setup.exe) | [ZIP](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-arm64-portable.zip) |
+| Linux · x64 | [AppImage](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-x64.AppImage) | [tar.gz](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-x64.tar.gz) |
+| Linux · arm64 | [AppImage](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-arm64.AppImage) | [tar.gz](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-arm64.tar.gz) |
 
-Every release includes SHA-256 checksums and GitHub build-provenance attestations. macOS archives are ad-hoc signed and Windows archives are currently unsigned; see the [packaging notes](docs/BUILDING.md#packages).
+Every release includes SHA-256 checksums and GitHub build-provenance attestations. macOS application bundles are ad-hoc signed but not notarized; Windows installers and Linux packages are currently unsigned. See the [packaging notes](docs/BUILDING.md#packages).
 
 ## Built for portfolio screenshots
 

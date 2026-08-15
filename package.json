@@ -1,6 +1,6 @@
 {
   "name": "cybersnapper",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Native cross-platform website screenshot tool and portfolio mockup generator, powered by Qt and Playwright",
   "scripts": {
     "build:worker": "node worker/build.mjs",

@@ -2,7 +2,7 @@
 
 CyberSnapper 2 uses the native cross-platform workflow at `.github/workflows/release.yml`.
 
-The workflow creates portable archives for Linux x64, Windows x64, macOS x64, and macOS arm64, plus SHA-256 checksums and GitHub/Sigstore provenance attestations. macOS uses ad-hoc signing; Windows and Linux packages are unsigned. No paid signing identity is required. CyberSnapper 2 is a clean break from 1.x; do not add migration steps to a 2.x release.
+The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup executables and portable ZIPs for Windows x64 and arm64, and DMGs and ZIPs for macOS x64 and arm64. It also publishes SHA-256 checksums and GitHub/Sigstore provenance attestations. macOS application bundles use ad-hoc signing but are not notarized; Windows and Linux packages are unsigned. No paid signing identity is required. CyberSnapper 2 is a clean break from 1.x; do not add migration steps to a 2.x release.
 
 ## 1. Prepare the release
 
@@ -15,15 +15,15 @@ The workflow creates portable archives for Linux x64, Windows x64, macOS x64, an
 ## 2. Rehearse packaging
 
 1. From GitHub Actions, run **Native Release** on the final candidate commit with `release_tag` left blank.
-2. Wait for all four package jobs and their packaged-CLI smoke tests to pass. A blank `release_tag` uploads workflow artifacts but does not create or modify a GitHub release.
-3. Download every rehearsal artifact. Confirm the four archive names, extract each archive on its target platform, run the packaged CLI with `--version`, and inspect that the application, agent, worker, Node runtime, Qt runtime, and bundled Chromium are present.
+2. Wait for all six platform/architecture package jobs and their package smoke tests to pass. A blank `release_tag` uploads workflow artifacts but does not create or modify a GitHub release.
+3. Download every rehearsal artifact. Confirm all twelve package names, install or extract each package on its target platform, run the packaged CLI with `--version`, and inspect that the application, agent, worker, Node runtime, Qt runtime, and bundled Chromium are present.
 4. Fix any problem in a new commit and repeat the full CI and rehearsal sequence. Do not tag a commit that has not passed rehearsal.
 
 ## 3. Freeze the final commit and tag
 
 1. Confirm `master` is clean, synchronized with GitHub, and still points to the rehearsed commit.
 2. Confirm the package and CMake versions exactly match the release tag.
-3. Create an annotated tag on that commit, for example `git tag -a v2.2.0 -m "CyberSnapper 2.2.0"`, and push the tag.
+3. Create an annotated tag on that commit, for example `git tag -a v2.2.1 -m "CyberSnapper 2.2.1"`, and push the tag.
 4. Treat a pushed release tag as immutable. Never move or replace a published `v*` tag; ship a new patch version if tagged source needs a code change.
 
 ## 4. Publish
@@ -34,9 +34,17 @@ The workflow creates portable archives for Linux x64, Windows x64, macOS x64, an
 
 ## 5. Verify before announcing
 
-1. Require the complete release workflow to pass, including all four native builds and the publish job.
-2. Confirm the release contains `CyberSnapper-linux-x64.tar.gz`, both macOS ZIP files, `CyberSnapper-windows-x64.zip`, and `SHA256SUMS.txt`, with provenance attestations visible in GitHub.
-3. Download the published assets, verify every checksum, extract each archive on its target platform, and repeat the packaged CLI `--version` smoke test.
+1. Require the complete release workflow to pass, including all six native builds and the publish job.
+2. Confirm the release contains all of the following, plus `SHA256SUMS.txt`, with provenance attestations visible in GitHub:
+
+   - `CyberSnapper-linux-x64.AppImage` and `CyberSnapper-linux-x64.tar.gz`
+   - `CyberSnapper-linux-arm64.AppImage` and `CyberSnapper-linux-arm64.tar.gz`
+   - `CyberSnapper-windows-x64-setup.exe` and `CyberSnapper-windows-x64-portable.zip`
+   - `CyberSnapper-windows-arm64-setup.exe` and `CyberSnapper-windows-arm64-portable.zip`
+   - `CyberSnapper-macos-x64.dmg` and `CyberSnapper-macos-x64.zip`
+   - `CyberSnapper-macos-arm64.dmg` and `CyberSnapper-macos-arm64.zip`
+
+3. Download the published assets, verify every checksum, install or extract each package on its target platform, and repeat the packaged CLI `--version` smoke test.
 4. Confirm GitHub marks the release as latest and that the README and Pages download links resolve to these assets.
 5. Announce the release only after the release page, downloads, checksums, and website have all been verified.
 
@@ -46,6 +54,14 @@ The workflow creates portable archives for Linux x64, Windows x64, macOS x64, an
 - If valid packages were built but assets were not attached correctly, manually dispatch **Native Release** with the existing `release_tag`; verify the rebuilt assets and checksums again.
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
+
+## v2.2.1
+
+- Native package coverage for x64 and arm64 on Linux, Windows, and macOS.
+- AppImages as the recommended Linux download, with portable tar.gz archives retained for manual installation.
+- Windows setup executables as the recommended download, with portable ZIP archives available for no-install use.
+- macOS DMGs as the recommended download, with ZIP archives available as a portable alternative.
+- Package smoke tests, SHA-256 checksums, and GitHub/Sigstore provenance attestations across the full release matrix.
 
 ## v2.2.0
 
