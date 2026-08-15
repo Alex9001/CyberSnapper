@@ -125,7 +125,7 @@
         </div>
         <div class="presentation-showcase">
           <button class="showcase-shot scene-gallery" type="button" data-image="assets/screenshots/portfolio-scene-gallery.png" data-alt="Real CYBER BRAND Clearnet and Darkweb captures across six CyberSnapper portfolio scenes"><picture><source srcset="assets/screenshots/portfolio-scene-gallery.webp" type="image/webp"><img src="assets/screenshots/portfolio-scene-gallery.png" alt="Real CYBER BRAND Clearnet and Darkweb captures across six CyberSnapper portfolio scenes" width="1800" height="940" loading="lazy"></picture><span>Six styles using real Clearnet and Darkweb captures. Click to enlarge.</span></button>
-          <button class="showcase-shot settings-shot" type="button" data-image="assets/screenshots/app-presentation.png" data-alt="CyberSnapper Presentation profile editor with scene, frame, canvas, padding, and shadow controls"><picture><source srcset="assets/screenshots/app-presentation.webp" type="image/webp"><img src="assets/screenshots/app-presentation.png" alt="CyberSnapper Presentation profile editor with scene, frame, canvas, padding, and shadow controls" width="780" height="620" loading="lazy"></picture><span>Every choice is explicit, reusable, and saved with the profile.</span></button>
+          <button class="showcase-shot settings-shot" type="button" data-image="assets/screenshots/app-presentation.png" data-alt="CyberSnapper Presentation profile editor with scene, frame, canvas, padding, and shadow controls"><picture><source srcset="assets/screenshots/app-presentation.webp" type="image/webp"><img src="assets/screenshots/app-presentation.png" alt="CyberSnapper Presentation profile editor with scene, frame, canvas, padding, and shadow controls" width="780" height="503" loading="lazy"></picture><span>Every choice is explicit, reusable, and saved with the profile.</span></button>
           <button class="showcase-shot frame-gallery" type="button" data-image="assets/screenshots/portfolio-frame-gallery.png" data-alt="CYBER BRAND Clearnet and Darkweb frame comparison showing no frame, rounded card, and light and dark browser, tablet, and phone frames"><picture><source srcset="assets/screenshots/portfolio-frame-gallery.webp" type="image/webp"><img src="assets/screenshots/portfolio-frame-gallery.png" alt="CYBER BRAND Clearnet and Darkweb frame comparison showing no frame, rounded card, and light and dark browser, tablet, and phone frames" width="1800" height="940" loading="lazy"></picture><span>Every frame option using matching Clearnet and Darkweb desktop, tablet, and mobile captures. Click to enlarge.</span></button>
         </div>
       </div>
@@ -218,8 +218,16 @@
   </footer>
 
   <dialog class="lightbox" aria-label="Screenshot preview">
-    <button type="button" class="lightbox-close" aria-label="Close screenshot">×</button>
-    <img src="assets/screenshots/app-capture.png" alt="">
+    <div class="lightbox-toolbar">
+      <strong>Screenshot preview</strong>
+      <div class="lightbox-actions">
+        <button type="button" class="lightbox-mode" data-lightbox-mode="fit" aria-pressed="true">Fit screen</button>
+        <button type="button" class="lightbox-mode" data-lightbox-mode="actual" aria-pressed="false">100%</button>
+        <a class="lightbox-open" href="assets/screenshots/app-capture.png" target="_blank" rel="noopener">Open original <span aria-hidden="true">↗</span></a>
+        <button type="button" class="lightbox-close" aria-label="Close screenshot">×</button>
+      </div>
+    </div>
+    <div class="lightbox-stage"><img src="assets/screenshots/app-capture.png" alt=""></div>
   </dialog>
 </body>
 </html>

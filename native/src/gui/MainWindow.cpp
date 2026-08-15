@@ -2572,6 +2572,19 @@ void MainWindow::openProfileManager() {
     rpcCall("profile.remove", {{"projectId", m_projectId}, {"profileId", source.value("id").toString()}},
             [&, this](const QJsonObject &) { dialog.accept(); refreshProfiles(); });
   });
+  const bool tightPresentationCapture = !qEnvironmentVariable("CYBERSNAPPER_UI_SCREENSHOT").isEmpty() &&
+      qEnvironmentVariable("CYBERSNAPPER_UI_SCENE").compare("presentation", Qt::CaseInsensitive) == 0;
+  if (tightPresentationCapture) {
+    // The documentation grab targets this modal; collapse the tab's unused stretch without changing the normal manager.
+    QTimer::singleShot(0, &dialog, [&dialog, tabs, presentationPage] {
+      presentationPage->layout()->activate();
+      const int tabChromeHeight = qMax(0, tabs->height() - presentationPage->height());
+      tabs->setFixedHeight(tabChromeHeight + presentationPage->layout()->sizeHint().height());
+      dialog.layout()->activate();
+      dialog.adjustSize();
+      dialog.resize(780, dialog.height());
+    });
+  }
   dialog.exec();
 }
 

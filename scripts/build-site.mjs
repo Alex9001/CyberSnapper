@@ -42,8 +42,9 @@ await sharp(portfolioExample).webp({ quality: 86, effort: 5 })
   .toFile(path.join(outputScreenshots, 'portfolio-aurora-browser.webp'));
 const presentationUi = path.join(screenshotSource, 'app-presentation.png');
 const presentationUiMetadata = await sharp(presentationUi).metadata();
-if ((presentationUiMetadata.width ?? 0) < 700 || (presentationUiMetadata.height ?? 0) < 500) {
-  throw new Error('Presentation settings screenshot is unexpectedly small');
+if ((presentationUiMetadata.width ?? 0) < 700 || (presentationUiMetadata.height ?? 0) < 400 ||
+    (presentationUiMetadata.height ?? 0) > 560) {
+  throw new Error('Presentation settings screenshot dimensions are outside the expected range');
 }
 await cp(presentationUi, path.join(outputScreenshots, 'app-presentation.png'));
 await sharp(presentationUi).webp({ quality: 86, effort: 5 })

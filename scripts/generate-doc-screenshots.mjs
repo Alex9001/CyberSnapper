@@ -103,7 +103,7 @@ try {
   await run(gui, [], { env: { ...env, CYBERSNAPPER_UI_SCENE: 'presentation', CYBERSNAPPER_UI_SCREENSHOT: presentationUiDestination } });
   const presentationUiMetadata = await sharp(presentationUiDestination).metadata();
   if (presentationUiMetadata.format !== 'png' || (presentationUiMetadata.width ?? 0) < 700 ||
-      (presentationUiMetadata.height ?? 0) < 500) {
+      (presentationUiMetadata.height ?? 0) < 400 || (presentationUiMetadata.height ?? 0) > 560) {
     throw new Error(`Unexpected presentation UI screenshot: ${presentationUiMetadata.width}x${presentationUiMetadata.height} ${presentationUiMetadata.format}`);
   }
   process.stdout.write(`generated ${path.relative(root, presentationUiDestination)}\n`);

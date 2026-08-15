@@ -17,17 +17,29 @@ navLinks?.addEventListener('click', (event) => {
 
 const lightbox = document.querySelector('.lightbox');
 const lightboxImage = lightbox?.querySelector('img');
+const lightboxStage = lightbox?.querySelector('.lightbox-stage');
+const lightboxOpen = lightbox?.querySelector('.lightbox-open');
+const lightboxModes = [...(lightbox?.querySelectorAll('[data-lightbox-mode]') || [])];
+function setLightboxMode(mode) {
+  if (!lightbox) return;
+  lightbox.classList.toggle('is-actual', mode === 'actual');
+  lightboxModes.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.lightboxMode === mode)));
+  lightboxStage?.scrollTo(0, 0);
+}
 document.querySelectorAll('.shot, .showcase-shot').forEach((shot) => {
   shot.addEventListener('click', () => {
     if (!lightbox || !lightboxImage) return;
     lightboxImage.src = shot.dataset.image;
     lightboxImage.alt = shot.dataset.alt;
+    if (lightboxOpen) lightboxOpen.href = shot.dataset.image;
+    setLightboxMode('fit');
     lightbox.showModal();
   });
 });
+lightboxModes.forEach((button) => button.addEventListener('click', () => setLightboxMode(button.dataset.lightboxMode)));
 lightbox?.querySelector('.lightbox-close')?.addEventListener('click', () => lightbox.close());
 lightbox?.addEventListener('click', (event) => {
-  if (event.target === lightbox) lightbox.close();
+  if (event.target === lightbox || event.target === lightboxStage) lightbox.close();
 });
 
 function preferredAsset() {
