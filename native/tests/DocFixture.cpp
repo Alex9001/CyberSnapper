@@ -93,7 +93,7 @@ bool drawDiff(const QString &path) {
   painter.drawRoundedRect(QRect(630, 145, 252, 210), 18, 18);
   painter.setPen(QColor("#d7f7ff"));
   painter.setFont(QFont("Sans Serif", 22, QFont::Bold));
-  painter.drawText(QRect(0, 470, 960, 50), Qt::AlignCenter, "2.437% VISUAL CHANGE");
+  painter.drawText(QRect(0, 470, 960, 50), Qt::AlignCenter, "CHANGED REGIONS");
   painter.setPen(QColor("#7f9aad"));
   painter.setFont(QFont("Sans Serif", 12));
   painter.drawText(QRect(0, 520, 960, 36), Qt::AlignCenter, "Headline, action color, and product art changed");
@@ -105,6 +105,8 @@ bool drawDiff(const QString &path) {
 QJsonObject artifact(const QString &id, const QString &relativePath, const QString &viewport,
                      const QString &engine = "chromium", const QString &status = "succeeded") {
   return {{"id", id}, {"url", DemoUrl}, {"engine", engine}, {"viewportId", viewport.toLower()},
+          {"targetId", "home"}, {"targetName", "Homepage"}, {"targetSetId", "target-set-production"},
+          {"targetSetName", "Production site"},
           {"viewportName", viewport}, {"captureMode", "fullPage"}, {"format", "png"},
           {"relativePath", relativePath}, {"width", viewport == "Mobile" ? 780 : 1440},
           {"height", viewport == "Mobile" ? 1688 : 900}, {"sha256", id + "-fixture"},
@@ -160,6 +162,14 @@ int main(int argc, char **argv) {
   profile.comparisonEnabled = true;
   profile.comparisonIgnoreSelectors = {".timestamp", ".rotating-promo"};
   if (!store.saveProfile(profile, &error)) return fail(error);
+  if (store.saveTargetSet({{"id", "target-set-production"}, {"name", "Production site"},
+      {"description", "Primary public pages checked before every release"},
+      {"targets", QJsonArray{QJsonObject{{"id", "home"}, {"label", "Homepage"}, {"url", DemoUrl}, {"enabled", true}},
+                               QJsonObject{{"id", "pricing"}, {"label", "Pricing"}, {"url", "https://example.org/pricing"}, {"enabled", true}},
+                               QJsonObject{{"id", "journal"}, {"label", "Journal"}, {"url", "https://example.org/journal"}, {"enabled", false}}}}}, &error).isEmpty()) return fail(error);
+  if (store.saveTargetSet({{"id", "target-set-campaign"}, {"name", "Campaign landing pages"},
+      {"description", "Pages owned by the growth team"},
+      {"targets", QJsonArray{QJsonObject{{"id", "summer"}, {"label", "Summer campaign"}, {"url", "https://example.org/summer"}, {"enabled", true}}}}}, &error).isEmpty()) return fail(error);
 
   const QString baseRelative = "captures/showcase/baseline.png";
   const QString currentRelative = "captures/showcase/current.png";
@@ -186,12 +196,27 @@ int main(int argc, char **argv) {
                                {"comparisonKey", key}, {"baselineArtifactId", "artifact-baseline"},
                                {"currentArtifactId", "artifact-current"}, {"status", "changed"},
                                {"mismatchRatio", 0.02437}, {"diffRelativePath", diffRelative},
+                               {"url", DemoUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
+                               {"targetSetId", "target-set-production"}, {"targetSetName", "Production site"},
+                               {"engine", "chromium"}, {"viewportId", "desktop"}, {"viewportName", "Desktop"},
+                               {"captureMode", "fullPage"}, {"format", "png"},
+                               {"analysisWidth", 960}, {"analysisHeight", 620}, {"analysisScale", 1.0},
+                               {"mismatchedPixels", 14502}, {"analyzedPixels", 595200}, {"algorithmVersion", 2},
+                               {"baselineRelativePath", baseRelative},
                                {"createdAt", utcNow()}})) return fail("could not add comparison");
+  if (!store.insertComparison({{"id", "comparison-mobile-baseline"}, {"jobId", "job-partial"},
+                               {"comparisonKey", QString(DemoUrl) + "|chromium|mobile|fullPage|png"},
+                               {"currentArtifactId", "artifact-partial"}, {"status", "missing_baseline"},
+                               {"url", DemoUrl}, {"targetId", "home"}, {"targetName", "Homepage"},
+                               {"targetSetId", "target-set-production"}, {"targetSetName", "Production site"},
+                               {"engine", "chromium"}, {"viewportId", "mobile"}, {"viewportName", "Mobile"},
+                               {"captureMode", "fullPage"}, {"format", "png"}, {"analysisWidth", 780},
+                               {"analysisHeight", 1688}, {"analysisScale", 1.0}, {"createdAt", utcNow()}})) return fail("could not add missing baseline");
 
   const QJsonArray urls{DemoUrl, "https://example.org/pricing"};
   const QList<QJsonObject> schedules{
       {{"id", "schedule-release"}, {"name", "Release candidate watch"}, {"enabled", true},
-       {"profileId", "default"}, {"urls", urls},
+       {"profileId", "default"}, {"targetSetId", "target-set-production"}, {"urls", QJsonArray{}},
        {"recurrence", QJsonObject{{"type", "weekly"}, {"weekdays", QJsonArray{1, 2, 3, 4, 5}},
                                    {"time", "08:30"}, {"timeZone", "America/Los_Angeles"}}},
        {"lastRun", "2026-08-14T15:30:00.000Z"}, {"nextRun", "2030-01-02T16:30:00.000Z"}, {"lastStatus", "succeeded"}},

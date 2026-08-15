@@ -87,6 +87,15 @@ int main(int argc, char **argv) {
       color: palette(mid);
       border-color: palette(mid);
     }
+    QPushButton#destructiveAction {
+      border-color: #c63c4f;
+      color: #c63c4f;
+      font-weight: 600;
+    }
+    QPushButton#destructiveAction:hover, QPushButton#destructiveAction:focus {
+      background-color: #c63c4f;
+      color: white;
+    }
     QGroupBox {
       font-weight: 600;
       margin-top: 8px;
@@ -125,6 +134,12 @@ int main(int argc, char **argv) {
     QLabel#pageTitle {
       font-size: 20px;
       font-weight: 700;
+    }
+    QLabel#metricValue {
+      font-size: 24px;
+      font-weight: 700;
+      color: palette(highlight);
+      padding: 4px 0;
     }
   )");
 

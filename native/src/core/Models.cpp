@@ -155,13 +155,37 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   return profile;
 }
 
+QJsonObject toJson(const CaptureTarget &target) {
+  return {{"id", target.id},
+          {"name", target.name},
+          {"url", target.url},
+          {"targetSetId", target.targetSetId},
+          {"targetSetName", target.targetSetName},
+          {"enabled", target.enabled}};
+}
+
+CaptureTarget captureTargetFromJson(const QJsonObject &object) {
+  CaptureTarget target;
+  target.id = object.value("id").toString(newId()).trimmed().left(128);
+  target.name = object.value("name").toString().trimmed().left(256);
+  target.url = object.value("url").toString().trimmed().left(4096);
+  target.targetSetId = object.value("targetSetId").toString().trimmed().left(128);
+  target.targetSetName = object.value("targetSetName").toString().trimmed().left(256);
+  target.enabled = object.value("enabled").toBool(true);
+  return target;
+}
+
 QJsonObject toJson(const JobRequest &request) {
+  QJsonArray targets;
+  for (const auto &target : request.targets) targets.append(toJson(target));
   return {{"id", request.id},
           {"projectId", request.projectId},
           {"projectRoot", request.projectRoot},
           {"profileId", request.profileId},
           {"source", request.source},
           {"urls", jsonList(request.urls)},
+          {"targetSetId", request.targetSetId},
+          {"targets", targets},
           {"profile", toJson(request.profile)},
           {"baselines", request.baselines},
           {"allowLocalhost", request.allowLocalhost}};
@@ -175,6 +199,11 @@ JobRequest jobRequestFromJson(const QJsonObject &object) {
   request.profileId = object.value("profileId").toString("default");
   request.source = object.value("source").toString("gui");
   request.urls = stringList(object.value("urls"));
+  request.targetSetId = object.value("targetSetId").toString().trimmed().left(128);
+  for (const auto &value : object.value("targets").toArray()) {
+    if (value.isObject()) request.targets.append(captureTargetFromJson(value.toObject()));
+    if (request.targets.size() >= 1000) break;
+  }
   request.profile = profileFromJson(object.value("profile").toObject());
   request.baselines = object.value("baselines").toObject();
   request.allowLocalhost = object.value("allowLocalhost").toBool(false);

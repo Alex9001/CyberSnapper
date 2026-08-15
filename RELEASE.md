@@ -5,11 +5,22 @@ CyberSnapper 2 uses the native cross-platform workflow at `.github/workflows/rel
 1. Run all local checks documented in `docs/BUILDING.md`.
 2. Confirm a capture succeeds through the native CLI and appears in the native History view.
 3. Update the version in the top-level `CMakeLists.txt`, `package.json`, and the changelog below.
-4. Tag the commit (for example, `git tag v2.1.0`) and push the tag.
+4. Tag the commit (for example, `git tag v2.2.0`) and push the tag.
 5. Publish a GitHub release for the tag or manually dispatch **Native Release**.
 6. Download and smoke-test every archive before announcing it.
 
 The workflow creates portable archives for Linux x64, Windows x64, macOS x64, and macOS arm64, plus SHA-256 checksums and GitHub/Sigstore provenance attestations. macOS uses ad-hoc signing; Windows and Linux packages are unsigned. No paid signing identity is required.
+
+## v2.2.0
+
+- Dashboard-first workflow with review, failure, active-job, schedule, and recent-run summaries.
+- Persistent named target sets shared by Capture, schedules, retries, the CLI, and REST API.
+- Dedicated Review workspace with durable accepted/ignored/unreviewed decisions, notes, batch actions, filters, search, and keyboard shortcuts.
+- Immutable baseline snapshots, optimistic review revisions, missing-baseline/error results, plain-language pixel metrics, and preserved historical evidence.
+- Synchronized fit, analyzed-pixel, pan, and zoom inspection plus overlay, wipe, difference, and baseline views.
+- Adaptive customizable toolbar, explicit File/View/Help menus, resettable vNext UI state, and denser self-documenting layouts.
+- REST dashboard, target-set, filtered comparison, and review routes plus matching native CLI commands.
+- SQLite schema v4 with normalized target provenance, comparison analysis metadata, reviews, and target-set schedules.
 
 ## v2.1.0
 

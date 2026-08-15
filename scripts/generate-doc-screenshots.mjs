@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { access, mkdir, rm } from 'node:fs/promises';
+import { access, chmod, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -47,6 +47,7 @@ async function waitForAgent(cli, env, agentProcess, readAgentErrors) {
 
 await rm(runtimeRoot, { recursive: true, force: true });
 await mkdir(path.join(runtimeRoot, 'r'), { recursive: true });
+await chmod(path.join(runtimeRoot, 'r'), 0o700);
 await mkdir(outputRoot, { recursive: true });
 
 const fixture = await firstExecutable('cybersnapper-doc-fixture');
@@ -85,7 +86,7 @@ agentProcess.stderr.on('data', (chunk) => { agentErrors += chunk.toString(); });
 try {
   process.stdout.write('starting isolated documentation agent\n');
   await waitForAgent(cli, env, agentProcess, () => agentErrors);
-  for (const scene of ['capture', 'history', 'compare', 'schedules']) {
+  for (const scene of ['dashboard', 'capture', 'targets', 'review', 'history', 'schedules']) {
     const destination = path.join(outputRoot, `app-${scene}.png`);
     process.stdout.write(`capturing ${scene}\n`);
     await run(gui, [], { env: { ...env, CYBERSNAPPER_UI_SCENE: scene, CYBERSNAPPER_UI_SCREENSHOT: destination } });

@@ -5,7 +5,7 @@ import { chromium, firefox, webkit, type Browser, type BrowserContext, type Brow
 import sharp from 'sharp';
 import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './network.js';
 import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
-import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, Viewport, WorkerEvent } from './protocol.js';
+import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
 
 export interface JobRuntime {
   cancelled: boolean;
@@ -14,7 +14,7 @@ export interface JobRuntime {
 
 type Emit = (event: Omit<WorkerEvent, 'protocolVersion' | 'sequence' | 'timestamp' | 'jobId'>) => void;
 
-interface CaptureTarget { index: number; url: string; engine: BrowserEngine; viewport: Viewport; formats: OutputFormat[]; }
+interface CaptureTarget { index: number; target: TargetSnapshot; engine: BrowserEngine; viewport: Viewport; formats: OutputFormat[]; }
 
 const browserTypes: Record<BrowserEngine, BrowserType> = { chromium, firefox, webkit };
 const popupSelectors = [
@@ -147,7 +147,22 @@ async function stripTopWhitespace(png: Buffer): Promise<Buffer> {
 async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buffer,
                                comparisonKey: string, emit: Emit): Promise<void> {
   const baseline = job.baselines?.[comparisonKey];
-  if (!baseline?.artifact?.relativePath) return;
+  const common = {
+    id: id(), jobId: job.id, comparisonKey, currentArtifactId: artifact.id,
+    url: artifact.url, targetId: artifact.targetId ?? '', targetName: artifact.targetName ?? '',
+    targetSetId: artifact.targetSetId ?? '', targetSetName: artifact.targetSetName ?? '',
+    engine: artifact.engine, viewportId: artifact.viewportId, viewportName: artifact.viewportName,
+    captureMode: artifact.captureMode, format: artifact.format, createdAt: new Date().toISOString(),
+  };
+  if (!baseline?.artifact?.relativePath) {
+    emit({ type: 'comparison_completed', comparison: {
+      ...common, baselineArtifactId: '', status: 'missing_baseline', mismatchRatio: 0,
+      diffRelativePath: '', analysisWidth: artifact.width, analysisHeight: artifact.height,
+      analysisScale: 1, mismatchedPixels: 0, analyzedPixels: 0, algorithmVersion: 2,
+      changedRegions: [], baselineRelativePath: '',
+    } });
+    return;
+  }
   const baselinePath = path.resolve(job.projectRoot, baseline.artifact.relativePath);
   if (!inside(path.resolve(job.projectRoot), baselinePath)) throw new Error('Baseline path escapes project');
   const leftMeta = await sharp(baselinePath).metadata();
@@ -173,6 +188,10 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
   ]);
   const pixels = width * height;
   let mismatched = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
   const diff = Buffer.alloc(pixels * 4);
   const channelThreshold = job.profile.pixelThreshold * 255;
   for (let pixel = 0; pixel < pixels; pixel += 1) {
@@ -181,6 +200,10 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
                            Math.abs(left[offset + 2] - right[offset + 2]), Math.abs(left[offset + 3] - right[offset + 3]));
     if (delta > channelThreshold) {
       mismatched += 1;
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       diff[offset] = 255; diff[offset + 1] = 0; diff[offset + 2] = 96; diff[offset + 3] = 255;
     } else {
       const gray = Math.round((right[offset] + right[offset + 1] + right[offset + 2]) / 6 + 96);
@@ -193,13 +216,18 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
   const diffPath = path.join(diffDirectory, `${safeSegment(artifact.id)}.diff.png`);
   await sharp(diff, { raw: { width, height, channels: 4 } }).png().toFile(diffPath);
   const dimensionsChanged = leftMeta.width !== rightMeta.width || leftMeta.height !== rightMeta.height;
+  const changedRegions = mismatched > 0
+    ? [{ x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1, pixels: mismatched }]
+    : [];
   emit({ type: 'comparison_completed', comparison: {
-    id: id(), jobId: job.id, comparisonKey, baselineArtifactId: baseline.artifactId,
-    currentArtifactId: artifact.id,
+    ...common, baselineArtifactId: baseline.artifactId,
     status: dimensionsChanged ? 'dimensions_changed' : mismatchRatio > job.profile.mismatchThreshold ? 'changed' : 'matched',
     mismatchRatio, diffRelativePath: path.relative(job.projectRoot, diffPath),
-    createdAt: new Date().toISOString(), baselineWidth: leftMeta.width, baselineHeight: leftMeta.height,
+    baselineWidth: leftMeta.width, baselineHeight: leftMeta.height,
     currentWidth: rightMeta.width, currentHeight: rightMeta.height,
+    analysisWidth: width, analysisHeight: height, analysisScale: scale,
+    mismatchedPixels: mismatched, analyzedPixels: pixels, algorithmVersion: 2, changedRegions,
+    baselineRelativePath: baseline.artifact.relativePath,
   } });
 }
 
@@ -210,7 +238,8 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
   let page: Page | undefined;
   let completed = 0;
   let failed = 0;
-  const { url, engine, viewport, formats } = target;
+  const { engine, viewport, formats } = target;
+  const { url } = target.target;
   try {
     if (runtime.cancelled) return { completed, failed };
     const networkPolicy = { allowLocalhost: job.allowLocalhost === true };
@@ -255,6 +284,8 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
         if (selection.skipped) {
           const artifact: Artifact = { id: artifactId, jobId: job.id, url, engine, viewportId: viewport.id,
             viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath,
+            targetId: target.target.id, targetName: target.target.name,
+            targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
             width: viewport.width, height: viewport.height, sha256: '', status: 'skipped', createdAt: new Date().toISOString() };
           emit({ type: 'artifact_completed', artifact }); completed += 1; continue;
         }
@@ -272,6 +303,8 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
           height = metadata.height ?? height;
         }
         const artifact: Artifact = { id: artifactId, jobId: job.id, url, finalUrl: page.url(), engine,
+          targetId: target.target.id, targetName: target.target.name,
+          targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
           relativePath, width, height,
           sha256: sha256(bytes), status: 'succeeded', createdAt: new Date().toISOString() };
@@ -279,13 +312,23 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
         if (job.profile.comparisonEnabled && format !== 'pdf') {
           try { await compareArtifact(job, artifact, bytes, comparisonKey, emit); }
           catch (comparisonError) {
-            emit({ type: 'comparison_failed', artifactId, comparisonKey,
-                   message: comparisonError instanceof Error ? comparisonError.message : String(comparisonError) });
+            emit({ type: 'comparison_completed', comparison: {
+              id: id(), jobId: job.id, comparisonKey, baselineArtifactId: job.baselines?.[comparisonKey]?.artifactId ?? '',
+              currentArtifactId: artifact.id, status: 'error', mismatchRatio: 0, diffRelativePath: '',
+              createdAt: new Date().toISOString(), url, targetId: artifact.targetId ?? '',
+              targetName: artifact.targetName ?? '', targetSetId: artifact.targetSetId ?? '',
+              targetSetName: artifact.targetSetName ?? '', engine, viewportId: viewport.id,
+              viewportName: viewport.name, captureMode: job.profile.captureMode, format,
+              analysisWidth: 0, analysisHeight: 0, analysisScale: 1,
+              error: comparisonError instanceof Error ? comparisonError.message : String(comparisonError),
+            } });
           }
         }
       } catch (artifactError) {
         failed += 1;
         const artifact: Artifact = { id: artifactId, jobId: job.id, url, engine, viewportId: viewport.id,
+          targetId: target.target.id, targetName: target.target.name,
+          targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath: '',
           width: 0, height: 0, sha256: '', status: 'failed',
           error: artifactError instanceof Error ? artifactError.message : String(artifactError), createdAt: new Date().toISOString() };
@@ -297,6 +340,8 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       for (const format of formats) {
         failed += 1;
         const artifact: Artifact = { id: id(), jobId: job.id, url, engine, viewportId: viewport.id,
+          targetId: target.target.id, targetName: target.target.name,
+          targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath: '',
           width: 0, height: 0, sha256: '', status: 'failed',
           error: targetError instanceof Error ? targetError.message : String(targetError), createdAt: new Date().toISOString() };
@@ -324,10 +369,14 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     throw new Error('At least 256 MiB of free disk space is required to start a capture');
   }
   const targets: CaptureTarget[] = [];
+  const snapshots: TargetSnapshot[] = job.targets?.length
+    ? job.targets.filter((target) => target.enabled !== false)
+    : job.urls.map((url, index) => ({ id: `adhoc-${index + 1}`, name: '', url,
+        targetSetId: '', targetSetName: '', enabled: true }));
   for (const engine of job.profile.engines) {
     for (const viewport of job.profile.viewports.filter((candidate) => candidate.enabled)) {
       const formats = job.profile.formats.filter((format) => format !== 'pdf' || engine === 'chromium');
-      for (const [index, url] of job.urls.entries()) targets.push({ index, url, engine, viewport, formats });
+      for (const [index, target] of snapshots.entries()) targets.push({ index, target, engine, viewport, formats });
     }
   }
   const totalArtifacts = targets.reduce((sum, target) => sum + target.formats.length, 0);

@@ -47,7 +47,7 @@
       <div class="hero-copy">
         <div class="eyebrow"><span></span> Native desktop visual QA</div>
         <h1>Capture every viewport.<br><em>Catch every change.</em></h1>
-        <p class="lede">CyberSnapper turns repeatable website captures into a focused desktop workflow—multi-browser screenshots, visual baselines, scheduled runs, and automation without a browser-tab interface.</p>
+        <p class="lede">CyberSnapper turns repeatable website captures into a focused desktop workflow—reusable target sets, multi-browser screenshots, a real review queue, schedules, and automation without a browser-tab interface.</p>
         <div class="hero-actions">
           <a class="button button-primary" id="hero-download" href="#download">Download CyberSnapper</a>
           <a class="button button-secondary" href="https://github.com/Alex9001/CyberSnapper">View source <span aria-hidden="true">↗</span></a>
@@ -59,10 +59,10 @@
       <div class="hero-visual">
         <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
         <div class="app-window">
-          <div class="window-bar"><span></span><span></span><span></span><b>CyberSnapper / Capture</b></div>
+          <div class="window-bar"><span></span><span></span><span></span><b>CyberSnapper / Dashboard</b></div>
           <picture>
-            <source srcset="assets/screenshots/app-capture.webp" type="image/webp">
-            <img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace showing targets, viewports, output, and visual comparison settings" width="1280" height="800">
+            <source srcset="assets/screenshots/app-dashboard.webp" type="image/webp">
+            <img src="assets/screenshots/app-dashboard.png" alt="CyberSnapper Dashboard showing review work, failed runs, active jobs, schedules, and recent captures" width="1280" height="800">
           </picture>
         </div>
         <div class="signal-card signal-top" aria-label="Example comparison result: changed, with 2.44 percent of pixels different"><span>Example comparison</span><strong>Changed</strong><small>2.44% of pixels differ</small></div>
@@ -96,7 +96,7 @@
           </div>
         </article>
         <article class="feature-card">
-          <div class="feature-icon">◐</div><h3>Visual baselines</h3><p>Promote trusted captures, compare every new run, set sensitivity and allowed-difference thresholds, then inspect side-by-side, overlay, or generated diff views.</p>
+          <div class="feature-icon">◐</div><h3>Review, then decide</h3><p>Triage persistent results, leave notes, accept a new immutable baseline, ignore expected change, or reset a decision—one result or hundreds at a time.</p>
         </article>
         <article class="feature-card">
           <div class="feature-icon">⌁</div><h3>Three real engines</h3><p>Run Chromium, Firefox, and WebKit through Playwright. Select only what matters for a quick check or fan out for broad coverage.</p>
@@ -121,9 +121,9 @@
           <h2>From URL to signal in three steps.</h2>
         </div>
         <ol class="workflow">
-          <li><b>01</b><div><h3>Define the capture</h3><p>Add URLs, choose browsers and viewports, then tune page settling, selectors, formats, and naming in a reusable profile.</p></div></li>
+          <li><b>01</b><div><h3>Define the capture</h3><p>Add one-time URLs or a labeled target set, choose browsers and viewports, then tune page settling, selectors, formats, and naming in a reusable profile.</p></div></li>
           <li><b>02</b><div><h3>Run now or later</h3><p>Start from the UI, submit through the CLI or API, or attach the profile to a recurring schedule. Every request enters one durable queue.</p></div></li>
-          <li><b>03</b><div><h3>Review the evidence</h3><p>Browse history, open artifacts, establish baselines, and focus on visual changes above your project’s acceptable threshold.</p></div></li>
+          <li><b>03</b><div><h3>Review the evidence</h3><p>Work the review queue, inspect exact visual evidence, accept trusted results as baselines, and ignore expected changes without losing history.</p></div></li>
         </ol>
       </div>
     </section>
@@ -135,17 +135,17 @@
         <p>These screenshots are generated automatically from a deterministic demo project during development.</p>
       </div>
       <div class="gallery">
+        <button class="shot" type="button" data-image="assets/screenshots/app-dashboard.png" data-alt="Dashboard showing review work, failed runs, active jobs, schedules, and recent captures">
+          <picture><source srcset="assets/screenshots/app-dashboard.webp" type="image/webp"><img src="assets/screenshots/app-dashboard.png" alt="CyberSnapper Dashboard" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Dashboard</b> The work that needs attention, immediately.</span>
+        </button>
         <button class="shot" type="button" data-image="assets/screenshots/app-capture.png" data-alt="Capture workspace with targets, viewports, output, preparation, and visual comparison settings">
           <picture><source srcset="assets/screenshots/app-capture.webp" type="image/webp"><img src="assets/screenshots/app-capture.png" alt="CyberSnapper Capture workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Capture</b> Configure the entire run without endless vertical scrolling.</span>
         </button>
-        <button class="shot" type="button" data-image="assets/screenshots/app-history.png" data-alt="Capture history with job filters and selected artifacts">
-          <picture><source srcset="assets/screenshots/app-history.webp" type="image/webp"><img src="assets/screenshots/app-history.png" alt="CyberSnapper capture History" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>History</b> Jobs and files stay connected.</span>
+        <button class="shot" type="button" data-image="assets/screenshots/app-targets.png" data-alt="Target Sets workspace with reusable labeled site collections">
+          <picture><source srcset="assets/screenshots/app-targets.webp" type="image/webp"><img src="assets/screenshots/app-targets.png" alt="CyberSnapper Target Sets workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Targets</b> Reusable site collections for every run surface.</span>
         </button>
-        <button class="shot" type="button" data-image="assets/screenshots/app-compare.png" data-alt="Visual comparison with baseline and current captures side by side">
-          <picture><source srcset="assets/screenshots/app-compare.webp" type="image/webp"><img src="assets/screenshots/app-compare.png" alt="CyberSnapper visual Compare workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Compare</b> Baseline, current, overlay, and diff.</span>
-        </button>
-        <button class="shot" type="button" data-image="assets/screenshots/app-schedules.png" data-alt="Schedules workspace with recurring capture entries">
-          <picture><source srcset="assets/screenshots/app-schedules.webp" type="image/webp"><img src="assets/screenshots/app-schedules.png" alt="CyberSnapper Schedules workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Schedules</b> Repeatable monitoring in local time.</span>
+        <button class="shot" type="button" data-image="assets/screenshots/app-review.png" data-alt="Review workspace with baseline and current captures side by side and review decisions">
+          <picture><source srcset="assets/screenshots/app-review.webp" type="image/webp"><img src="assets/screenshots/app-review.png" alt="CyberSnapper visual Review workspace" width="1280" height="800" loading="eager" decoding="sync"></picture><span><b>Review</b> Inspect the evidence, record the decision, preserve the history.</span>
         </button>
       </div>
     </section>
@@ -202,7 +202,7 @@
 
   <dialog class="lightbox" aria-label="Screenshot preview">
     <button type="button" class="lightbox-close" aria-label="Close screenshot">×</button>
-    <img src="assets/screenshots/app-capture.png" alt="">
+    <img src="assets/screenshots/app-dashboard.png" alt="">
   </dialog>
 </body>
 </html>

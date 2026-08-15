@@ -19,7 +19,7 @@
   </p>
 </div>
 
-![CyberSnapper Capture workspace with URLs, custom viewports, browser output, page preparation, and visual comparison settings](docs/images/app-capture.png)
+![CyberSnapper Dashboard showing review work, failed runs, active jobs, schedules, and recent captures](docs/images/app-dashboard.png)
 
 CyberSnapper is a local-first visual QA studio. Define a capture once, reuse it from the native Qt interface, CLI, scheduler, or authenticated localhost API, and keep every artifact in a portable project folder you control.
 
@@ -27,7 +27,7 @@ It is not a web UI wrapped in a desktop shell. The interface is native Qt Widget
 
 ## Download
 
-CyberSnapper 2.1 packages bundle the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
+CyberSnapper 2.2 is the current development line. The latest published 2.1 packages bundle the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
 
 | Platform | Package |
 | --- | --- |
@@ -41,9 +41,11 @@ Every release includes SHA-256 checksums and GitHub build-provenance attestation
 ## Why CyberSnapper
 
 - Capture desktop, tablet, mobile, and custom viewports with explicit pixel ratio and mobile-mode controls.
+- Organize reusable sites into named target sets, then use the same frozen target snapshot from Capture, schedules, retries, the CLI, or the API.
 - Run Chromium, Firefox, and WebKit across full-page, viewport, or CSS-element captures.
 - Export PNG, WebP, AVIF, and Chromium PDF with collision-safe output naming.
-- Save trusted visual baselines and review changes side by side, overlaid, or as a generated diff.
+- Triage a persistent review queue, accept a result as the new baseline, ignore expected change, or return it to unreviewed.
+- Inspect baseline and current captures side by side with synchronized pan/zoom, overlay, wipe, and generated-difference views.
 - Control pixel sensitivity, allowed mismatch, and dynamic-element exclusion per profile.
 - Schedule once, interval, daily, weekly, or monthly runs in real IANA time zones.
 - Share one durable job queue and project history across the GUI, CLI, scheduler, and REST API.
@@ -51,14 +53,17 @@ Every release includes SHA-256 checksums and GitHub build-provenance attestation
 
 ## A complete visual workflow
 
-| History | Compare |
+| Dashboard | Capture |
 | --- | --- |
-| Filter every run, see partial failures, open artifacts, retry jobs, and promote a result to baseline. | Inspect baseline and current captures side by side, overlay them, or view the generated difference image. |
-| ![Capture history](docs/images/app-history.png) | ![Visual comparison](docs/images/app-compare.png) |
+| See review work, failed or partial runs, active jobs, the next schedule, and recent activity at a glance. | Combine one-time URLs or a saved target set with explicit viewports, browsers, formats, and comparison rules. |
+| ![CyberSnapper Dashboard](docs/images/app-dashboard.png) | ![CyberSnapper Capture workspace](docs/images/app-capture.png) |
 
-Saved profiles also power persistent local-time schedules that can be run immediately or recur without keeping the main window open.
+| Targets | Review |
+| --- | --- |
+| Maintain labeled, reusable site collections with paste, TXT/CSV import and export, ordering, and per-target enable controls. | Work through detected changes with plain-language metrics, keyboard review actions, synchronized inspection, and immutable baseline history. |
+| ![CyberSnapper target sets](docs/images/app-targets.png) | ![CyberSnapper visual Review workspace](docs/images/app-review.png) |
 
-![CyberSnapper capture schedules](docs/images/app-schedules.png)
+History and persistent local-time schedules remain first-class workspaces, backed by the same durable project queue.
 
 The screenshots above are generated automatically from a deterministic demo project. They contain no live or customer data. Regenerate them with `npm run screenshots:docs` after building the native test targets.
 
@@ -117,6 +122,12 @@ cybersnapper-cli capture --file urls.txt \
   --engine chromium --engine firefox \
   --format png --format webp --json
 
+# Reuse a saved target set and triage its results
+cybersnapper-cli targets list --json
+cybersnapper-cli capture --target-set TARGET_SET_ID --json
+cybersnapper-cli review list --json
+cybersnapper-cli review accept COMPARISON_ID --revision 0
+
 cybersnapper-cli jobs --limit 25
 cybersnapper-cli job show JOB_ID --json
 cybersnapper-cli job retry JOB_ID
@@ -137,7 +148,7 @@ curl -H "Authorization: Bearer $TOKEN" \
   http://127.0.0.1:39071/api/v1/jobs
 ```
 
-The API supports capture submission, job inspection and cancellation, project discovery, and resumable server-sent job events. See [REST API v1](docs/API.md) for the full contract.
+The API supports target sets, dashboard summaries, capture submission, job inspection, comparison review, project discovery, and resumable server-sent job events. See [REST API v1](docs/API.md) for the full contract.
 
 ## CyberSnapper 1.x archive
 

@@ -52,6 +52,15 @@ struct CaptureProfile {
   QStringList comparisonIgnoreSelectors;
 };
 
+struct CaptureTarget {
+  QString id;
+  QString name;
+  QString url;
+  QString targetSetId;
+  QString targetSetName;
+  bool enabled = true;
+};
+
 struct JobRequest {
   QString id;
   QString projectId;
@@ -59,6 +68,8 @@ struct JobRequest {
   QString profileId;
   QString source{"gui"};
   QStringList urls;
+  QString targetSetId;
+  QVector<CaptureTarget> targets;
   CaptureProfile profile;
   QJsonObject baselines;
   bool allowLocalhost = false;
@@ -83,6 +94,8 @@ QJsonObject toJson(const Viewport &viewport);
 Viewport viewportFromJson(const QJsonObject &object);
 QJsonObject toJson(const CaptureProfile &profile);
 CaptureProfile profileFromJson(const QJsonObject &object);
+QJsonObject toJson(const CaptureTarget &target);
+CaptureTarget captureTargetFromJson(const QJsonObject &object);
 QJsonObject toJson(const JobRequest &request);
 JobRequest jobRequestFromJson(const QJsonObject &object);
 QJsonObject toJson(const JobRecord &record);

@@ -140,6 +140,7 @@ void Scheduler::checkNow() {
       request.profileId = schedule.value("profileId").toString("default");
       request.profile = store->profile(request.profileId);
       request.source = "schedule:" + scheduleId;
+      request.targetSetId = schedule.value("targetSetId").toString();
       for (const auto &url : schedule.value("urls").toArray()) request.urls.append(url.toString());
       QString submitError;
       const QString jobId = m_submitter

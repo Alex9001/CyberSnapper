@@ -6,6 +6,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -18,6 +20,8 @@ private slots:
   void projectPersistence();
   void strictProjectLifecycle();
   void transactionalWorkerEvents();
+  void schemaThreeMigration();
+  void targetSetsAndReviewWorkflow();
   void intervalSchedule();
   void dailySchedule();
   void weeklyMonthlyAndOnceSchedules();
@@ -122,6 +126,101 @@ void TestCore::transactionalWorkerEvents() {
                                                 {"timestamp", utcNow()}}, &error));
   QCOMPARE(store.job(request.id).value("status").toString(), QString("running"));
   QCOMPARE(store.events(request.id).size(), 3);
+}
+
+void TestCore::schemaThreeMigration() {
+  QTemporaryDir temporary;
+  QString comparisonId;
+  {
+    ProjectStore store;
+    QString error;
+    QVERIFY2(store.create(temporary.path(), "Migration", &error), qPrintable(error));
+    JobRequest request;
+    request.id = newId(); request.urls = {"https://example.com"}; request.profile = defaultProfile();
+    QVERIFY(store.insertJob(request, &error));
+    const QString artifactId = newId();
+    QVERIFY(store.insertArtifact(request.id, {{"id", artifactId}, {"url", "https://example.com"},
+        {"targetId", "home"}, {"targetName", "Homepage"}, {"targetSetId", "production"}, {"targetSetName", "Production"},
+        {"engine", "chromium"}, {"viewportId", "desktop"}, {"viewportName", "Desktop"},
+        {"captureMode", "fullPage"}, {"format", "png"}, {"relativePath", "captures/current.png"},
+        {"status", "succeeded"}, {"createdAt", utcNow()}}));
+    comparisonId = newId();
+    QVERIFY(store.insertComparison({{"id", comparisonId}, {"jobId", request.id}, {"comparisonKey", "key"},
+        {"currentArtifactId", artifactId}, {"status", "changed"}, {"createdAt", utcNow()}}));
+  }
+
+  const QString connectionName = "schema-three-fixture";
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+    database.setDatabaseName(temporary.filePath(".cybersnapper/project.sqlite"));
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec("UPDATE metadata SET value='3' WHERE key='schemaVersion'"));
+    QVERIFY(query.exec("DROP TABLE comparison_reviews"));
+    QVERIFY(query.exec("DROP TABLE targets"));
+    QVERIFY(query.exec("DROP TABLE target_sets"));
+    QVERIFY(query.exec("UPDATE artifacts SET target_id='',target_name='',target_set_id='',target_set_name=''"));
+    QVERIFY(query.exec("UPDATE comparisons SET target_url='',target_id='',target_name='',target_set_id='',target_set_name='',engine='',viewport_id='',viewport_name='',capture_mode='',format=''"));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connectionName);
+
+  ProjectStore migrated;
+  QString error;
+  QVERIFY2(migrated.open(temporary.path(), &error), qPrintable(error));
+  const QJsonObject comparison = migrated.comparison(comparisonId);
+  QCOMPARE(comparison.value("targetId").toString(), QString("home"));
+  QCOMPARE(comparison.value("targetSetName").toString(), QString("Production"));
+  const QJsonObject saved = migrated.saveTargetSet({{"name", "Recreated"}, {"targets", QJsonArray{}}}, &error);
+  QVERIFY2(!saved.isEmpty(), qPrintable(error));
+}
+
+void TestCore::targetSetsAndReviewWorkflow() {
+  QTemporaryDir temporary;
+  ProjectStore store;
+  QString error;
+  QVERIFY2(store.create(temporary.path(), "Review", &error), qPrintable(error));
+  const QJsonObject saved = store.saveTargetSet({{"name", "Production"}, {"description", "Public pages"},
+      {"targets", QJsonArray{QJsonObject{{"id", "home"}, {"label", "Home"}, {"url", "https://example.com"}, {"enabled", true}},
+                             QJsonObject{{"id", "pricing"}, {"label", "Pricing"}, {"url", "https://example.com/pricing"}, {"enabled", false}}}}}, &error);
+  QVERIFY2(!saved.isEmpty(), qPrintable(error));
+  QCOMPARE(store.targetSets().size(), 1);
+  QCOMPARE(store.targetSet(saved.value("id").toString()).value("targets").toArray().size(), 2);
+
+  JobRequest request;
+  request.id = newId(); request.urls = {"https://example.com"}; request.profile = defaultProfile();
+  QVERIFY(store.insertJob(request, &error));
+  const QString artifactId = newId();
+  QVERIFY(store.insertArtifact(request.id, {{"id", artifactId}, {"url", "https://example.com"},
+      {"targetId", "home"}, {"targetName", "Home"}, {"targetSetId", saved.value("id")}, {"targetSetName", "Production"},
+      {"engine", "chromium"}, {"viewportId", "desktop"}, {"viewportName", "Desktop"},
+      {"captureMode", "fullPage"}, {"format", "png"}, {"relativePath", "captures/current.png"},
+      {"status", "succeeded"}, {"createdAt", utcNow()}}));
+  const QString comparisonId = newId();
+  QVERIFY(store.insertComparison({{"id", comparisonId}, {"jobId", request.id},
+      {"comparisonKey", "https://example.com|chromium|desktop|fullPage|png"},
+      {"currentArtifactId", artifactId}, {"status", "missing_baseline"}, {"url", "https://example.com"},
+      {"targetId", "home"}, {"targetName", "Home"}, {"targetSetId", saved.value("id")},
+      {"targetSetName", "Production"}, {"engine", "chromium"}, {"viewportId", "desktop"},
+      {"viewportName", "Desktop"}, {"captureMode", "fullPage"}, {"format", "png"},
+      {"analysisWidth", 1440}, {"analysisHeight", 900}, {"analysisScale", 1.0}, {"createdAt", utcNow()}}));
+  QCOMPARE(store.comparison(comparisonId).value("review").toObject().value("status").toString(), QString("unreviewed"));
+  const QJsonObject ignored = store.setComparisonReview(comparisonId, "ignored", "Expected animation", 0, &error);
+  QVERIFY2(!ignored.isEmpty(), qPrintable(error));
+  QCOMPARE(ignored.value("review").toObject().value("revision").toInt(), 1);
+  QVERIFY(store.setComparisonReview(comparisonId, "unreviewed", "Expected animation", 0, &error).isEmpty());
+  const QJsonObject accepted = store.acceptComparison(comparisonId, "baselines/current.png", "Approved", 1, false, &error);
+  QVERIFY2(!accepted.isEmpty(), qPrintable(error));
+  QCOMPARE(store.baseline(accepted.value("comparisonKey").toString()).value("artifactId").toString(), artifactId);
+  QCOMPARE(store.dashboard().value("needsReview").toInt(), 0);
+
+  QJsonObject schedule{{"id", "schedule"}, {"name", "Daily"}, {"enabled", true}, {"profileId", "default"},
+                       {"targetSetId", saved.value("id")}, {"urls", QJsonArray{}},
+                       {"recurrence", QJsonObject{{"type", "daily"}, {"time", "09:00"}, {"timeZone", "UTC"}}},
+                       {"nextRun", "2030-01-01T09:00:00.000Z"}};
+  QVERIFY(store.upsertSchedule(schedule, &error));
+  QVERIFY(!store.removeTargetSet(saved.value("id").toString(), &error));
+  QVERIFY(error.contains("Daily"));
 }
 
 void TestCore::intervalSchedule() {

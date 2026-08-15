@@ -33,6 +33,11 @@ public:
   bool saveProfile(const CaptureProfile &profile, QString *error = nullptr);
   bool removeProfile(const QString &id, QString *error = nullptr);
 
+  QJsonArray targetSets() const;
+  QJsonObject targetSet(const QString &id) const;
+  QJsonObject saveTargetSet(const QJsonObject &targetSet, QString *error = nullptr);
+  bool removeTargetSet(const QString &id, QString *error = nullptr);
+
   bool insertJob(const JobRequest &request, QString *error = nullptr);
   bool updateJob(const QString &jobId, const QString &status, const QString &error = {},
                  int completedDelta = 0, int failedDelta = 0);
@@ -60,6 +65,13 @@ public:
   bool insertComparison(const QJsonObject &comparison);
   QJsonObject comparison(const QString &id) const;
   QJsonArray comparisons(const QString &jobId = {}) const;
+  QJsonObject setComparisonReview(const QString &comparisonId, const QString &status,
+                                  const QString &note, int expectedRevision,
+                                  QString *error = nullptr);
+  QJsonObject acceptComparison(const QString &comparisonId, const QString &baselineRelativePath,
+                               const QString &note, int expectedRevision, bool force,
+                               QString *error = nullptr);
+  QJsonObject dashboard() const;
 
 private:
   bool openInternal(const QString &root, const QString &requestedName, bool createProject, QString *error);

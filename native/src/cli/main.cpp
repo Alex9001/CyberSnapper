@@ -99,12 +99,13 @@ int main(int argc, char **argv) {
   parser.setApplicationDescription("Native CyberSnapper capture automation CLI");
   parser.addHelpOption();
   parser.addVersionOption();
-  parser.addPositionalArgument("command", "capture, jobs, job, projects, schedules, api, or agent");
+  parser.addPositionalArgument("command", "capture, jobs, job, projects, targets, review, schedules, api, or agent");
   parser.addPositionalArgument("arguments", "Command arguments", "[arguments…]");
   QCommandLineOption jsonOption("json", "Print machine-readable JSON.");
   QCommandLineOption projectOption({"p", "project"}, "Project ID.", "id");
   QCommandLineOption fileOption({"f", "file"}, "Read capture URLs from a text file.", "path");
   QCommandLineOption profileOption("profile", "Capture profile ID.", "id", "default");
+  QCommandLineOption targetSetOption("target-set", "Capture a saved target set instead of positional URLs.", "id");
   QCommandLineOption engineOption("engine", "Browser engine; repeat for multiple engines.", "engine");
   QCommandLineOption formatOption("format", "Output format; repeat for multiple formats.", "format");
   QCommandLineOption modeOption("mode", "Capture mode: fullPage, viewport, or element.", "mode");
@@ -112,7 +113,7 @@ int main(int argc, char **argv) {
   QCommandLineOption noWaitOption("no-wait", "Queue a capture without waiting for completion.");
   QCommandLineOption forceOption("force", "Force an agent stop while jobs are active.");
   QCommandLineOption limitOption("limit", "Maximum jobs to list.", "count", "50");
-  parser.addOptions({jsonOption, projectOption, fileOption, profileOption, engineOption, formatOption,
+  parser.addOptions({jsonOption, projectOption, fileOption, profileOption, targetSetOption, engineOption, formatOption,
                      modeOption, selectorOption, noWaitOption, forceOption, limitOption});
   parser.process(application);
 
@@ -132,12 +133,12 @@ int main(int argc, char **argv) {
   if (command == "capture") {
     QStringList urls = arguments;
     if (parser.isSet(fileOption)) urls.append(fileLines(parser.value(fileOption), &error));
-    if (!error.isEmpty() || urls.isEmpty()) {
-      QTextStream(stderr) << "cybersnapper-cli: " << (error.isEmpty() ? "provide at least one URL" : error) << '\n';
+    if (!error.isEmpty() || (urls.isEmpty() && !parser.isSet(targetSetOption))) {
+      QTextStream(stderr) << "cybersnapper-cli: " << (error.isEmpty() ? "provide URLs or --target-set" : error) << '\n';
       return 2;
     }
     QJsonObject params{{"projectId", parser.value(projectOption)}, {"profileId", parser.value(profileOption)},
-                       {"urls", jsonStrings(urls)}, {"source", "cli"}};
+                       {"urls", jsonStrings(urls)}, {"targetSetId", parser.value(targetSetOption)}, {"source", "cli"}};
     QJsonObject profile;
     if (parser.isSet(engineOption)) profile.insert("engines", jsonStrings(parser.values(engineOption)));
     if (parser.isSet(formatOption)) profile.insert("formats", jsonStrings(parser.values(formatOption)));
@@ -197,6 +198,19 @@ int main(int argc, char **argv) {
     else if (arguments.first() == "create" && arguments.size() >= 2) {
       result = invoke("project.create", {{"root", arguments.at(1)}, {"name", arguments.value(2)}}, &error);
     } else { QTextStream(stderr) << "Usage: cybersnapper-cli projects [list|open <folder>|create <folder> [name]]\n"; return 2; }
+  } else if (command == "targets") {
+    const QString action = arguments.value(0, "list");
+    if (action == "list") result = invoke("targetSet.list", {{"projectId", parser.value(projectOption)}}, &error);
+    else if (action == "show" && arguments.size() >= 2) result = invoke("targetSet.get", {{"projectId", parser.value(projectOption)}, {"targetSetId", arguments.at(1)}}, &error);
+    else { QTextStream(stderr) << "Usage: cybersnapper-cli targets [list|show <target-set-id>]\n"; return 2; }
+  } else if (command == "review") {
+    const QString action = arguments.value(0, "list");
+    if (action == "list") result = invoke("comparison.list", {{"projectId", parser.value(projectOption)}}, &error);
+    else if (QStringList{"accept", "ignore", "reset"}.contains(action) && arguments.size() >= 2) {
+      const QString status = action == "accept" ? "accepted" : action == "ignore" ? "ignored" : "unreviewed";
+      result = invoke("comparison.review.set", {{"projectId", parser.value(projectOption)},
+                                                  {"comparisonId", arguments.at(1)}, {"status", status}}, &error);
+    } else { QTextStream(stderr) << "Usage: cybersnapper-cli review [list|accept|ignore|reset <comparison-id>]\n"; return 2; }
   } else if (command == "schedules") {
     if (arguments.isEmpty() || arguments.first() == "list") {
       result = invoke("schedule.list", {{"projectId", parser.value(projectOption)}}, &error);

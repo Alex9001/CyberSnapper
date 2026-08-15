@@ -16,6 +16,7 @@
 #include <QProcessEnvironment>
 #include <QRandomGenerator>
 #include <QSaveFile>
+#include <QSet>
 #include <QThread>
 #include <QUrl>
 #include <algorithm>
@@ -277,6 +278,26 @@ QString AgentService::submitJob(ProjectStore *store, JobRequest request, QString
   request.projectRoot = store->root();
   request.allowLocalhost = store->allowLocalhost();
   request.profile = profileFromJson(toJson(request.profile));
+  if (!recovering && request.targets.isEmpty() && !request.targetSetId.isEmpty()) {
+    const QJsonObject set = store->targetSet(request.targetSetId);
+    if (set.isEmpty()) { if (error) *error = "Target set not found"; return {}; }
+    for (const auto &value : set.value("targets").toArray()) {
+      const QJsonObject item = value.toObject();
+      if (!item.value("enabled").toBool(true)) continue;
+      CaptureTarget target;
+      target.id = item.value("id").toString();
+      target.name = item.value("label").toString();
+      target.url = item.value("url").toString();
+      target.targetSetId = set.value("id").toString();
+      target.targetSetName = set.value("name").toString();
+      request.targets.append(target);
+    }
+    if (request.targets.isEmpty()) { if (error) *error = "Target set has no enabled targets"; return {}; }
+  }
+  if (!request.targets.isEmpty()) {
+    request.urls.clear();
+    for (const auto &target : request.targets) if (target.enabled) request.urls.append(target.url);
+  }
   request.baselines = {};
   if (request.profile.comparisonEnabled) {
     for (const auto &url : request.urls) {
@@ -450,8 +471,8 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
   }
 
   ProjectStore *store = project(params.value("projectId").toString());
-  if (method.startsWith("profile.") || method == "job.submit" || method == "job.list" ||
-      method.startsWith("schedule.")) {
+  if (method.startsWith("profile.") || method.startsWith("targetSet.") || method == "dashboard.get" ||
+      method == "job.submit" || method == "job.list" || method.startsWith("schedule.")) {
     if (!store) return failure("not_found", "Project not found", 404);
   }
   if (method == "profile.list") return {{"profiles", store->profiles()}};
@@ -496,12 +517,60 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     if (!store->removeProfile(profileId, &error)) return failure("profile_remove_failed", error, 409);
     return {{"removed", true}};
   }
+  if (method == "dashboard.get") return {{"dashboard", store->dashboard()}};
+  if (method == "targetSet.list") return {{"targetSets", store->targetSets()}};
+  if (method == "targetSet.get") {
+    const QJsonObject targetSet = store->targetSet(params.value("targetSetId").toString());
+    if (targetSet.isEmpty()) return failure("not_found", "Target set not found", 404);
+    return {{"targetSet", targetSet}};
+  }
+  if (method == "targetSet.save") {
+    QJsonObject targetSet = params.value("targetSet").toObject();
+    const QString name = targetSet.value("name").toString().trimmed();
+    if (name.isEmpty()) return failure("invalid_target_set", "A target set name is required");
+    if (targetSet.value("targets").toArray().size() > 1000) {
+      return failure("invalid_target_set", "A target set may contain at most 1,000 targets");
+    }
+    QSet<QString> seen;
+    QJsonArray normalized;
+    for (const auto &value : targetSet.value("targets").toArray()) {
+      QJsonObject target = value.toObject();
+      const QUrl parsed(target.value("url").toString().trimmed(), QUrl::StrictMode);
+      if (!parsed.isValid() || !QStringList{"http", "https"}.contains(parsed.scheme().toLower()) ||
+          parsed.host().isEmpty() || !parsed.userInfo().isEmpty()) {
+        return failure("invalid_target", "Targets require explicit HTTP or HTTPS URLs without credentials");
+      }
+      const QString canonical = parsed.adjusted(QUrl::NormalizePathSegments | QUrl::RemoveFragment).toString();
+      if (seen.contains(canonical)) return failure("duplicate_target", "A target set cannot contain duplicate URLs");
+      seen.insert(canonical);
+      if (target.value("id").toString().isEmpty()) target.insert("id", newId());
+      target.insert("url", canonical);
+      target.insert("enabled", target.value("enabled").toBool(true));
+      normalized.append(target);
+    }
+    if (targetSet.value("id").toString().isEmpty()) targetSet.insert("id", newId());
+    targetSet.insert("name", name.left(256));
+    targetSet.insert("targets", normalized);
+    QString error;
+    const QJsonObject saved = store->saveTargetSet(targetSet, &error);
+    if (saved.isEmpty()) return failure("target_set_save_failed", error, 409);
+    emit eventPublished("targetSet.changed", {{"projectId", store->projectId()}, {"targetSetId", saved.value("id")}});
+    return {{"targetSet", saved}};
+  }
+  if (method == "targetSet.remove") {
+    QString error;
+    const QString id = params.value("targetSetId").toString();
+    if (!store->removeTargetSet(id, &error)) return failure("target_set_remove_failed", error, 409);
+    emit eventPublished("targetSet.changed", {{"projectId", store->projectId()}, {"targetSetId", id}});
+    return {{"removed", true}};
+  }
   if (method == "job.submit") {
     JobRequest request;
     request.id = newId();
     request.source = params.value("source").toString("api");
     request.profileId = params.value("profileId").toString("default");
     request.urls = strings(params.value("urls"));
+    request.targetSetId = params.value("targetSetId").toString();
     request.profile = params.value("profile").isObject()
         ? profileFromJson(params.value("profile").toObject()) : store->profile(request.profileId);
     QString error;
@@ -570,7 +639,7 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       return failure("invalid_baseline", "Unsupported visual comparison baseline format", 409);
     }
     const QString baselineName = QString::fromLatin1(QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha256)
-                                                          .toHex().left(32)) + "." + extension;
+                                                          .toHex().left(24)) + "-" + artifactId.left(12) + "." + extension;
     const QString destination = QDir(root).filePath("baselines/" + baselineName);
     QFile input(source);
     QSaveFile output(destination);
@@ -604,22 +673,52 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
   if (method == "baseline.remove") {
     if (!store) return failure("not_found", "Project not found", 404);
     const QString key = params.value("comparisonKey").toString();
-    const QJsonObject existing = store->baseline(key);
     QString error;
     if (!store->removeBaseline(key, &error)) return failure("baseline_remove_failed", error, 409);
-    const QString relative = existing.value("relativePath").toString();
-    if (!relative.isEmpty()) {
-      const QString root = QFileInfo(store->root()).absoluteFilePath();
-      const QString absolute = QFileInfo(QDir(root).filePath(relative)).absoluteFilePath();
-      if (pathInside(root, absolute)) QFile::remove(absolute);
-    }
+    // Baseline files are immutable capture snapshots. Removing the active pointer must
+    // not invalidate historical comparisons that still reference the same file.
     return {{"removed", true}};
   }
   if (method == "comparison.list") {
     const QString jobId = params.value("jobId").toString();
     if (!jobId.isEmpty()) store = projectForJob(jobId);
     if (!store) return failure("not_found", "Project or job not found", 404);
-    return {{"comparisons", store->comparisons(jobId)}};
+    const QJsonArray stored = store->comparisons(jobId);
+    if (!jobId.isEmpty() && params.size() <= 1) return {{"comparisons", stored}};
+    const int limit = qBound(1, params.value("limit").toInt(100), 500);
+    QString cursorDate;
+    QString cursorId;
+    const QByteArray cursorBytes = QByteArray::fromBase64(params.value("cursor").toString().toLatin1(), QByteArray::Base64UrlEncoding);
+    const int separator = cursorBytes.indexOf('|');
+    if (separator >= 0) { cursorDate = QString::fromUtf8(cursorBytes.left(separator)); cursorId = QString::fromUtf8(cursorBytes.mid(separator + 1)); }
+    QJsonArray filtered;
+    for (const auto &value : stored) {
+      const QJsonObject comparison = value.toObject();
+      const QString createdAt = comparison.value("createdAt").toString();
+      const QString id = comparison.value("id").toString();
+      if (!cursorDate.isEmpty() && (createdAt > cursorDate || (createdAt == cursorDate && id >= cursorId))) continue;
+      if (!params.value("status").toString().isEmpty() && comparison.value("status") != params.value("status")) continue;
+      const QString review = comparison.value("review").isNull() ? QString{} : comparison.value("review").toObject().value("status").toString("unreviewed");
+      if (!params.value("reviewStatus").toString().isEmpty() && review != params.value("reviewStatus").toString()) continue;
+      if (!params.value("targetSetId").toString().isEmpty() && comparison.value("targetSetId") != params.value("targetSetId")) continue;
+      if (!params.value("engine").toString().isEmpty() && comparison.value("engine") != params.value("engine")) continue;
+      if (!params.value("viewportId").toString().isEmpty() && comparison.value("viewportId") != params.value("viewportId")) continue;
+      const QString search = params.value("search").toString();
+      if (!search.isEmpty()) {
+        const QString haystack = comparison.value("targetName").toString() + " " + comparison.value("url").toString() + " " + comparison.value("targetSetName").toString();
+        if (!haystack.contains(search, Qt::CaseInsensitive)) continue;
+      }
+      filtered.append(comparison);
+      if (filtered.size() > limit) break;
+    }
+    QString nextCursor;
+    if (filtered.size() > limit) {
+      filtered.removeLast();
+      const QJsonObject last = filtered.last().toObject();
+      nextCursor = QString::fromLatin1((last.value("createdAt").toString().toUtf8() + "|" + last.value("id").toString().toUtf8())
+                                          .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+    }
+    return {{"comparisons", filtered}, {"nextCursor", nextCursor}};
   }
   if (method == "comparison.resolve") {
     if (!store) return failure("not_found", "Project not found", 404);
@@ -635,23 +734,90 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       return pathInside(root, absolute) ? absolute : QString{};
     };
     const QString currentPath = resolveInside(current.value("relativePath").toString());
-    QString baselinePath = resolveInside(baselineArtifact.value("relativePath").toString());
+    QString baselinePath = resolveInside(comparison.value("baselineRelativePath").toString());
+    if (baselinePath.isEmpty()) baselinePath = resolveInside(baselineArtifact.value("relativePath").toString());
     if (baselinePath.isEmpty() && currentBaseline.value("artifactId").toString() == baselineArtifactId) {
       baselinePath = resolveInside(currentBaseline.value("relativePath").toString());
     }
     const QString diffPath = resolveInside(comparison.value("diffRelativePath").toString());
-    if (currentPath.isEmpty() || baselinePath.isEmpty() || diffPath.isEmpty()) {
+    if (currentPath.isEmpty()) {
       return failure("invalid_comparison", "A comparison path escapes the project", 400);
     }
     return {{"comparison", comparison}, {"currentPath", currentPath},
             {"baselinePath", baselinePath}, {"diffPath", diffPath}};
   }
+  if (method == "comparison.review.set" || method == "comparison.review.batch") {
+    if (!store) return failure("not_found", "Project not found", 404);
+    QJsonArray items;
+    if (method == "comparison.review.batch") items = params.value("items").toArray();
+    else items.append(params);
+    if (items.isEmpty() || items.size() > 500) return failure("invalid_review", "Review one to 500 comparisons at a time");
+    QJsonArray succeeded;
+    QJsonArray failed;
+    for (const auto &value : items) {
+      const QJsonObject item = value.toObject();
+      const QString comparisonId = item.value("comparisonId").toString();
+      const QString status = item.value("status").toString();
+      const QString note = item.value("note").toString();
+      const int expectedRevision = item.contains("expectedRevision") ? item.value("expectedRevision").toInt() : -1;
+      QString reviewError;
+      QJsonObject updated;
+      QString stagedBaseline;
+      bool createdBaselineFile = false;
+      if (status == "accepted") {
+        const QJsonObject selected = store->comparison(comparisonId);
+        const QJsonObject artifact = store->artifact(selected.value("currentArtifactId").toString());
+        const QString extension = artifact.value("format").toString().toLower();
+        const QString root = QFileInfo(store->root()).absoluteFilePath();
+        const QString source = QFileInfo(QDir(root).filePath(artifact.value("relativePath").toString())).absoluteFilePath();
+        if (selected.isEmpty() || artifact.isEmpty() || !QStringList{"png", "webp", "avif"}.contains(extension) ||
+            !pathInside(root, source) || !QFileInfo::exists(source)) {
+          reviewError = "The current image is missing or cannot be used as a baseline";
+        } else {
+          const QString keyHash = QString::fromLatin1(QCryptographicHash::hash(selected.value("comparisonKey").toString().toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
+          stagedBaseline = QDir(root).filePath("baselines/" + keyHash + "-" + artifact.value("id").toString().left(12) + "." + extension);
+          if (!QFileInfo::exists(stagedBaseline)) {
+            QFile input(source);
+            QSaveFile output(stagedBaseline);
+            if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly)) reviewError = "Could not stage the new baseline";
+            while (reviewError.isEmpty() && !input.atEnd()) {
+              const QByteArray chunk = input.read(1024 * 1024);
+              if (output.write(chunk) != chunk.size()) reviewError = output.errorString();
+            }
+            if (reviewError.isEmpty() && !output.commit()) reviewError = output.errorString();
+            createdBaselineFile = reviewError.isEmpty();
+          }
+          if (reviewError.isEmpty()) {
+            updated = store->acceptComparison(comparisonId, QDir(root).relativeFilePath(stagedBaseline), note,
+                                              expectedRevision, item.value("forceBaseline").toBool(false), &reviewError);
+          }
+          if (updated.isEmpty() && createdBaselineFile) QFile::remove(stagedBaseline);
+        }
+      } else {
+        updated = store->setComparisonReview(comparisonId, status, note, expectedRevision, &reviewError);
+      }
+      if (updated.isEmpty()) failed.append(QJsonObject{{"comparisonId", comparisonId}, {"message", reviewError}});
+      else {
+        succeeded.append(updated);
+        emit eventPublished("comparison.review.changed", {{"projectId", store->projectId()}, {"comparisonId", comparisonId}});
+        if (status == "accepted") emit eventPublished("baseline.changed", {{"projectId", store->projectId()}, {"comparisonKey", updated.value("comparisonKey")}});
+      }
+    }
+    return {{"comparisons", succeeded}, {"failures", failed}};
+  }
   if (method == "schedule.list") return {{"schedules", store->schedules()}};
   if (method == "schedule.upsert") {
     QJsonObject schedule = params.value("schedule").isObject() ? params.value("schedule").toObject() : params;
     schedule.insert("id", schedule.value("id").toString(newId()));
+    const QString targetSetId = schedule.value("targetSetId").toString();
     const QStringList urls = strings(schedule.value("urls"));
-    if (urls.isEmpty()) return failure("invalid_schedule", "A schedule needs at least one URL");
+    if (urls.isEmpty() && targetSetId.isEmpty()) return failure("invalid_schedule", "A schedule needs URLs or a target set");
+    if (!targetSetId.isEmpty()) {
+      const QJsonObject targetSet = store->targetSet(targetSetId);
+      bool enabled = false;
+      for (const auto &value : targetSet.value("targets").toArray()) enabled = enabled || value.toObject().value("enabled").toBool(true);
+      if (targetSet.isEmpty() || !enabled) return failure("invalid_schedule", "The selected target set has no enabled targets", 409);
+    }
     for (const QString &urlText : urls) {
       const QUrl url(urlText, QUrl::StrictMode);
       if (!url.isValid() || !QStringList{"http", "https"}.contains(url.scheme().toLower()) ||
@@ -660,6 +826,7 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
       }
     }
     schedule.insert("urls", asJson(urls));
+    schedule.insert("targetSetId", targetSetId);
     const QString profileId = schedule.value("profileId").toString("default");
     if (store->profile(profileId).id.isEmpty()) return failure("invalid_schedule", "The selected profile no longer exists", 409);
     schedule.insert("profileId", profileId);
@@ -688,7 +855,8 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     for (const auto &value : store->schedules()) if (value.toObject().value("id").toString() == id) selected = value.toObject();
     if (selected.isEmpty()) return failure("not_found", "Schedule not found", 404);
     return handle("job.submit", {{"projectId", store->projectId()}, {"profileId", selected.value("profileId")},
-                                  {"urls", selected.value("urls")}, {"source", "schedule-manual:" + id}});
+                                  {"urls", selected.value("urls")}, {"targetSetId", selected.value("targetSetId")},
+                                  {"source", "schedule-manual:" + id}});
   }
   if (method == "api.status") {
     return {{"enabled", m_rest.isRunning()}, {"port", int(m_rest.port())}, {"hasToken", !m_settings.value("api/tokenHash").toByteArray().isEmpty()}};

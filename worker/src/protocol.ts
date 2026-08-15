@@ -52,6 +52,15 @@ export interface BaselineRecord {
   artifact: Artifact;
 }
 
+export interface TargetSnapshot {
+  id: string;
+  name: string;
+  url: string;
+  targetSetId: string;
+  targetSetName: string;
+  enabled: boolean;
+}
+
 export interface CaptureJob {
   id: string;
   projectId: string;
@@ -59,6 +68,8 @@ export interface CaptureJob {
   profileId: string;
   source: string;
   urls: string[];
+  targetSetId?: string;
+  targets?: TargetSnapshot[];
   profile: CaptureProfile;
   baselines?: Record<string, BaselineRecord>;
   allowLocalhost?: boolean;
@@ -69,6 +80,10 @@ export interface Artifact {
   jobId: string;
   url: string;
   finalUrl?: string;
+  targetId?: string;
+  targetName?: string;
+  targetSetId?: string;
+  targetSetName?: string;
   engine: BrowserEngine;
   viewportId: string;
   viewportName: string;

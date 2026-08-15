@@ -18,21 +18,29 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFile>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QGridLayout>
 #include <QInputDialog>
+#include <QGraphicsPixmapItem>
+#include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QJsonDocument>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSaveFile>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QSlider>
@@ -48,42 +56,104 @@
 #include <QTimer>
 #include <QTimeZone>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWizard>
 #include <QWizardPage>
+#include <QWheelEvent>
+#include <algorithm>
 
 namespace CyberSnapper {
 
-class ImageCanvas final : public QWidget {
+class ImageCanvas final : public QGraphicsView {
 public:
-  explicit ImageCanvas(QWidget *parent = nullptr) : QWidget(parent) {
+  explicit ImageCanvas(QWidget *parent = nullptr) : QGraphicsView(parent), m_scene(this) {
     setMinimumSize(220, 220);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setScene(&m_scene);
+    setDragMode(QGraphicsView::ScrollHandDrag);
+    setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+    setResizeAnchor(QGraphicsView::AnchorViewCenter);
+    setBackgroundBrush(palette().brush(QPalette::Base));
   }
-  void setImage(const QString &path) { m_path = path; m_image.load(path); update(); }
-  void clearImage() { m_path.clear(); m_image = {}; update(); }
-  bool hasImage() const { return !m_image.isNull(); }
+  void setImage(const QString &path) {
+    m_path = path;
+    const QPixmap image(path);
+    m_scene.clear();
+    m_item = image.isNull() ? nullptr : m_scene.addPixmap(image);
+    m_scene.setSceneRect(m_item ? m_item->boundingRect() : QRectF(0, 0, 640, 420));
+    if (m_item) fitImage();
+    viewport()->update();
+  }
+  void clearImage() { setImage({}); }
+  bool hasImage() const { return m_item != nullptr; }
+  void fitImage() {
+    if (!m_item) return;
+    fitInView(m_item, Qt::KeepAspectRatio);
+    m_fit = true;
+    notifyViewChanged();
+  }
+  void actualPixels() {
+    resetTransform();
+    m_fit = false;
+    notifyViewChanged();
+  }
+  void zoomBy(qreal factor) {
+    if (!m_item) return;
+    const qreal current = transform().m11();
+    factor = qBound(0.05 / qMax(current, 0.0001), factor, 8.0 / qMax(current, 0.0001));
+    scale(factor, factor);
+    m_fit = false;
+    notifyViewChanged();
+  }
+  void copyViewFrom(const ImageCanvas *source) {
+    if (!source || !m_item || m_syncing) return;
+    m_syncing = true;
+    setTransform(source->transform());
+    centerOn(source->mapToScene(source->viewport()->rect().center()));
+    m_syncing = false;
+  }
+  void setViewChanged(std::function<void()> callback) { m_viewChanged = std::move(callback); }
 
 protected:
-  void paintEvent(QPaintEvent *) override {
-    QPainter painter(this);
-    painter.fillRect(rect(), palette().brush(QPalette::Base));
-    if (m_image.isNull()) {
-      painter.setPen(palette().color(QPalette::PlaceholderText));
-      painter.drawText(rect().adjusted(12, 12, -12, -12), Qt::AlignCenter | Qt::TextWordWrap,
-                       m_path.isEmpty() ? "Select a comparison" : "Image unavailable\n" + m_path);
+  void drawForeground(QPainter *painter, const QRectF &) override {
+    if (!m_item) {
+      painter->save();
+      painter->resetTransform();
+      painter->setPen(palette().color(QPalette::PlaceholderText));
+      painter->drawText(viewport()->rect().adjusted(12, 12, -12, -12), Qt::AlignCenter | Qt::TextWordWrap,
+                        m_path.isEmpty() ? "Select a review result" : "Image unavailable\n" + m_path);
+      painter->restore();
+    }
+  }
+  void wheelEvent(QWheelEvent *event) override {
+    if (event->modifiers().testFlag(Qt::ControlModifier)) {
+      zoomBy(event->angleDelta().y() > 0 ? 1.2 : 1.0 / 1.2);
+      event->accept();
       return;
     }
-    const QSize fitted = m_image.size().scaled(size() - QSize(16, 16), Qt::KeepAspectRatio);
-    const QRect target(QPoint((width() - fitted.width()) / 2, (height() - fitted.height()) / 2), fitted);
-    painter.drawPixmap(target, m_image);
+    QGraphicsView::wheelEvent(event);
+    notifyViewChanged();
+  }
+  void resizeEvent(QResizeEvent *event) override {
+    QGraphicsView::resizeEvent(event);
+    if (m_fit) fitImage();
+  }
+  void scrollContentsBy(int dx, int dy) override {
+    QGraphicsView::scrollContentsBy(dx, dy);
+    notifyViewChanged();
   }
 
 private:
+  void notifyViewChanged() { if (!m_syncing && m_viewChanged) m_viewChanged(); }
   QString m_path;
-  QPixmap m_image;
+  QGraphicsScene m_scene;
+  QGraphicsPixmapItem *m_item = nullptr;
+  bool m_fit = true;
+  bool m_syncing = false;
+  std::function<void()> m_viewChanged;
 };
 
 class OverlayCanvas final : public QWidget {
@@ -93,6 +163,7 @@ public:
     m_baseline.load(baseline); m_current.load(current); update();
   }
   void setOpacity(int percent) { m_opacity = qBound(0, percent, 100) / 100.0; update(); }
+  void setWipe(bool wipe) { m_wipe = wipe; update(); }
 
 protected:
   void paintEvent(QPaintEvent *) override {
@@ -106,16 +177,28 @@ protected:
     const QSize source(qMax(m_baseline.width(), m_current.width()),
                        qMax(m_baseline.height(), m_current.height()));
     const QSize fitted = source.scaled(size() - QSize(16, 16), Qt::KeepAspectRatio);
-    const QRect target(QPoint((width() - fitted.width()) / 2, (height() - fitted.height()) / 2), fitted);
-    painter.drawPixmap(target, m_baseline);
-    painter.setOpacity(m_opacity);
-    painter.drawPixmap(target, m_current);
+    const QPoint origin((width() - fitted.width()) / 2, (height() - fitted.height()) / 2);
+    const qreal scale = qMin(qreal(fitted.width()) / source.width(), qreal(fitted.height()) / source.height());
+    const QRect baselineTarget(origin, QSize(qRound(m_baseline.width() * scale), qRound(m_baseline.height() * scale)));
+    const QRect currentTarget(origin, QSize(qRound(m_current.width() * scale), qRound(m_current.height() * scale)));
+    painter.drawPixmap(baselineTarget, m_baseline);
+    if (m_wipe) {
+      const int boundary = origin.x() + qRound(fitted.width() * m_opacity);
+      painter.save(); painter.setClipRect(QRect(boundary, origin.y(), origin.x() + fitted.width() - boundary, fitted.height()));
+      painter.drawPixmap(currentTarget, m_current); painter.restore();
+      painter.setPen(QPen(palette().color(QPalette::Highlight), 2));
+      painter.drawLine(boundary, origin.y(), boundary, origin.y() + fitted.height());
+    } else {
+      painter.setOpacity(m_opacity);
+      painter.drawPixmap(currentTarget, m_current);
+    }
   }
 
 private:
   QPixmap m_baseline;
   QPixmap m_current;
   qreal m_opacity = 0.5;
+  bool m_wipe = false;
 };
 
 namespace {
@@ -202,6 +285,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), m_rpc(this) {
         event == "schedule.event") scheduleRefresh();
     if (event == "project.changed") refreshProjects();
     if (event == "project.settings.changed") refreshSettings();
+    if (event == "targetSet.changed") { refreshTargetSets(); refreshDashboard(); }
+    if (event == "comparison.review.changed" || event == "baseline.changed") { refreshComparisons(); refreshBaselines(); refreshDashboard(); }
     if (event == "browser.install.finished") refreshSettings();
   });
 }
@@ -214,8 +299,9 @@ void MainWindow::connectToAgent() {
 
 bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
   const QString scene = requestedScene.trimmed().toLower();
-  const QHash<QString, int> scenes{{"capture", 0}, {"history", 1}, {"compare", 2},
-                                  {"schedules", 3}, {"settings", 4}, {"help", 5}};
+  const QHash<QString, int> scenes{{"dashboard", 0}, {"capture", 1}, {"review", 2}, {"compare", 2},
+                                  {"history", 3}, {"targets", 4}, {"schedules", 5},
+                                  {"settings", 6}, {"help", 7}};
   if (!scenes.contains(scene) || !m_tabs) return false;
   m_tabs->setCurrentIndex(scenes.value(scene));
   if (scene == "capture" && m_urls && m_urls->toPlainText().trimmed().isEmpty()) {
@@ -233,11 +319,16 @@ bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
     if (m_artifacts->currentRow() < 0) m_artifacts->selectRow(0);
     return true;
   }
-  if (scene == "compare") {
+  if (scene == "compare" || scene == "review") {
     if (!m_comparisons || m_comparisons->rowCount() == 0) return false;
-    if (m_comparisons->currentRow() < 0) { m_comparisons->selectRow(0); return false; }
-    return m_baselineImage && m_baselineImage->hasImage() && m_currentImage && m_currentImage->hasImage() &&
-           m_diffImage && m_diffImage->hasImage();
+    if (m_comparisons->currentRow() < 0 || !m_diffImage || !m_diffImage->hasImage()) {
+      for (int row = 0; row < m_comparisons->rowCount(); ++row) {
+        if (!m_comparisons->isRowHidden(row) && m_comparisons->item(row, 1)->text().contains("changed", Qt::CaseInsensitive)) {
+          m_comparisons->selectRow(row); return false;
+        }
+      }
+    }
+    return m_currentImage && m_currentImage->hasImage();
   }
   if (scene == "schedules") {
     if (!m_schedules || m_schedules->rowCount() == 0) return false;
@@ -251,66 +342,70 @@ void MainWindow::buildUi() {
   setWindowTitle("CyberSnapper");
   setWindowIcon(QIcon(":/cybersnapper/logo.png"));
   resize(1180, 780);
-  setMinimumSize(900, 620);
+  setMinimumSize(760, 600);
 
-  auto *toolbar = addToolBar("Main navigation");
-  toolbar->setObjectName("mainNavigation");
-  toolbar->setMovable(false);
-  toolbar->setFloatable(false);
-  toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  toolbar->addWidget(new QLabel("Project: "));
+  m_toolbar = addToolBar("Main navigation");
+  m_toolbar->setObjectName("mainNavigation");
+  m_toolbar->setMovable(false);
+  m_toolbar->setFloatable(false);
+  m_toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  auto *projectWidget = new QWidget;
+  auto *projectLayout = new QHBoxLayout(projectWidget);
+  projectLayout->setContentsMargins(4, 0, 4, 0);
+  projectLayout->addWidget(new QLabel("Project:"));
   m_projectCombo = new QComboBox;
   m_projectCombo->setMinimumWidth(190);
   m_projectCombo->setMaximumWidth(260);
   explain(m_projectCombo, "The active project owns capture profiles, history, schedules, baselines, and output files.");
-  toolbar->addWidget(m_projectCombo);
-  QAction *newProject = toolbar->addAction("New");
+  projectLayout->addWidget(m_projectCombo);
+  m_projectWidgetAction = m_toolbar->addWidget(projectWidget);
+  auto makeAction = [this](const QString &key, const QString &text, const QString &tip) {
+    auto *action = new QAction(text, this);
+    action->setToolTip(tip); action->setStatusTip(tip);
+    m_toolbarActions.insert(key, action);
+    return action;
+  };
+  QAction *newProject = makeAction("new", "New", "Create a new portable CyberSnapper project folder");
   newProject->setShortcut(QKeySequence::New);
-  newProject->setToolTip("Create a new portable CyberSnapper project folder");
-  newProject->setStatusTip(newProject->toolTip());
-  QAction *openProject = toolbar->addAction("Open");
+  QAction *openProject = makeAction("open", "Open", "Open an existing CyberSnapper project folder");
   openProject->setShortcut(QKeySequence::Open);
-  openProject->setToolTip("Open an existing CyberSnapper project folder");
-  openProject->setStatusTip(openProject->toolTip());
-  QAction *refresh = toolbar->addAction("Refresh");
+  QAction *refresh = makeAction("refresh", "Refresh", "Reload projects, jobs, schedules, and runtime status");
   refresh->setShortcut(QKeySequence::Refresh);
-  refresh->setToolTip("Reload projects, jobs, schedules, and runtime status");
-  refresh->setStatusTip(refresh->toolTip());
   m_connectionStatus = new QLabel("Starting…");
   statusBar()->addPermanentWidget(m_connectionStatus);
 
   m_tabs = new QTabWidget;
   m_tabs->setObjectName("mainTabs");
+  m_tabs->addTab(buildDashboardPage(), "Dashboard");
   m_tabs->addTab(buildCapturePage(), "Capture");
+  m_tabs->addTab(buildComparePage(), "Review");
   m_tabs->addTab(buildHistoryPage(), "History");
-  m_tabs->addTab(buildComparePage(), "Compare");
+  m_tabs->addTab(buildTargetsPage(), "Targets");
   m_tabs->addTab(buildSchedulesPage(), "Schedules");
   m_tabs->addTab(buildSettingsPage(), "Settings");
   m_tabs->addTab(buildHelpPage(), "Help");
   if (auto *tabBar = m_tabs->findChild<QTabBar *>()) tabBar->hide();
   setCentralWidget(m_tabs);
 
-  toolbar->addSeparator();
   auto *navigation = new QActionGroup(this);
   navigation->setExclusive(true);
   QList<QAction *> pageActions;
   const QList<QPair<QString, QString>> pages{
+      {"Dashboard", "Project health, pending reviews, recent runs, and quick actions"},
       {"Capture", "Configure and start website captures"},
+      {"Review", "Triage visual changes and manage baselines"},
       {"History", "Review capture jobs and open their artifacts"},
-      {"Compare", "Review visual differences and manage baselines"},
+      {"Targets", "Manage reusable sets of pages to capture"},
       {"Schedules", "Create and manage recurring captures"},
       {"Settings", "Configure browsers, runtime capacity, and the local API"},
       {"Help", "Explain CyberSnapper concepts and controls"},
   };
   for (int index = 0; index < pages.size(); ++index) {
-    auto *action = new QAction(pages.at(index).first, navigation);
+    const QString key = pages.at(index).first.toLower();
+    auto *action = makeAction(key, pages.at(index).first, pages.at(index).second);
+    navigation->addAction(action);
     action->setCheckable(true);
-    action->setToolTip(pages.at(index).second);
-    action->setStatusTip(action->toolTip());
-    action->setShortcut(index < 5
-                            ? QKeySequence(QStringLiteral("Ctrl+%1").arg(index + 1))
-                            : QKeySequence::HelpContents);
-    toolbar->addAction(action);
+    if (pages.at(index).first == "Help") action->setShortcut(QKeySequence::HelpContents);
     connect(action, &QAction::triggered, m_tabs, [this, index] { m_tabs->setCurrentIndex(index); });
     pageActions.append(action);
   }
@@ -320,15 +415,27 @@ void MainWindow::buildUi() {
   });
   auto *spacer = new QWidget;
   spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  toolbar->addWidget(spacer);
-  QAction *about = toolbar->addAction("About");
-  about->setToolTip("Version, architecture, and license information");
-  about->setStatusTip(about->toolTip());
+  m_toolbarSpacerAction = m_toolbar->addWidget(spacer);
+  QAction *about = makeAction("about", "About", "Version, architecture, and license information");
   connect(about, &QAction::triggered, this, &MainWindow::showAbout);
+  QAction *customize = makeAction("customize", "Customize Toolbar…", "Choose toolbar order and overflow actions");
+  connect(customize, &QAction::triggered, this, &MainWindow::openToolbarCustomizer);
+  auto *moreButton = new QToolButton;
+  moreButton->setText("More");
+  moreButton->setPopupMode(QToolButton::InstantPopup);
+  m_moreMenu = new QMenu(moreButton);
+  moreButton->setMenu(m_moreMenu);
+  m_moreWidgetAction = m_toolbar->addWidget(moreButton);
 
-  // Keep every primary destination visible instead of letting QToolBar move
-  // Help or About into its overflow menu on narrower platforms or font sizes.
-  setMinimumWidth(qMax(minimumWidth(), toolbar->sizeHint().width() + 12));
+  auto *fileMenu = menuBar()->addMenu("&File");
+  fileMenu->addAction(newProject); fileMenu->addAction(openProject); fileMenu->addAction(refresh);
+  fileMenu->addSeparator(); fileMenu->addAction("Quit", QKeySequence::Quit, qApp, &QApplication::quit);
+  auto *viewMenu = menuBar()->addMenu("&View");
+  for (auto *action : pageActions) viewMenu->addAction(action);
+  viewMenu->addSeparator(); viewMenu->addAction(customize);
+  auto *helpMenu = menuBar()->addMenu("&Help");
+  helpMenu->addAction(m_toolbarActions.value("help")); helpMenu->addAction(about);
+  applyToolbarPreferences();
 
   connect(refresh, &QAction::triggered, this, &MainWindow::refreshAll);
   connect(openProject, &QAction::triggered, this, [this] {
@@ -359,9 +466,202 @@ void MainWindow::buildUi() {
     m_loadedProfileId.clear();
     rpcCall("project.setActive", {{"projectId", id}}, [this, id](const QJsonObject &) {
       m_projectId = id;
-      refreshProfiles(); refreshJobs(); refreshSchedules();
+      refreshProfiles(); refreshTargetSets(); refreshJobs(); refreshSchedules();
+      refreshComparisons(); refreshBaselines(); refreshDashboard();
     });
   });
+}
+
+QWidget *MainWindow::buildDashboardPage() {
+  auto *page = new QWidget;
+  auto *layout = new QVBoxLayout(page);
+  layout->setContentsMargins(18, 18, 18, 18);
+  auto *heading = new QLabel("Project dashboard");
+  heading->setObjectName("pageTitle");
+  layout->addWidget(heading);
+  layout->addWidget(helperText("See what needs attention, start a saved capture, and continue where you left off."));
+
+  auto *cards = new QGridLayout;
+  const auto card = [cards](int column, const QString &title, QLabel **value, const QString &hint) {
+    auto *box = new QGroupBox(title);
+    auto *boxLayout = new QVBoxLayout(box);
+    *value = new QLabel("—");
+    (*value)->setObjectName("metricValue");
+    boxLayout->addWidget(*value);
+    boxLayout->addWidget(helperText(hint));
+    cards->addWidget(box, 0, column);
+    cards->setColumnStretch(column, 1);
+  };
+  card(0, "Needs review", &m_dashboardNeedsReview, "Unreviewed changes, missing baselines, and comparison errors");
+  card(1, "Failed or partial", &m_dashboardFailedRuns, "Runs needing attention during the last seven days");
+  card(2, "Active jobs", &m_dashboardActiveJobs, "Queued, preparing, running, or cancelling");
+  card(3, "Next schedule", &m_dashboardNextSchedule, "The next enabled scheduled capture");
+  layout->addLayout(cards);
+
+  auto *content = new QSplitter(Qt::Horizontal);
+  auto *reviewBox = new QGroupBox("Review queue");
+  auto *reviewLayout = new QVBoxLayout(reviewBox);
+  m_dashboardReview = new QTableWidget(0, 3);
+  m_dashboardReview->setHorizontalHeaderLabels({"Target", "Result", "Captured"});
+  m_dashboardReview->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_dashboardReview->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_dashboardReview->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  m_dashboardReview->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+  m_dashboardReview->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  reviewLayout->addWidget(m_dashboardReview);
+  auto *openReview = new QPushButton("Open Review Inbox");
+  reviewLayout->addWidget(openReview, 0, Qt::AlignLeft);
+  auto *recentBox = new QGroupBox("Recent runs");
+  auto *recentLayout = new QVBoxLayout(recentBox);
+  m_dashboardRecent = new QTableWidget(0, 3);
+  m_dashboardRecent->setHorizontalHeaderLabels({"Created", "Status", "Files"});
+  m_dashboardRecent->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_dashboardRecent->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_dashboardRecent->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  m_dashboardRecent->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+  m_dashboardRecent->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  recentLayout->addWidget(m_dashboardRecent);
+  auto *newCapture = new QPushButton("New Capture");
+  newCapture->setObjectName("primaryAction");
+  recentLayout->addWidget(newCapture, 0, Qt::AlignLeft);
+  content->addWidget(reviewBox); content->addWidget(recentBox); content->setSizes({650, 450});
+  layout->addWidget(content, 1);
+  connect(openReview, &QPushButton::clicked, this, [this] { m_tabs->setCurrentIndex(2); });
+  connect(newCapture, &QPushButton::clicked, this, [this] { m_tabs->setCurrentIndex(1); });
+  connect(m_dashboardReview, &QTableWidget::cellDoubleClicked, this, [this](int row) {
+    const QString id = m_dashboardReview->item(row, 0)->data(Qt::UserRole).toString();
+    m_tabs->setCurrentIndex(2);
+    for (int candidate = 0; candidate < m_comparisons->rowCount(); ++candidate) {
+      if (m_comparisons->item(candidate, 0)->data(Qt::UserRole).toString() == id) { m_comparisons->selectRow(candidate); break; }
+    }
+  });
+  return page;
+}
+
+QWidget *MainWindow::buildTargetsPage() {
+  auto *page = new QWidget;
+  auto *layout = new QVBoxLayout(page);
+  layout->addWidget(helperText("A target set chooses what to capture; a profile chooses how. Reuse target sets from Capture, Dashboard, and Schedules."));
+  auto *splitter = new QSplitter(Qt::Horizontal);
+  auto *master = new QWidget;
+  auto *masterLayout = new QVBoxLayout(master);
+  masterLayout->setContentsMargins(0, 0, 6, 0);
+  m_targetSetList = new QListWidget;
+  m_targetSetList->setMinimumWidth(220);
+  masterLayout->addWidget(m_targetSetList, 1);
+  auto *newSet = new QPushButton("New Target Set");
+  masterLayout->addWidget(newSet);
+  auto *editor = new QWidget;
+  auto *editorLayout = new QVBoxLayout(editor);
+  editorLayout->setContentsMargins(6, 0, 0, 0);
+  auto *form = new QFormLayout;
+  m_targetSetName = new QLineEdit;
+  m_targetSetDescription = new QTextEdit;
+  m_targetSetDescription->setMaximumHeight(70);
+  m_targetSetDescription->setPlaceholderText("Optional description, environment, or ownership notes");
+  form->addRow("Name", m_targetSetName);
+  form->addRow("Description", m_targetSetDescription);
+  editorLayout->addLayout(form);
+  m_targetTable = new QTableWidget(0, 3);
+  m_targetTable->setHorizontalHeaderLabels({"Use", "Label", "URL"});
+  m_targetTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_targetTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_targetTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  m_targetTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+  m_targetTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+  m_targetTable->setColumnWidth(1, 180);
+  editorLayout->addWidget(m_targetTable, 1);
+  auto *rowActions = new QHBoxLayout;
+  auto *add = new QPushButton("Add URL");
+  auto *paste = new QPushButton("Paste URLs…");
+  auto *importFile = new QPushButton("Import…");
+  auto *exportFile = new QPushButton("Export…");
+  auto *up = new QPushButton("Move Up");
+  auto *down = new QPushButton("Move Down");
+  auto *remove = new QPushButton("Remove");
+  for (auto *button : {add, paste, importFile, exportFile, up, down, remove}) rowActions->addWidget(button);
+  rowActions->addStretch();
+  editorLayout->addLayout(rowActions);
+  auto *setActions = new QHBoxLayout;
+  auto *save = new QPushButton("Save Target Set"); save->setObjectName("primaryAction");
+  auto *revert = new QPushButton("Revert");
+  auto *deleteSet = new QPushButton("Delete Set"); deleteSet->setObjectName("destructiveAction");
+  setActions->addWidget(save); setActions->addWidget(revert); setActions->addWidget(deleteSet); setActions->addStretch();
+  editorLayout->addLayout(setActions);
+  splitter->addWidget(master); splitter->addWidget(editor); splitter->setSizes({260, 820});
+  layout->addWidget(splitter, 1);
+
+  const auto appendTarget = [this](const QString &url = {}, const QString &label = {}, bool enabled = true) {
+    const int row = m_targetTable->rowCount(); m_targetTable->insertRow(row);
+    auto *use = item(QString(), newId()); use->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
+    m_targetTable->setItem(row, 0, use); m_targetTable->setItem(row, 1, item(label)); m_targetTable->setItem(row, 2, item(url));
+  };
+  connect(newSet, &QPushButton::clicked, this, [this] {
+    m_targetSetList->clearSelection(); m_targetSetList->setProperty("editingId", QString{});
+    m_targetSetName->setText("New target set"); m_targetSetDescription->clear(); m_targetTable->setRowCount(0);
+  });
+  connect(add, &QPushButton::clicked, this, [appendTarget] { appendTarget(); });
+  connect(paste, &QPushButton::clicked, this, [this, appendTarget] {
+    bool ok = false;
+    const QString text = QInputDialog::getMultiLineText(this, "Paste URLs", "One HTTP or HTTPS URL per line:", {}, &ok);
+    if (!ok) return;
+    QSet<QString> existing;
+    for (int row = 0; row < m_targetTable->rowCount(); ++row) existing.insert(m_targetTable->item(row, 2)->text().trimmed());
+    for (const QString &line : text.split('\n')) {
+      const QString url = line.trimmed(); if (!url.isEmpty() && !existing.contains(url)) { appendTarget(url); existing.insert(url); }
+    }
+  });
+  connect(importFile, &QPushButton::clicked, this, [this, appendTarget] {
+    const QString path = QFileDialog::getOpenFileName(this, "Import targets", {}, "Target files (*.txt *.csv);;All files (*)");
+    QFile file(path); if (path.isEmpty() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    const bool csv = path.endsWith(".csv", Qt::CaseInsensitive);
+    const QStringList lines = QString::fromUtf8(file.readAll()).split('\n');
+    for (int index = 0; index < lines.size(); ++index) {
+      const QString line = lines.at(index).trimmed(); if (line.isEmpty() || line.startsWith('#')) continue;
+      if (csv) {
+        if (index == 0 && line.contains("url", Qt::CaseInsensitive)) continue;
+        const QStringList fields = line.split(','); if (fields.size() >= 2) appendTarget(fields.at(1).trimmed(), fields.at(0).trimmed(), fields.value(2, "true").trimmed().toLower() != "false");
+      } else appendTarget(line);
+    }
+  });
+  connect(exportFile, &QPushButton::clicked, this, [this] {
+    const QString path = QFileDialog::getSaveFileName(this, "Export targets", m_targetSetName->text() + ".csv", "CSV (*.csv);;Text (*.txt)");
+    if (path.isEmpty()) return;
+    QSaveFile file(path); if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+    if (path.endsWith(".txt", Qt::CaseInsensitive)) {
+      for (int row = 0; row < m_targetTable->rowCount(); ++row) if (m_targetTable->item(row, 0)->checkState() == Qt::Checked) file.write((m_targetTable->item(row, 2)->text().trimmed() + "\n").toUtf8());
+    } else {
+      file.write("label,url,enabled\n");
+      for (int row = 0; row < m_targetTable->rowCount(); ++row) file.write(QStringLiteral("%1,%2,%3\n").arg(m_targetTable->item(row, 1)->text(), m_targetTable->item(row, 2)->text(), m_targetTable->item(row, 0)->checkState() == Qt::Checked ? "true" : "false").toUtf8());
+    }
+    file.commit();
+  });
+  const auto moveRow = [this](int delta) {
+    const int row = m_targetTable->currentRow(); const int other = row + delta;
+    if (row < 0 || other < 0 || other >= m_targetTable->rowCount()) return;
+    for (int column = 0; column < m_targetTable->columnCount(); ++column) {
+      QTableWidgetItem *left = m_targetTable->takeItem(row, column);
+      QTableWidgetItem *right = m_targetTable->takeItem(other, column);
+      m_targetTable->setItem(row, column, right); m_targetTable->setItem(other, column, left);
+    }
+    m_targetTable->selectRow(other);
+  };
+  connect(up, &QPushButton::clicked, this, [moveRow] { moveRow(-1); });
+  connect(down, &QPushButton::clicked, this, [moveRow] { moveRow(1); });
+  connect(remove, &QPushButton::clicked, this, [this] {
+    QSet<int> rows; for (auto *entry : m_targetTable->selectedItems()) rows.insert(entry->row());
+    QList<int> ordered = rows.values(); std::sort(ordered.begin(), ordered.end(), std::greater<int>());
+    for (int row : ordered) m_targetTable->removeRow(row);
+  });
+  connect(save, &QPushButton::clicked, this, &MainWindow::saveTargetSet);
+  connect(revert, &QPushButton::clicked, this, &MainWindow::loadSelectedTargetSet);
+  connect(deleteSet, &QPushButton::clicked, this, [this] {
+    const QString id = m_targetSetList->property("editingId").toString(); if (id.isEmpty()) return;
+    if (QMessageBox::question(this, "Delete target set", "Delete this target set? Schedules using it must be reassigned first.") != QMessageBox::Yes) return;
+    rpcCall("targetSet.remove", {{"projectId", m_projectId}, {"targetSetId", id}}, [this](const QJsonObject &) { refreshTargetSets(); });
+  });
+  connect(m_targetSetList, &QListWidget::itemSelectionChanged, this, &MainWindow::loadSelectedTargetSet);
+  return page;
 }
 
 QWidget *MainWindow::buildCapturePage() {
@@ -397,6 +697,18 @@ QWidget *MainWindow::buildCapturePage() {
   m_profileState = new QLabel("Saved");
   m_profileState->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   targetLayout->addWidget(m_profileState, 0, 3);
+  m_targetSource = new QComboBox;
+  m_targetSource->addItem("One-time URLs", "urls");
+  m_targetSource->addItem("Saved target set", "targetSet");
+  m_captureTargetSet = new QComboBox;
+  m_captureTargetSet->setEnabled(false);
+  auto *editTargetSet = new QPushButton("Edit Set…");
+  editTargetSet->setEnabled(false);
+  auto *sourceLabel = new QLabel("Target source"); sourceLabel->setBuddy(m_targetSource);
+  targetLayout->addWidget(sourceLabel, 1, 0);
+  targetLayout->addWidget(m_targetSource, 1, 1);
+  targetLayout->addWidget(m_captureTargetSet, 1, 2);
+  targetLayout->addWidget(editTargetSet, 1, 3);
   m_urls = new QTextEdit;
   m_urls->setPlaceholderText("https://example.com\nhttps://example.org/about");
   m_urls->setAcceptRichText(false);
@@ -405,8 +717,8 @@ QWidget *MainWindow::buildCapturePage() {
   auto *urlsLabel = new QLabel("URLs");
   urlsLabel->setBuddy(m_urls);
   explain(urlsLabel, m_urls->toolTip());
-  targetLayout->addWidget(urlsLabel, 1, 0, Qt::AlignTop);
-  targetLayout->addWidget(m_urls, 1, 1, 1, 3);
+  targetLayout->addWidget(urlsLabel, 2, 0, Qt::AlignTop);
+  targetLayout->addWidget(m_urls, 2, 1, 1, 3);
   m_captureMode = new QComboBox;
   m_captureMode->addItem("Full page", "fullPage");
   m_captureMode->addItem("Viewport", "viewport");
@@ -425,10 +737,10 @@ QWidget *MainWindow::buildCapturePage() {
   auto *elementLabel = new QLabel("Element");
   elementLabel->setBuddy(m_elementSelector);
   explain(elementLabel, m_elementSelector->toolTip());
-  targetLayout->addWidget(modeLabel, 2, 0);
-  targetLayout->addWidget(m_captureMode, 2, 1);
-  targetLayout->addWidget(elementLabel, 2, 2);
-  targetLayout->addWidget(m_elementSelector, 2, 3);
+  targetLayout->addWidget(modeLabel, 3, 0);
+  targetLayout->addWidget(m_captureMode, 3, 1);
+  targetLayout->addWidget(elementLabel, 3, 2);
+  targetLayout->addWidget(m_elementSelector, 3, 3);
   leftLayout->addWidget(targetGroup, 1);
 
   auto *viewportGroup = new QGroupBox("Viewports");
@@ -580,6 +892,7 @@ QWidget *MainWindow::buildCapturePage() {
   m_captureColumns->setSizes({620, 500});
 
   auto *jobsGroup = new QGroupBox("Active jobs");
+  m_activeJobsGroup = jobsGroup;
   auto *jobsLayout = new QVBoxLayout(jobsGroup);
   m_activeJobs = new QTreeWidget;
   m_activeJobs->setHeaderLabels({"Job", "Status", "Completed", "Failed", "Started"});
@@ -590,6 +903,8 @@ QWidget *MainWindow::buildCapturePage() {
   jobsLayout->addWidget(m_activeJobs);
   auto *jobActions = new QHBoxLayout;
   auto *cancel = new QPushButton("Cancel Selected Job");
+  m_cancelActiveJob = cancel;
+  cancel->setEnabled(false);
   jobActions->addWidget(cancel);
   jobActions->addStretch();
   jobsLayout->addLayout(jobActions);
@@ -603,6 +918,19 @@ QWidget *MainWindow::buildCapturePage() {
 
   connect(m_captureMode, &QComboBox::currentIndexChanged, this,
           [this] { m_elementSelector->setEnabled(m_captureMode->currentData().toString() == "element"); });
+  connect(m_targetSource, &QComboBox::currentIndexChanged, this, [this, urlsLabel, editTargetSet] {
+    const bool setMode = m_targetSource->currentData().toString() == "targetSet";
+    m_captureTargetSet->setEnabled(setMode);
+    editTargetSet->setEnabled(setMode && m_captureTargetSet->count() > 0);
+    m_urls->setVisible(!setMode); urlsLabel->setVisible(!setMode);
+    updateCapturePlan();
+  });
+  connect(m_captureTargetSet, &QComboBox::currentIndexChanged, this, &MainWindow::updateCapturePlan);
+  connect(editTargetSet, &QPushButton::clicked, this, [this] {
+    const QString id = m_captureTargetSet->currentData().toString();
+    m_tabs->setCurrentIndex(4);
+    for (int row = 0; row < m_targetSetList->count(); ++row) if (m_targetSetList->item(row)->data(Qt::UserRole).toString() == id) { m_targetSetList->setCurrentRow(row); break; }
+  });
   const auto updateComparisonControls = [this] {
     const bool enabled = m_comparisonEnabled->isChecked();
     m_pixelThreshold->setEnabled(enabled);
@@ -646,6 +974,9 @@ QWidget *MainWindow::buildCapturePage() {
     const auto selected = m_activeJobs->selectedItems();
     if (!selected.isEmpty()) rpcCall("job.cancel", {{"jobId", selected.first()->data(0, Qt::UserRole).toString()}});
   });
+  connect(m_activeJobs, &QTreeWidget::itemSelectionChanged, this, [this] {
+    m_cancelActiveJob->setEnabled(!m_activeJobs->selectedItems().isEmpty());
+  });
   const auto changed = [this] { markProfileDirty(); updateCapturePlan(); };
   for (auto *box : {m_chromium, m_firefox, m_webkit, m_png, m_webp, m_avif, m_pdf,
                     m_blockPopups, m_comparisonEnabled}) {
@@ -682,8 +1013,8 @@ QWidget *MainWindow::buildHistoryPage() {
   layout->addLayout(filters);
   m_historySplit = new QSplitter(Qt::Vertical);
   m_historySplit->setObjectName("historySplit");
-  m_history = new QTableWidget(0, 6);
-  m_history->setHorizontalHeaderLabels({"Created", "Status", "Source", "Files created", "File errors", "Job ID"});
+  m_history = new QTableWidget(0, 5);
+  m_history->setHorizontalHeaderLabels({"Created", "Status", "Source", "Files created", "File errors"});
   m_history->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_history->setSelectionMode(QAbstractItemView::SingleSelection);
   m_history->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -747,42 +1078,47 @@ QWidget *MainWindow::buildHistoryPage() {
 QWidget *MainWindow::buildComparePage() {
   auto *page = new QWidget;
   auto *layout = new QVBoxLayout(page);
-  auto *intro = new QLabel("Review every visual comparison in this project. Select a row to inspect the baseline and current capture side by side or as an adjustable overlay.");
-  intro->setWordWrap(true);
-  layout->addWidget(intro);
+  auto *filters = new QHBoxLayout;
+  m_reviewFilter = new QComboBox;
+  m_reviewFilter->addItem("Needs review", "unreviewed");
+  m_reviewFilter->addItem("Accepted", "accepted");
+  m_reviewFilter->addItem("Ignored", "ignored");
+  m_reviewFilter->addItem("All results", "all");
+  m_reviewSearch = new QLineEdit;
+  m_reviewSearch->setPlaceholderText("Search target, URL, browser, or viewport…");
+  filters->addWidget(new QLabel("Show")); filters->addWidget(m_reviewFilter);
+  filters->addWidget(m_reviewSearch, 1);
+  auto *refresh = new QPushButton("Refresh"); filters->addWidget(refresh);
+  layout->addLayout(filters);
   m_compareSplit = new QSplitter(Qt::Horizontal);
   m_compareSplit->setObjectName("compareSplit");
-  m_compareSplit->setChildrenCollapsible(false);
+  m_compareSplit->setChildrenCollapsible(true);
   auto *listPanel = new QWidget;
   auto *listLayout = new QVBoxLayout(listPanel);
   listLayout->setContentsMargins(0, 0, 6, 0);
-  m_comparisons = new QTableWidget(0, 5);
-  m_comparisons->setHorizontalHeaderLabels({"Created", "Status", "Mismatch", "Viewport / Browser", "URL"});
+  m_comparisons = new QTableWidget(0, 4);
+  m_comparisons->setHorizontalHeaderLabels({"Review", "Result", "Change", "Target"});
   m_comparisons->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_comparisons->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_comparisons->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_comparisons->setSelectionMode(QAbstractItemView::ExtendedSelection);
   auto *comparisonHeader = m_comparisons->horizontalHeader();
-  comparisonHeader->setStretchLastSection(true);
-  comparisonHeader->setMinimumSectionSize(90);
-  comparisonHeader->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-  comparisonHeader->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-  comparisonHeader->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-  comparisonHeader->setSectionResizeMode(3, QHeaderView::Interactive);
-  comparisonHeader->setSectionResizeMode(4, QHeaderView::Stretch);
-  m_comparisons->setColumnWidth(3, 190);
-  listPanel->setMinimumWidth(430);
+  for (int column : {0, 1, 2}) comparisonHeader->setSectionResizeMode(column, QHeaderView::ResizeToContents);
+  comparisonHeader->setSectionResizeMode(3, QHeaderView::Stretch);
   listLayout->addWidget(m_comparisons, 1);
-  auto *listButtons = new QHBoxLayout;
-  auto *refresh = new QPushButton("Refresh");
-  auto *history = new QPushButton("Set Baseline in History…");
-  listButtons->addWidget(refresh);
-  listButtons->addWidget(history);
-  listButtons->addStretch();
-  listLayout->addLayout(listButtons);
 
   auto *viewerTabs = new QTabWidget;
   auto *sideBySide = new QWidget;
-  auto *sideLayout = new QHBoxLayout(sideBySide);
+  auto *sideOuter = new QVBoxLayout(sideBySide);
+  auto *viewerControls = new QHBoxLayout;
+  auto *fit = new QPushButton("Fit");
+  auto *actual = new QPushButton("100% analyzed");
+  auto *zoomOut = new QPushButton("−");
+  auto *zoomIn = new QPushButton("+");
+  auto *sync = new QCheckBox("Sync pan and zoom"); sync->setChecked(true);
+  viewerControls->addWidget(fit); viewerControls->addWidget(actual); viewerControls->addWidget(zoomOut); viewerControls->addWidget(zoomIn);
+  viewerControls->addWidget(sync); viewerControls->addStretch();
+  sideOuter->addLayout(viewerControls);
+  auto *sideLayout = new QHBoxLayout;
   auto *baselineGroup = new QGroupBox("Baseline");
   auto *baselineLayout = new QVBoxLayout(baselineGroup);
   m_baselineImage = new ImageCanvas;
@@ -793,6 +1129,7 @@ QWidget *MainWindow::buildComparePage() {
   currentLayout->addWidget(m_currentImage);
   sideLayout->addWidget(baselineGroup, 1);
   sideLayout->addWidget(currentGroup, 1);
+  sideOuter->addLayout(sideLayout, 1);
   viewerTabs->addTab(sideBySide, "Side by side");
 
   auto *overlayPage = new QWidget;
@@ -800,7 +1137,10 @@ QWidget *MainWindow::buildComparePage() {
   m_overlayImage = new OverlayCanvas;
   overlayLayout->addWidget(m_overlayImage, 1);
   auto *opacityRow = new QHBoxLayout;
-  opacityRow->addWidget(new QLabel("Current image opacity"));
+  auto *overlayMode = new QComboBox;
+  overlayMode->addItem("Opacity overlay", false); overlayMode->addItem("Wipe comparison", true);
+  opacityRow->addWidget(overlayMode);
+  opacityRow->addWidget(new QLabel("Baseline ↔ Current"));
   auto *opacity = new QSlider(Qt::Horizontal);
   opacity->setRange(0, 100);
   opacity->setValue(50);
@@ -828,26 +1168,57 @@ QWidget *MainWindow::buildComparePage() {
   baselinePageLayout->addLayout(baselineButtons);
   viewerTabs->addTab(baselinePage, "Baselines");
 
+  auto *detail = new QWidget;
+  auto *detailLayout = new QVBoxLayout(detail);
+  detailLayout->setContentsMargins(0, 0, 0, 0);
+  m_reviewSummary = helperText("Select a result to see what changed and how it compares with the allowed limit.");
+  detailLayout->addWidget(m_reviewSummary);
+  detailLayout->addWidget(viewerTabs, 1);
+  auto *noteRow = new QHBoxLayout;
+  m_reviewNote = new QTextEdit; m_reviewNote->setMaximumHeight(62); m_reviewNote->setPlaceholderText("Optional review note");
+  noteRow->addWidget(m_reviewNote, 1);
+  m_reviewAccept = new QPushButton("Accept & Update Baseline"); m_reviewAccept->setObjectName("primaryAction");
+  m_reviewIgnore = new QPushButton("Ignore This Result");
+  m_reviewReset = new QPushButton("Mark Unreviewed");
+  noteRow->addWidget(m_reviewAccept); noteRow->addWidget(m_reviewIgnore); noteRow->addWidget(m_reviewReset);
+  detailLayout->addLayout(noteRow);
+
   m_compareSplit->addWidget(listPanel);
-  m_compareSplit->addWidget(viewerTabs);
-  m_compareSplit->setStretchFactor(0, 2);
-  m_compareSplit->setStretchFactor(1, 5);
-  m_compareSplit->setSizes({460, 700});
+  m_compareSplit->addWidget(detail);
+  m_compareSplit->setStretchFactor(0, 1);
+  m_compareSplit->setStretchFactor(1, 3);
+  m_compareSplit->setSizes({360, 820});
   layout->addWidget(m_compareSplit, 1);
   connect(m_comparisons, &QTableWidget::itemSelectionChanged, this, &MainWindow::showSelectedComparison);
   connect(opacity, &QSlider::valueChanged, m_overlayImage, &OverlayCanvas::setOpacity);
+  connect(overlayMode, &QComboBox::currentIndexChanged, this, [this, overlayMode] { m_overlayImage->setWipe(overlayMode->currentData().toBool()); });
+  connect(fit, &QPushButton::clicked, this, [this] { m_baselineImage->fitImage(); m_currentImage->fitImage(); });
+  connect(actual, &QPushButton::clicked, this, [this] { m_baselineImage->actualPixels(); m_currentImage->actualPixels(); });
+  connect(zoomIn, &QPushButton::clicked, this, [this] { m_baselineImage->zoomBy(1.2); m_currentImage->zoomBy(1.2); });
+  connect(zoomOut, &QPushButton::clicked, this, [this] { m_baselineImage->zoomBy(1.0 / 1.2); m_currentImage->zoomBy(1.0 / 1.2); });
+  m_baselineImage->setViewChanged([this, sync] { if (sync->isChecked()) m_currentImage->copyViewFrom(m_baselineImage); });
+  m_currentImage->setViewChanged([this, sync] { if (sync->isChecked()) m_baselineImage->copyViewFrom(m_currentImage); });
   connect(refresh, &QPushButton::clicked, this, [this] { refreshComparisons(); refreshBaselines(); });
-  connect(history, &QPushButton::clicked, this, [this] {
-    m_tabs->setCurrentIndex(1);
-  });
+  connect(m_reviewFilter, &QComboBox::currentIndexChanged, this, &MainWindow::applyReviewFilters);
+  connect(m_reviewSearch, &QLineEdit::textChanged, this, &MainWindow::applyReviewFilters);
+  connect(m_reviewAccept, &QPushButton::clicked, this, [this] { reviewSelected("accepted"); });
+  connect(m_reviewIgnore, &QPushButton::clicked, this, [this] { reviewSelected("ignored"); });
+  connect(m_reviewReset, &QPushButton::clicked, this, [this] { reviewSelected("unreviewed"); });
   connect(removeBaseline, &QPushButton::clicked, this, [this] {
     const int row = m_baselines->currentRow();
     if (row < 0) return;
     const QString key = m_baselines->item(row, 0)->data(Qt::UserRole).toString();
-    if (QMessageBox::question(this, "Remove baseline", "Remove the selected baseline reference?") != QMessageBox::Yes) return;
+    if (QMessageBox::question(this, "Remove baseline",
+                              "Remove the selected baseline reference? Historical comparison files will be kept.") != QMessageBox::Yes) return;
     rpcCall("baseline.remove", {{"projectId", m_projectId}, {"comparisonKey", key}},
             [this](const QJsonObject &) { refreshBaselines(); });
   });
+  const QList<QPair<QKeySequence, QString>> shortcuts{{QKeySequence("A"), "accepted"}, {QKeySequence("I"), "ignored"}, {QKeySequence("U"), "unreviewed"}};
+  for (const auto &[sequence, status] : shortcuts) {
+    auto *action = new QAction(page); action->setShortcut(sequence); action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    connect(action, &QAction::triggered, this, [this, status] { if (!m_reviewNote->hasFocus()) reviewSelected(status); });
+    page->addAction(action);
+  }
   return page;
 }
 
@@ -855,8 +1226,8 @@ QWidget *MainWindow::buildSchedulesPage() {
   auto *page = new QWidget;
   auto *layout = new QVBoxLayout(page);
   layout->addWidget(helperText("Schedules run a saved capture profile in the displayed local time zone. Run Now starts the selected schedule immediately without changing its next planned run."));
-  m_schedules = new QTableWidget(0, 6);
-  m_schedules->setHorizontalHeaderLabels({"Name", "Enabled", "Recurrence", "Next run", "Last status", "ID"});
+  m_schedules = new QTableWidget(0, 5);
+  m_schedules->setHorizontalHeaderLabels({"Name", "Enabled", "Recurrence", "Next run", "Last status"});
   m_schedules->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_schedules->setSelectionMode(QAbstractItemView::SingleSelection);
   m_schedules->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -972,6 +1343,15 @@ QWidget *MainWindow::buildSettingsPage() {
   runtimeForm->addRow("Simultaneous jobs", m_maximumJobs);
   runtimeForm->addRow(QString(), saveRuntime);
   layout->addWidget(runtimeGroup);
+  auto *interfaceGroup = new QGroupBox("Interface");
+  auto *interfaceLayout = new QVBoxLayout(interfaceGroup);
+  interfaceLayout->addWidget(helperText("Choose the order of actions in the adaptive top bar and which actions always stay in More. Items that do not fit also move into More automatically."));
+  auto *customizeToolbar = new QPushButton("Customize Toolbar…");
+  auto *resetLayout = new QPushButton("Reset Saved Layout");
+  auto *interfaceActions = new QHBoxLayout;
+  interfaceActions->addWidget(customizeToolbar); interfaceActions->addWidget(resetLayout); interfaceActions->addStretch();
+  interfaceLayout->addLayout(interfaceActions);
+  layout->addWidget(interfaceGroup);
   layout->addStretch();
   connect(m_allowLocalhost, &QCheckBox::toggled, this, [this](bool allowed) {
     if (!m_rpc.isConnected() || m_projectId.isEmpty()) return;
@@ -1013,6 +1393,15 @@ QWidget *MainWindow::buildSettingsPage() {
       statusBar()->showMessage("Runtime settings saved", 3000);
     });
   });
+  connect(customizeToolbar, &QPushButton::clicked, this, &MainWindow::openToolbarCustomizer);
+  connect(resetLayout, &QPushButton::clicked, this, [this] {
+    QSettings settings("CyberBrand", "CyberSnapper");
+    settings.remove("ui/vNext");
+    if (m_captureColumns) m_captureColumns->setSizes({620, 500});
+    if (m_captureVertical) m_captureVertical->setSizes({500, 120});
+    if (m_compareSplit) m_compareSplit->setSizes({360, 820});
+    resize(1180, 780); statusBar()->showMessage("Layout reset", 3000);
+  });
   const auto install = [this](const QString &engine) {
     rpcCall("browser.install", {{"engine", engine}}, [this, engine](const QJsonObject &) {
       statusBar()->showMessage("Installing " + engine + " in the background…", 5000);
@@ -1039,13 +1428,16 @@ QWidget *MainWindow::buildHelpPage() {
     <h2>Quick start</h2>
     <ol>
       <li>Choose or create a <b>Project</b>. A project keeps profiles, history, schedules, baselines, and files together.</li>
-      <li>On <b>Capture</b>, enter one public HTTP or HTTPS URL per line.</li>
+      <li>Create a reusable <b>Target Set</b>, or use one-time HTTP or HTTPS URLs on Capture.</li>
       <li>Choose the viewports, browsers, formats, and capture mode you need.</li>
       <li>Select <b>Start Capture</b>. Progress appears under Active jobs and finished files appear in History.</li>
     </ol>
 
     <h2>Navigation</h2>
-    <p>The single header contains project commands and every application section. Use Ctrl+1 through Ctrl+5 for Capture through Settings, or F1 for this Help page.</p>
+    <p>The adaptive header contains project commands and application sections. Actions that do not fit move into More. Settings → Interface lets you reorder the toolbar and choose which actions always live in More. F1 opens Help.</p>
+
+    <h2>Dashboard and target sets</h2>
+    <p><b>Dashboard</b> opens with each project and summarizes pending reviews, failed runs, active work, schedules, and recent results. A <b>Target Set</b> chooses what pages to capture; a profile chooses how to capture them. Target sets support labels, ordering, enable/disable, paste, and TXT/CSV import and export.</p>
 
     <h2>Profiles</h2>
     <p>A profile is a reusable set of capture options. The Capture page marks unsaved edits and offers Save, Revert, and Save As. <b>Manage</b> opens the complete tabbed editor for viewports, output naming, collision behavior, timeouts, compression, PDF, blocking, and comparison settings.</p>
@@ -1069,7 +1461,7 @@ QWidget *MainWindow::buildHelpPage() {
     <p>The sequence is: load the page, wait After load, optionally auto-scroll, wait After scroll, hide requested elements and common overlays, wait Before capture, then capture. <b>Parallel pages</b> controls browser pages inside one job; Settings → Simultaneous jobs controls separate jobs.</p>
 
     <h2>Visual comparison</h2>
-    <p>Select a non-PDF file in History and choose <b>Set as Baseline</b>. Enable comparison in a capture profile. Future captures are matched by URL, browser, viewport, mode, and format. Compare provides side-by-side, adjustable overlay, generated-difference, and baseline-manager views.</p>
+    <p>Select a non-PDF file in History and choose <b>Set as Baseline</b>, or accept a missing-baseline item in Review. Enable comparison in a capture profile. Future captures are matched by URL, browser, viewport, mode, and format. Review provides triage, notes, batch actions, synchronized side-by-side inspection, overlay, wipe, generated difference, and baseline management.</p>
     <p><b>Pixel sensitivity</b> decides how large a color change must be before a pixel counts as changed. <b>Allowed difference</b> is the percentage of changed pixels permitted before the result is marked different. Dynamic-element selectors are hidden in comparison-enabled captures to stabilize timestamps, ads, and rotating content.</p>
 
     <h2>History, schedules, and settings</h2>
@@ -1096,46 +1488,110 @@ void MainWindow::showAbout() {
           .arg(QCoreApplication::applicationVersion(), QString::fromLatin1(qVersion())));
 }
 
+void MainWindow::applyToolbarPreferences() {
+  if (!m_toolbar || !m_moreMenu) return;
+  const QStringList defaults{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings", "help", "about", "customize"};
+  QSettings settings("CyberBrand", "CyberSnapper");
+  QStringList order = settings.value("ui/toolbarOrder", defaults).toStringList();
+  for (const QString &key : defaults) if (!order.contains(key)) order.append(key);
+  QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}).toStringList();
+  for (auto *action : m_toolbarActions) m_toolbar->removeAction(action);
+  if (m_toolbarSpacerAction) m_toolbar->removeAction(m_toolbarSpacerAction);
+  if (m_moreWidgetAction) m_toolbar->removeAction(m_moreWidgetAction);
+  m_moreMenu->clear();
+  for (const QString &key : order) {
+    QAction *action = m_toolbarActions.value(key);
+    if (!action) continue;
+    if (pinned.contains(key)) m_toolbar->addAction(action);
+    else m_moreMenu->addAction(action);
+  }
+  m_toolbar->addAction(m_toolbarSpacerAction);
+  m_toolbar->addAction(m_moreWidgetAction);
+}
+
+void MainWindow::openToolbarCustomizer() {
+  const QStringList defaults{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings", "help", "about", "customize"};
+  QSettings settings("CyberBrand", "CyberSnapper");
+  QStringList order = settings.value("ui/toolbarOrder", defaults).toStringList();
+  for (const QString &key : defaults) if (!order.contains(key)) order.append(key);
+  const QStringList pinned = settings.value("ui/toolbarPinned", QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}).toStringList();
+  QDialog dialog(this); dialog.setWindowTitle("Customize Toolbar"); dialog.resize(460, 560);
+  auto *layout = new QVBoxLayout(&dialog);
+  layout->addWidget(helperText("Drag actions into your preferred order. Checked actions are requested on the toolbar; unchecked actions always appear under More. Requested actions still move into the native overflow when the window is narrow."));
+  auto *tree = new QTreeWidget; tree->setHeaderLabels({"Show on toolbar", "Action"}); tree->setRootIsDecorated(false);
+  tree->setDragDropMode(QAbstractItemView::InternalMove); tree->setDefaultDropAction(Qt::MoveAction);
+  for (const QString &key : order) {
+    QAction *action = m_toolbarActions.value(key); if (!action) continue;
+    auto *row = new QTreeWidgetItem({QString{}, action->text()}); row->setData(0, Qt::UserRole, key);
+    row->setCheckState(0, pinned.contains(key) ? Qt::Checked : Qt::Unchecked);
+    row->setFlags(row->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsUserCheckable);
+    tree->addTopLevelItem(row);
+  }
+  tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents); tree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+  layout->addWidget(tree, 1);
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults);
+  layout->addWidget(buttons);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dialog, [&] {
+    tree->clear();
+    for (const QString &key : defaults) {
+      QAction *action = m_toolbarActions.value(key); if (!action) continue;
+      auto *row = new QTreeWidgetItem({QString{}, action->text()}); row->setData(0, Qt::UserRole, key);
+      row->setCheckState(0, QStringList{"new", "open", "refresh", "dashboard", "capture", "review", "history", "targets", "schedules", "settings"}.contains(key) ? Qt::Checked : Qt::Unchecked);
+      row->setFlags(row->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsUserCheckable);
+      tree->addTopLevelItem(row);
+    }
+  });
+  if (dialog.exec() != QDialog::Accepted) return;
+  QStringList savedOrder; QStringList savedPinned;
+  for (int row = 0; row < tree->topLevelItemCount(); ++row) {
+    const QString key = tree->topLevelItem(row)->data(0, Qt::UserRole).toString(); savedOrder.append(key);
+    if (tree->topLevelItem(row)->checkState(0) == Qt::Checked) savedPinned.append(key);
+  }
+  settings.setValue("ui/toolbarOrder", savedOrder); settings.setValue("ui/toolbarPinned", savedPinned);
+  applyToolbarPreferences();
+}
+
 void MainWindow::restoreUiState() {
   QSettings settings("CyberBrand", "CyberSnapper");
-  restoreGeometry(settings.value("ui/geometry").toByteArray());
-  restoreState(settings.value("ui/windowState").toByteArray());
-  if (m_tabs) m_tabs->setCurrentIndex(qBound(0, settings.value("ui/mainTab", 0).toInt(), m_tabs->count() - 1));
+  restoreGeometry(settings.value("ui/vNext/geometry").toByteArray());
+  restoreState(settings.value("ui/vNext/windowState").toByteArray());
+  if (m_tabs) m_tabs->setCurrentIndex(0);
   const auto restoreSplitter = [&settings](QSplitter *splitter, const char *key) {
     const QByteArray state = settings.value(QString::fromLatin1(key)).toByteArray();
     if (splitter && !state.isEmpty()) splitter->restoreState(state);
   };
-  restoreSplitter(m_captureVertical, "ui/captureVertical");
-  restoreSplitter(m_captureColumns, "ui/captureColumns");
-  restoreSplitter(m_historySplit, "ui/historySplit");
-  restoreSplitter(m_compareSplit, "ui/compareSplit");
+  restoreSplitter(m_captureVertical, "ui/vNext/captureVertical");
+  restoreSplitter(m_captureColumns, "ui/vNext/captureColumns");
+  restoreSplitter(m_historySplit, "ui/vNext/historySplit");
+  restoreSplitter(m_compareSplit, "ui/vNext/reviewSplit");
   const auto restoreHeader = [&settings](QTableWidget *table, const char *key) {
     const QByteArray state = settings.value(QString::fromLatin1(key)).toByteArray();
     if (table && !state.isEmpty()) table->horizontalHeader()->restoreState(state);
   };
-  restoreHeader(m_history, "ui/historyHeader");
-  restoreHeader(m_artifacts, "ui/artifactsHeader");
-  restoreHeader(m_comparisons, "ui/comparisonsHeader");
+  restoreHeader(m_history, "ui/vNext/historyHeader");
+  restoreHeader(m_artifacts, "ui/vNext/artifactsHeader");
+  restoreHeader(m_comparisons, "ui/vNext/reviewHeader");
 }
 
 void MainWindow::saveUiState() const {
   QSettings settings("CyberBrand", "CyberSnapper");
-  settings.setValue("ui/geometry", saveGeometry());
-  settings.setValue("ui/windowState", saveState());
-  if (m_tabs) settings.setValue("ui/mainTab", m_tabs->currentIndex());
+  settings.setValue("ui/vNext/geometry", saveGeometry());
+  settings.setValue("ui/vNext/windowState", saveState());
   const auto saveSplitter = [&settings](QSplitter *splitter, const char *key) {
     if (splitter) settings.setValue(QString::fromLatin1(key), splitter->saveState());
   };
-  saveSplitter(m_captureVertical, "ui/captureVertical");
-  saveSplitter(m_captureColumns, "ui/captureColumns");
-  saveSplitter(m_historySplit, "ui/historySplit");
-  saveSplitter(m_compareSplit, "ui/compareSplit");
+  saveSplitter(m_captureVertical, "ui/vNext/captureVertical");
+  saveSplitter(m_captureColumns, "ui/vNext/captureColumns");
+  saveSplitter(m_historySplit, "ui/vNext/historySplit");
+  saveSplitter(m_compareSplit, "ui/vNext/reviewSplit");
   const auto saveHeader = [&settings](QTableWidget *table, const char *key) {
     if (table) settings.setValue(QString::fromLatin1(key), table->horizontalHeader()->saveState());
   };
-  saveHeader(m_history, "ui/historyHeader");
-  saveHeader(m_artifacts, "ui/artifactsHeader");
-  saveHeader(m_comparisons, "ui/comparisonsHeader");
+  saveHeader(m_history, "ui/vNext/historyHeader");
+  saveHeader(m_artifacts, "ui/vNext/artifactsHeader");
+  saveHeader(m_comparisons, "ui/vNext/reviewHeader");
 }
 
 void MainWindow::showFirstRun() {
@@ -1188,6 +1644,7 @@ void MainWindow::scheduleRefresh() {
     refreshSchedules();
     refreshComparisons();
     refreshBaselines();
+    refreshDashboard();
   });
 }
 
@@ -1213,11 +1670,111 @@ void MainWindow::refreshProjects() {
     m_projectCombo->setCurrentIndex(selected);
     m_projectCombo->blockSignals(false);
     refreshProfiles();
+    refreshTargetSets();
     refreshJobs();
     refreshSchedules();
     refreshComparisons();
     refreshBaselines();
     refreshSettings();
+    refreshDashboard();
+  });
+}
+
+void MainWindow::refreshDashboard() {
+  if (m_projectId.isEmpty() || !m_dashboardNeedsReview) return;
+  rpcCall("dashboard.get", {{"projectId", m_projectId}}, [this](const QJsonObject &result) {
+    const QJsonObject dashboard = result.value("dashboard").toObject();
+    m_dashboardNeedsReview->setText(QString::number(dashboard.value("needsReview").toInt()));
+    m_dashboardFailedRuns->setText(QString::number(dashboard.value("failedRuns").toInt()));
+    m_dashboardActiveJobs->setText(QString::number(dashboard.value("activeJobs").toInt()));
+    const QJsonObject next = dashboard.value("nextSchedule").toObject();
+    m_dashboardNextSchedule->setText(next.isEmpty() ? "None" : next.value("name").toString() + "\n" + displayTime(next.value("nextRun").toString()));
+    const QJsonArray jobs = dashboard.value("recentJobs").toArray();
+    m_dashboardRecent->setRowCount(jobs.size());
+    for (int row = 0; row < jobs.size(); ++row) {
+      const QJsonObject job = jobs.at(row).toObject();
+      m_dashboardRecent->setItem(row, 0, item(displayTime(job.value("createdAt").toString()), job.value("id").toString()));
+      m_dashboardRecent->setItem(row, 1, item(job.value("status").toString()));
+      m_dashboardRecent->setItem(row, 2, item(QString::number(job.value("completedArtifacts").toInt() + job.value("failedArtifacts").toInt())));
+    }
+    const QJsonArray reviews = dashboard.value("recentReviews").toArray();
+    m_dashboardReview->setRowCount(reviews.size());
+    for (int row = 0; row < reviews.size(); ++row) {
+      const QJsonObject review = reviews.at(row).toObject();
+      const QString target = review.value("targetName").toString().isEmpty() ? review.value("url").toString() : review.value("targetName").toString();
+      m_dashboardReview->setItem(row, 0, item(target, review.value("id").toString()));
+      m_dashboardReview->setItem(row, 1, item(QString(review.value("status").toString()).replace('_', ' ')));
+      m_dashboardReview->setItem(row, 2, item(displayTime(review.value("createdAt").toString())));
+    }
+  });
+}
+
+void MainWindow::refreshTargetSets() {
+  if (m_projectId.isEmpty() || !m_targetSetList) return;
+  rpcCall("targetSet.list", {{"projectId", m_projectId}}, [this](const QJsonObject &result) {
+    const QString editing = m_targetSetList->property("editingId").toString();
+    const QString capture = m_captureTargetSet->currentData().toString();
+    m_targetSetsCache = result.value("targetSets").toArray();
+    m_targetSetList->blockSignals(true); m_targetSetList->clear();
+    m_captureTargetSet->blockSignals(true); m_captureTargetSet->clear();
+    int listSelection = -1;
+    for (const auto &value : m_targetSetsCache) {
+      const QJsonObject set = value.toObject();
+      const QString id = set.value("id").toString();
+      auto *entry = new QListWidgetItem(QStringLiteral("%1\n%2 enabled").arg(set.value("name").toString()).arg(set.value("enabledCount").toInt()));
+      entry->setData(Qt::UserRole, id); entry->setToolTip(set.value("description").toString());
+      m_targetSetList->addItem(entry);
+      m_captureTargetSet->addItem(set.value("name").toString(), id);
+      if (id == editing) listSelection = m_targetSetList->count() - 1;
+    }
+    if (listSelection >= 0) m_targetSetList->setCurrentRow(listSelection);
+    m_targetSetList->blockSignals(false);
+    const int captureIndex = m_captureTargetSet->findData(capture);
+    if (captureIndex >= 0) m_captureTargetSet->setCurrentIndex(captureIndex);
+    m_captureTargetSet->blockSignals(false);
+    if (m_targetSetList->currentRow() < 0 && m_targetSetList->count() > 0) m_targetSetList->setCurrentRow(0);
+    updateCapturePlan();
+  });
+}
+
+void MainWindow::loadSelectedTargetSet() {
+  if (!m_targetSetList) return;
+  const auto selected = m_targetSetList->selectedItems();
+  const QString id = selected.isEmpty() ? m_targetSetList->property("editingId").toString()
+                                        : selected.first()->data(Qt::UserRole).toString();
+  if (id.isEmpty()) return;
+  rpcCall("targetSet.get", {{"projectId", m_projectId}, {"targetSetId", id}}, [this](const QJsonObject &result) {
+    const QJsonObject set = result.value("targetSet").toObject();
+    m_targetSetList->setProperty("editingId", set.value("id").toString());
+    m_targetSetName->setText(set.value("name").toString());
+    m_targetSetDescription->setPlainText(set.value("description").toString());
+    const QJsonArray targets = set.value("targets").toArray();
+    m_targetTable->setRowCount(targets.size());
+    for (int row = 0; row < targets.size(); ++row) {
+      const QJsonObject target = targets.at(row).toObject();
+      auto *use = item(QString(), target.value("id").toString()); use->setCheckState(target.value("enabled").toBool(true) ? Qt::Checked : Qt::Unchecked);
+      m_targetTable->setItem(row, 0, use); m_targetTable->setItem(row, 1, item(target.value("label").toString()));
+      m_targetTable->setItem(row, 2, item(target.value("url").toString()));
+    }
+  });
+}
+
+void MainWindow::saveTargetSet() {
+  const QString name = m_targetSetName->text().trimmed();
+  if (name.isEmpty()) { QMessageBox::information(this, "Target set needs attention", "Enter a target set name."); return; }
+  QJsonArray targets;
+  for (int row = 0; row < m_targetTable->rowCount(); ++row) {
+    const QString url = m_targetTable->item(row, 2) ? m_targetTable->item(row, 2)->text().trimmed() : QString{};
+    if (url.isEmpty()) continue;
+    targets.append(QJsonObject{{"id", m_targetTable->item(row, 0)->data(Qt::UserRole).toString()},
+                               {"label", m_targetTable->item(row, 1)->text().trimmed()}, {"url", url},
+                               {"enabled", m_targetTable->item(row, 0)->checkState() == Qt::Checked}});
+  }
+  QJsonObject targetSet{{"id", m_targetSetList->property("editingId").toString()}, {"name", name},
+                        {"description", m_targetSetDescription->toPlainText()}, {"targets", targets}};
+  rpcCall("targetSet.save", {{"projectId", m_projectId}, {"targetSet", targetSet}}, [this](const QJsonObject &result) {
+    m_targetSetList->setProperty("editingId", result.value("targetSet").toObject().value("id").toString());
+    statusBar()->showMessage("Target set saved", 3000); refreshTargetSets(); refreshDashboard();
   });
 }
 
@@ -1254,6 +1811,8 @@ void MainWindow::refreshJobs() {
         m_activeJobs->addTopLevelItem(active);
       }
     }
+    if (m_activeJobsGroup) m_activeJobsGroup->setVisible(m_activeJobs->topLevelItemCount() > 0);
+    if (m_cancelActiveJob) m_cancelActiveJob->setEnabled(!m_activeJobs->selectedItems().isEmpty());
     applyHistoryFilters();
   });
 }
@@ -1284,7 +1843,6 @@ void MainWindow::applyHistoryFilters() {
     m_history->setItem(row, 2, item(jobSource));
     m_history->setItem(row, 3, item(QString::number(job.value("completedArtifacts").toInt())));
     m_history->setItem(row, 4, item(QString::number(job.value("failedArtifacts").toInt())));
-    m_history->setItem(row, 5, item(id));
     if (id == selected) m_history->selectRow(row);
   }
 }
@@ -1292,21 +1850,44 @@ void MainWindow::applyHistoryFilters() {
 void MainWindow::refreshComparisons() {
   if (m_projectId.isEmpty() || !m_comparisons) return;
   rpcCall("comparison.list", {{"projectId", m_projectId}}, [this](const QJsonObject &result) {
+    const QString selected = m_comparisons->currentRow() >= 0
+        ? m_comparisons->item(m_comparisons->currentRow(), 0)->data(Qt::UserRole).toString() : QString{};
     m_comparisonsCache = result.value("comparisons").toArray();
     m_comparisons->setRowCount(m_comparisonsCache.size());
     for (int row = 0; row < m_comparisonsCache.size(); ++row) {
       const QJsonObject comparison = m_comparisonsCache.at(row).toObject();
       const QString id = comparison.value("id").toString();
-      const QStringList parts = comparison.value("comparisonKey").toString().split('|');
-      const QString target = parts.size() >= 3 ? parts.at(2) + " / " + parts.at(1) : "Unknown target";
-      const QString url = parts.isEmpty() ? QString{} : parts.first();
-      m_comparisons->setItem(row, 0, item(displayTime(comparison.value("createdAt").toString()), id));
-      m_comparisons->setItem(row, 1, item(comparison.value("status").toString()));
-      m_comparisons->setItem(row, 2, item(QString::number(comparison.value("mismatchRatio").toDouble() * 100.0, 'f', 3) + "%"));
-      m_comparisons->setItem(row, 3, item(target));
-      auto *urlItem = item(url); urlItem->setToolTip(url); m_comparisons->setItem(row, 4, urlItem);
+      const QString detection = comparison.value("status").toString();
+      const QJsonValue reviewValue = comparison.value("review");
+      const QString review = reviewValue.isNull() ? "Passed" : reviewValue.toObject().value("status").toString("unreviewed");
+      const double percent = comparison.value("mismatchRatio").toDouble() * 100.0;
+      const QString target = comparison.value("targetName").toString().isEmpty()
+          ? comparison.value("url").toString() : comparison.value("targetName").toString();
+      const QString variant = comparison.value("viewportName").toString() + " · " + comparison.value("engine").toString();
+      m_comparisons->setItem(row, 0, item(review, id));
+      m_comparisons->setItem(row, 1, item(detection == "dimensions_changed" ? "Dimensions changed" : QString(detection).replace('_', ' ')));
+      m_comparisons->setItem(row, 2, item(detection == "missing_baseline" ? "No baseline" : QString::number(percent, 'f', 2) + "%"));
+      auto *targetItem = item(target); targetItem->setToolTip(comparison.value("url").toString()); m_comparisons->setItem(row, 3, targetItem);
+      targetItem->setToolTip(comparison.value("url").toString() + "\n" + variant + "\n" + displayTime(comparison.value("createdAt").toString()));
+      if (id == selected) m_comparisons->selectRow(row);
     }
+    applyReviewFilters();
   });
+}
+
+void MainWindow::applyReviewFilters() {
+  if (!m_comparisons) return;
+  const QString wanted = m_reviewFilter ? m_reviewFilter->currentData().toString() : "all";
+  const QString search = m_reviewSearch ? m_reviewSearch->text().trimmed() : QString{};
+  for (int row = 0; row < m_comparisonsCache.size(); ++row) {
+    const QJsonObject comparison = m_comparisonsCache.at(row).toObject();
+    const QJsonValue reviewValue = comparison.value("review");
+    const QString review = reviewValue.isNull() ? QString{} : reviewValue.toObject().value("status").toString("unreviewed");
+    const QString haystack = comparison.value("targetName").toString() + " " + comparison.value("url").toString() + " " +
+        comparison.value("engine").toString() + " " + comparison.value("viewportName").toString() + " " + comparison.value("status").toString();
+    const bool stateMatches = wanted == "all" || (wanted == "unreviewed" && review == "unreviewed") || review == wanted;
+    m_comparisons->setRowHidden(row, !stateMatches || (!search.isEmpty() && !haystack.contains(search, Qt::CaseInsensitive)));
+  }
 }
 
 void MainWindow::refreshBaselines() {
@@ -1332,6 +1913,23 @@ void MainWindow::showSelectedComparison() {
   const int row = m_comparisons ? m_comparisons->currentRow() : -1;
   if (row < 0) return;
   const QString id = m_comparisons->item(row, 0)->data(Qt::UserRole).toString();
+  QJsonObject selected;
+  for (const auto &value : m_comparisonsCache) if (value.toObject().value("id").toString() == id) { selected = value.toObject(); break; }
+  const QString detection = selected.value("status").toString();
+  const double changed = selected.value("mismatchRatio").toDouble() * 100.0;
+  const qint64 mismatched = selected.value("mismatchedPixels").toVariant().toLongLong();
+  const qint64 analyzed = selected.value("analyzedPixels").toVariant().toLongLong();
+  QString sentence;
+  if (detection == "missing_baseline") sentence = "No baseline exists yet. Accept this capture to establish one.";
+  else if (detection == "error") sentence = "Comparison failed: " + selected.value("error").toString("Unknown comparison error");
+  else sentence = QStringLiteral("%1% of analyzed pixels changed (%2 of %3) · %4")
+      .arg(changed, 0, 'f', 2).arg(mismatched).arg(analyzed)
+      .arg(detection == "matched" ? "Within the allowed limit" : detection == "dimensions_changed" ? "Image dimensions changed" : "Change detected");
+  m_reviewSummary->setText(sentence);
+  const QJsonObject review = selected.value("review").toObject();
+  m_reviewNote->blockSignals(true); m_reviewNote->setPlainText(review.value("note").toString()); m_reviewNote->blockSignals(false);
+  const bool acceptable = QStringList{"changed", "dimensions_changed", "missing_baseline"}.contains(detection);
+  m_reviewAccept->setEnabled(acceptable); m_reviewIgnore->setEnabled(detection != "matched"); m_reviewReset->setEnabled(detection != "matched");
   rpcCall("comparison.resolve", {{"projectId", m_projectId}, {"comparisonId", id}}, [this](const QJsonObject &result) {
     const QString baseline = result.value("baselinePath").toString();
     const QString current = result.value("currentPath").toString();
@@ -1340,6 +1938,38 @@ void MainWindow::showSelectedComparison() {
     m_currentImage->setImage(current);
     m_overlayImage->setImages(baseline, current);
     m_diffImage->setImage(diff);
+  });
+}
+
+void MainWindow::reviewSelected(const QString &status) {
+  if (!m_comparisons) return;
+  QSet<int> rows;
+  for (const auto &range : m_comparisons->selectedRanges()) for (int row = range.topRow(); row <= range.bottomRow(); ++row) if (!m_comparisons->isRowHidden(row)) rows.insert(row);
+  if (rows.isEmpty() && m_comparisons->currentRow() >= 0) rows.insert(m_comparisons->currentRow());
+  if (rows.isEmpty()) return;
+  if (status == "accepted" && rows.size() > 1 && QMessageBox::question(this, "Accept visual changes",
+      QStringLiteral("Accept %1 results and update their baselines?").arg(rows.size())) != QMessageBox::Yes) return;
+  QJsonArray items;
+  for (int row : rows) {
+    const QString id = m_comparisons->item(row, 0)->data(Qt::UserRole).toString();
+    for (const auto &value : m_comparisonsCache) {
+      const QJsonObject comparison = value.toObject(); if (comparison.value("id").toString() != id) continue;
+      const int revision = comparison.value("review").toObject().value("revision").toInt();
+      items.append(QJsonObject{{"comparisonId", id}, {"status", status},
+                               {"note", rows.size() == 1 ? m_reviewNote->toPlainText() : QString{}},
+                               {"expectedRevision", revision}});
+      break;
+    }
+  }
+  rpcCall(items.size() == 1 ? "comparison.review.set" : "comparison.review.batch",
+          items.size() == 1 ? QJsonObject{{"projectId", m_projectId}, {"comparisonId", items.first().toObject().value("comparisonId")},
+                                         {"status", status}, {"note", items.first().toObject().value("note")},
+                                         {"expectedRevision", items.first().toObject().value("expectedRevision")}}
+                            : QJsonObject{{"projectId", m_projectId}, {"items", items}},
+          [this](const QJsonObject &result) {
+    const int failures = result.value("failures").toArray().size();
+    statusBar()->showMessage(failures ? QStringLiteral("Review updated with %1 conflict(s)").arg(failures) : "Review updated", 4000);
+    refreshComparisons(); refreshBaselines(); refreshDashboard();
   });
 }
 
@@ -1361,7 +1991,6 @@ void MainWindow::refreshSchedules() {
       m_schedules->setItem(row, 2, item(recurrenceLabel));
       m_schedules->setItem(row, 3, item(displayTime(schedule.value("nextRun").toString())));
       m_schedules->setItem(row, 4, item(schedule.value("lastStatus").toString()));
-      m_schedules->setItem(row, 5, item(id));
     }
   });
 }
@@ -1559,7 +2188,9 @@ void MainWindow::updateCapturePlan() {
   if (!m_capturePlan || !m_startCapture || !m_viewports) return;
   QStringList urls;
   QStringList errors;
+  const bool setMode = m_targetSource && m_targetSource->currentData().toString() == "targetSet";
   for (const QString &line : m_urls->toPlainText().split('\n')) {
+    if (setMode) break;
     const QString value = line.trimmed();
     if (value.isEmpty()) continue;
     urls.append(value);
@@ -1573,6 +2204,12 @@ void MainWindow::updateCapturePlan() {
       errors.append("Enable localhost access in Settings for local development URLs");
     }
   }
+  int targetCount = urls.size();
+  if (setMode) {
+    const QString id = m_captureTargetSet->currentData().toString();
+    for (const auto &value : m_targetSetsCache) if (value.toObject().value("id").toString() == id) targetCount = value.toObject().value("enabledCount").toInt();
+    if (id.isEmpty() || targetCount == 0) errors.append("Choose a target set with at least one enabled page");
+  }
   int enabledViewports = 0;
   bool mobileWithFirefox = false;
   for (int row = 0; row < m_viewports->rowCount(); ++row) {
@@ -1583,7 +2220,7 @@ void MainWindow::updateCapturePlan() {
   }
   const QStringList engines = checkedValues({{m_chromium, "chromium"}, {m_firefox, "firefox"}, {m_webkit, "webkit"}});
   const QStringList formats = checkedValues({{m_png, "png"}, {m_webp, "webp"}, {m_avif, "avif"}, {m_pdf, "pdf"}});
-  if (urls.isEmpty()) errors.append("Enter at least one URL");
+  if (!setMode && urls.isEmpty()) errors.append("Enter at least one URL");
   if (enabledViewports == 0) errors.append("Enable at least one viewport");
   if (engines.isEmpty()) errors.append("Select at least one browser");
   if (formats.isEmpty()) errors.append("Select at least one format");
@@ -1600,11 +2237,11 @@ void MainWindow::updateCapturePlan() {
   for (const QString &engine : engines) {
     for (const QString &format : formats) if (format != "pdf" || engine == "chromium") ++formatsAcrossEngines;
   }
-  const qint64 files = urls.size() * enabledViewports * formatsAcrossEngines;
+  const qint64 files = targetCount * enabledViewports * formatsAcrossEngines;
   if (files > 10000) errors.append("The 10,000-file job limit is exceeded");
   errors.removeDuplicates();
-  QString summary = QStringLiteral("Plan: %1 URL%2 · %3 viewport%4 · %5 browser%6 · %7 output file%8")
-      .arg(urls.size()).arg(urls.size() == 1 ? "" : "s")
+  QString summary = QStringLiteral("Plan: %1 page%2 × %3 viewport%4 × %5 browser%6 = %7 output file%8")
+      .arg(targetCount).arg(targetCount == 1 ? "" : "s")
       .arg(enabledViewports).arg(enabledViewports == 1 ? "" : "s")
       .arg(engines.size()).arg(engines.size() == 1 ? "" : "s")
       .arg(files).arg(files == 1 ? "" : "s");
@@ -1821,11 +2458,13 @@ void MainWindow::submitCapture() {
     return;
   }
   QStringList urls;
+  const bool setMode = m_targetSource->currentData().toString() == "targetSet";
   for (const auto &line : m_urls->toPlainText().split('\n')) {
+    if (setMode) break;
     const QString trimmed = line.trimmed();
     if (!trimmed.isEmpty()) urls.append(trimmed);
   }
-  if (urls.isEmpty()) {
+  if (!setMode && urls.isEmpty()) {
     QMessageBox::information(this, "URLs required", "Enter at least one URL.");
     return;
   }
@@ -1834,7 +2473,8 @@ void MainWindow::submitCapture() {
     return;
   }
   rpcCall("job.submit", {{"projectId", m_projectId}, {"profileId", m_profileCombo->currentData().toString()},
-                          {"urls", stringArray(urls)}, {"profile", captureProfile()}, {"source", "gui"}},
+                          {"urls", stringArray(urls)}, {"targetSetId", setMode ? m_captureTargetSet->currentData().toString() : QString{}},
+                          {"profile", captureProfile()}, {"source", "gui"}},
           [this](const QJsonObject &result) {
     statusBar()->showMessage("Capture queued: " + result.value("jobId").toString().left(8), 5000);
     refreshJobs();
@@ -1934,6 +2574,15 @@ void MainWindow::editSchedule(const QJsonObject &existing) {
   for (const auto &value : m_profiles) profile->addItem(value.toObject().value("name").toString(), value.toObject().value("id").toString());
   const int profileIndex = profile->findData(existing.value("profileId").toString(m_profileCombo->currentData().toString()));
   if (profileIndex >= 0) profile->setCurrentIndex(profileIndex);
+  auto *targetSource = new QComboBox;
+  targetSource->addItem("One-time URLs", "urls"); targetSource->addItem("Saved target set", "targetSet");
+  auto *targetSet = new QComboBox;
+  for (const auto &value : m_targetSetsCache) targetSet->addItem(value.toObject().value("name").toString(), value.toObject().value("id").toString());
+  const QString oldTargetSetId = existing.value("targetSetId").toString();
+  if (!oldTargetSetId.isEmpty()) {
+    targetSource->setCurrentIndex(targetSource->findData("targetSet"));
+    const int setIndex = targetSet->findData(oldTargetSetId); if (setIndex >= 0) targetSet->setCurrentIndex(setIndex);
+  }
   QString existingUrls;
   if (existing.isEmpty()) existingUrls = m_urls->toPlainText();
   else { QStringList values; for (const auto &value : existing.value("urls").toArray()) values.append(value.toString()); existingUrls = values.join('\n'); }
@@ -1971,7 +2620,8 @@ void MainWindow::editSchedule(const QJsonObject &existing) {
   const QString oldZone = oldRecurrence.value("timeZone").toString(QString::fromUtf8(QTimeZone::systemTimeZoneId()));
   const int zoneIndex = zone->findData(oldZone); if (zoneIndex >= 0) zone->setCurrentIndex(zoneIndex); else zone->setCurrentText(oldZone);
   form->addRow("Name", name); form->addRow(QString(), enabled); form->addRow("Profile", profile);
-  form->addRow("URLs", urls); form->addRow("Recurrence", type); form->addRow("Run once at", once);
+  form->addRow("Target source", targetSource); form->addRow("Target set", targetSet); form->addRow("URLs", urls);
+  form->addRow("Recurrence", type); form->addRow("Run once at", once);
   form->addRow("Time", time); form->addRow("Days", weekdays); form->addRow("Day of month", monthDay);
   form->addRow("Interval", interval); form->addRow("Time zone", zone);
   layout->addLayout(form);
@@ -1985,14 +2635,18 @@ void MainWindow::editSchedule(const QJsonObject &existing) {
     once->setEnabled(selected == "once"); time->setEnabled(QStringList{"daily", "weekly", "monthly"}.contains(selected));
     weekdays->setEnabled(selected == "weekly"); monthDay->setEnabled(selected == "monthly");
     interval->setEnabled(selected == "interval"); zone->setEnabled(selected != "interval");
+    const bool setMode = targetSource->currentData().toString() == "targetSet";
+    targetSet->setEnabled(setMode); urls->setEnabled(!setMode);
   };
   connect(type, &QComboBox::currentIndexChanged, &dialog, updateFields);
+  connect(targetSource, &QComboBox::currentIndexChanged, &dialog, updateFields);
   updateFields();
   if (dialog.exec() != QDialog::Accepted) return;
   QStringList urlList;
   for (const auto &line : urls->toPlainText().split('\n')) if (!line.trimmed().isEmpty()) urlList.append(line.trimmed());
-  if (name->text().trimmed().isEmpty() || urlList.isEmpty()) {
-    QMessageBox::information(this, "Schedule needs attention", "Enter a schedule name and at least one URL.");
+  const bool setMode = targetSource->currentData().toString() == "targetSet";
+  if (name->text().trimmed().isEmpty() || (setMode ? targetSet->currentData().toString().isEmpty() : urlList.isEmpty())) {
+    QMessageBox::information(this, "Schedule needs attention", "Enter a schedule name and choose a target set or at least one URL.");
     return;
   }
   QJsonObject recurrence;
@@ -2010,7 +2664,9 @@ void MainWindow::editSchedule(const QJsonObject &existing) {
   if (recurrenceType != "interval" && recurrenceType != "once") recurrence.insert("timeZone", zone->currentText());
   QJsonObject schedule = existing;
   schedule.insert("name", name->text().trimmed()); schedule.insert("enabled", enabled->isChecked());
-  schedule.insert("profileId", profile->currentData().toString()); schedule.insert("urls", stringArray(urlList)); schedule.insert("recurrence", recurrence);
+  schedule.insert("profileId", profile->currentData().toString());
+  schedule.insert("targetSetId", setMode ? targetSet->currentData().toString() : QString{});
+  schedule.insert("urls", setMode ? QJsonArray{} : stringArray(urlList)); schedule.insert("recurrence", recurrence);
   rpcCall("schedule.upsert", {{"projectId", m_projectId}, {"schedule", schedule}},
           [this, isEnabled = enabled->isChecked()](const QJsonObject &) {
     refreshSchedules(); if (isEnabled) promptForAutostart();

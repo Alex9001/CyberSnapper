@@ -39,6 +39,52 @@ QJsonObject queryJob(QSqlQuery &query) {
           {"request", QJsonDocument::fromJson(query.value("request_json").toByteArray()).object()}};
 }
 
+bool hasColumn(QSqlDatabase database, const QString &table, const QString &column) {
+  QSqlQuery query(database);
+  if (!query.exec("PRAGMA table_info(" + table + ")")) return false;
+  while (query.next()) if (query.value("name").toString() == column) return true;
+  return false;
+}
+
+QJsonObject queryComparison(QSqlQuery &query) {
+  QJsonObject out = QJsonDocument::fromJson(query.value("metadata_json").toByteArray()).object();
+  out.insert("id", query.value("id").toString());
+  out.insert("jobId", query.value("job_id").toString());
+  out.insert("comparisonKey", query.value("comparison_key").toString());
+  out.insert("baselineArtifactId", query.value("baseline_artifact_id").toString());
+  out.insert("currentArtifactId", query.value("current_artifact_id").toString());
+  out.insert("status", query.value("status").toString());
+  out.insert("mismatchRatio", query.value("mismatch_ratio").toDouble());
+  out.insert("diffRelativePath", query.value("diff_relative_path").toString());
+  out.insert("createdAt", query.value("created_at").toString());
+  out.insert("url", query.value("target_url").toString());
+  out.insert("targetId", query.value("target_id").toString());
+  out.insert("targetName", query.value("target_name").toString());
+  out.insert("targetSetId", query.value("target_set_id").toString());
+  out.insert("targetSetName", query.value("target_set_name").toString());
+  out.insert("engine", query.value("engine").toString());
+  out.insert("viewportId", query.value("viewport_id").toString());
+  out.insert("viewportName", query.value("viewport_name").toString());
+  out.insert("captureMode", query.value("capture_mode").toString());
+  out.insert("format", query.value("format").toString());
+  out.insert("analysisWidth", query.value("analysis_width").toInt());
+  out.insert("analysisHeight", query.value("analysis_height").toInt());
+  out.insert("analysisScale", query.value("analysis_scale").toDouble());
+  out.insert("baselineRelativePath", query.value("baseline_relative_path").toString());
+  if (out.value("status").toString() == "matched") {
+    out.insert("review", QJsonValue::Null);
+  } else {
+    const bool reviewed = !query.value("review_status").isNull();
+    out.insert("review", QJsonObject{{"status", reviewed ? query.value("review_status").toString() : "unreviewed"},
+                                     {"note", reviewed ? query.value("review_note").toString() : QString{}},
+                                     {"reviewedAt", reviewed ? query.value("reviewed_at").toString() : QString{}},
+                                     {"updatedAt", reviewed ? query.value("review_updated_at").toString() : QString{}},
+                                     {"revision", reviewed ? query.value("review_revision").toInt() : 0},
+                                     {"promotedArtifactId", reviewed ? query.value("promoted_artifact_id").toString() : QString{}}});
+  }
+  return out;
+}
+
 } // namespace
 
 ProjectStore::ProjectStore() = default;
@@ -206,15 +252,30 @@ bool ProjectStore::migrate(QString *error) {
       "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT DEFAULT '', finished_at TEXT DEFAULT '', error TEXT DEFAULT '', completed_artifacts INTEGER DEFAULT 0, failed_artifacts INTEGER DEFAULT 0, request_json TEXT NOT NULL)",
       "CREATE INDEX IF NOT EXISTS jobs_created_idx ON jobs(created_at DESC)",
       "CREATE TABLE IF NOT EXISTS events (job_id TEXT NOT NULL, sequence INTEGER NOT NULL, type TEXT NOT NULL, created_at TEXT NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY(job_id, sequence), FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE)",
-      "CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, target_url TEXT NOT NULL, engine TEXT NOT NULL, viewport_id TEXT NOT NULL, viewport_name TEXT NOT NULL, capture_mode TEXT NOT NULL, format TEXT NOT NULL, relative_path TEXT NOT NULL, width INTEGER DEFAULT 0, height INTEGER DEFAULT 0, sha256 TEXT DEFAULT '', status TEXT NOT NULL, error TEXT DEFAULT '', created_at TEXT NOT NULL, metadata_json TEXT NOT NULL, FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE)",
+      "CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, target_url TEXT NOT NULL, target_id TEXT DEFAULT '', target_name TEXT DEFAULT '', target_set_id TEXT DEFAULT '', target_set_name TEXT DEFAULT '', engine TEXT NOT NULL, viewport_id TEXT NOT NULL, viewport_name TEXT NOT NULL, capture_mode TEXT NOT NULL, format TEXT NOT NULL, relative_path TEXT NOT NULL, width INTEGER DEFAULT 0, height INTEGER DEFAULT 0, sha256 TEXT DEFAULT '', status TEXT NOT NULL, error TEXT DEFAULT '', created_at TEXT NOT NULL, metadata_json TEXT NOT NULL, FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE)",
       "CREATE INDEX IF NOT EXISTS artifacts_job_idx ON artifacts(job_id)",
       "CREATE TABLE IF NOT EXISTS baselines (comparison_key TEXT PRIMARY KEY, artifact_id TEXT NOT NULL, relative_path TEXT DEFAULT '', updated_at TEXT NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS comparisons (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, comparison_key TEXT NOT NULL, baseline_artifact_id TEXT, current_artifact_id TEXT, status TEXT NOT NULL, mismatch_ratio REAL DEFAULT 0, diff_relative_path TEXT DEFAULT '', created_at TEXT NOT NULL, metadata_json TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS comparisons (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, comparison_key TEXT NOT NULL, baseline_artifact_id TEXT, current_artifact_id TEXT, status TEXT NOT NULL, mismatch_ratio REAL DEFAULT 0, diff_relative_path TEXT DEFAULT '', created_at TEXT NOT NULL, target_url TEXT DEFAULT '', target_id TEXT DEFAULT '', target_name TEXT DEFAULT '', target_set_id TEXT DEFAULT '', target_set_name TEXT DEFAULT '', engine TEXT DEFAULT '', viewport_id TEXT DEFAULT '', viewport_name TEXT DEFAULT '', capture_mode TEXT DEFAULT '', format TEXT DEFAULT '', analysis_width INTEGER DEFAULT 0, analysis_height INTEGER DEFAULT 0, analysis_scale REAL DEFAULT 1, baseline_relative_path TEXT DEFAULT '', metadata_json TEXT NOT NULL)",
       "CREATE INDEX IF NOT EXISTS comparisons_job_idx ON comparisons(job_id)",
-      "CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL, profile_id TEXT NOT NULL, urls_json TEXT NOT NULL, recurrence_json TEXT NOT NULL, last_run TEXT DEFAULT '', next_run TEXT NOT NULL, last_status TEXT DEFAULT '', updated_at TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL, profile_id TEXT NOT NULL, target_set_id TEXT DEFAULT '', urls_json TEXT NOT NULL, recurrence_json TEXT NOT NULL, last_run TEXT DEFAULT '', next_run TEXT NOT NULL, last_status TEXT DEFAULT '', updated_at TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS target_sets (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, description TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS targets (id TEXT PRIMARY KEY, target_set_id TEXT NOT NULL, position INTEGER NOT NULL, label TEXT NOT NULL DEFAULT '', url TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(target_set_id) REFERENCES target_sets(id) ON DELETE CASCADE, UNIQUE(target_set_id, position))",
+      "CREATE INDEX IF NOT EXISTS targets_set_position_idx ON targets(target_set_id,position)",
+      "CREATE TABLE IF NOT EXISTS comparison_reviews (comparison_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK(status IN ('unreviewed','accepted','ignored')), note TEXT NOT NULL DEFAULT '', reviewed_at TEXT DEFAULT '', updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, promoted_artifact_id TEXT DEFAULT '', FOREIGN KEY(comparison_id) REFERENCES comparisons(id) ON DELETE CASCADE)",
   };
   if (!m_db.transaction()) {
     if (error) *error = m_db.lastError().text();
+    return false;
+  }
+  if (!execute(statements.first(), error)) { m_db.rollback(); return false; }
+  QSqlQuery existingVersion(m_db);
+  int schemaVersion = 0;
+  if (existingVersion.exec("SELECT value FROM metadata WHERE key='schemaVersion'") && existingVersion.next()) {
+    schemaVersion = existingVersion.value(0).toInt();
+  }
+  if (schemaVersion > 4) {
+    if (error) *error = QStringLiteral("This project uses newer database schema %1").arg(schemaVersion);
+    m_db.rollback();
     return false;
   }
   for (const auto &statement : statements) {
@@ -223,18 +284,40 @@ bool ProjectStore::migrate(QString *error) {
       return false;
     }
   }
-  bool baselinePathColumn = false;
-  QSqlQuery columns("PRAGMA table_info(baselines)", m_db);
-  while (columns.next()) {
-    if (columns.value("name").toString() == "relative_path") baselinePathColumn = true;
+  const QList<QPair<QString, QString>> additions{
+      {"baselines", "relative_path TEXT DEFAULT ''"},
+      {"artifacts", "target_id TEXT DEFAULT ''"}, {"artifacts", "target_name TEXT DEFAULT ''"},
+      {"artifacts", "target_set_id TEXT DEFAULT ''"}, {"artifacts", "target_set_name TEXT DEFAULT ''"},
+      {"comparisons", "target_url TEXT DEFAULT ''"}, {"comparisons", "target_id TEXT DEFAULT ''"},
+      {"comparisons", "target_name TEXT DEFAULT ''"}, {"comparisons", "target_set_id TEXT DEFAULT ''"},
+      {"comparisons", "target_set_name TEXT DEFAULT ''"}, {"comparisons", "engine TEXT DEFAULT ''"},
+      {"comparisons", "viewport_id TEXT DEFAULT ''"}, {"comparisons", "viewport_name TEXT DEFAULT ''"},
+      {"comparisons", "capture_mode TEXT DEFAULT ''"}, {"comparisons", "format TEXT DEFAULT ''"},
+      {"comparisons", "analysis_width INTEGER DEFAULT 0"}, {"comparisons", "analysis_height INTEGER DEFAULT 0"},
+      {"comparisons", "analysis_scale REAL DEFAULT 1"}, {"comparisons", "baseline_relative_path TEXT DEFAULT ''"},
+      {"schedules", "target_set_id TEXT DEFAULT ''"},
+  };
+  for (const auto &[table, definition] : additions) {
+    const QString column = definition.section(' ', 0, 0);
+    if (!hasColumn(m_db, table, column) && !execute("ALTER TABLE " + table + " ADD COLUMN " + definition, error)) {
+      m_db.rollback(); return false;
+    }
   }
-  columns.finish();
-  if (!baselinePathColumn && !execute("ALTER TABLE baselines ADD COLUMN relative_path TEXT DEFAULT ''", error)) {
-    m_db.rollback();
-    return false;
+  const QStringList indexes{
+      "CREATE INDEX IF NOT EXISTS comparisons_status_created_idx ON comparisons(status,created_at DESC,id DESC)",
+      "CREATE INDEX IF NOT EXISTS comparisons_target_created_idx ON comparisons(target_set_id,created_at DESC,id DESC)",
+      "CREATE INDEX IF NOT EXISTS comparison_reviews_status_idx ON comparison_reviews(status,updated_at DESC)",
+      "CREATE INDEX IF NOT EXISTS jobs_status_created_idx ON jobs(status,created_at DESC)",
+      "CREATE INDEX IF NOT EXISTS schedules_target_set_idx ON schedules(target_set_id)"};
+  for (const auto &statement : indexes) if (!execute(statement, error)) { m_db.rollback(); return false; }
+  if (schemaVersion < 4) {
+    if (!execute("UPDATE artifacts SET target_id=COALESCE(json_extract(metadata_json,'$.targetId'),''),target_name=COALESCE(json_extract(metadata_json,'$.targetName'),''),target_set_id=COALESCE(json_extract(metadata_json,'$.targetSetId'),''),target_set_name=COALESCE(json_extract(metadata_json,'$.targetSetName'),'')", error) ||
+        !execute("UPDATE comparisons SET target_url=COALESCE((SELECT target_url FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),target_id=COALESCE((SELECT target_id FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),target_name=COALESCE((SELECT target_name FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),target_set_id=COALESCE((SELECT target_set_id FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),target_set_name=COALESCE((SELECT target_set_name FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),engine=COALESCE((SELECT engine FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),viewport_id=COALESCE((SELECT viewport_id FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),viewport_name=COALESCE((SELECT viewport_name FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),capture_mode=COALESCE((SELECT capture_mode FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),''),format=COALESCE((SELECT format FROM artifacts WHERE artifacts.id=comparisons.current_artifact_id),'')", error)) {
+      m_db.rollback(); return false;
+    }
   }
   QSqlQuery version(m_db);
-  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','3') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','4') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
   if (!version.exec() || !m_db.commit()) {
     if (error) *error = version.lastError().text().isEmpty() ? m_db.lastError().text() : version.lastError().text();
     return false;
@@ -307,6 +390,117 @@ bool ProjectStore::removeProfile(const QString &id, QString *error) {
   query.addBindValue(id);
   if (query.exec() && query.numRowsAffected() > 0) return true;
   if (error) *error = query.lastError().text().isEmpty() ? "Profile not found" : query.lastError().text();
+  return false;
+}
+
+QJsonArray ProjectStore::targetSets() const {
+  QJsonArray out;
+  QSqlQuery query(m_db);
+  query.prepare("SELECT s.*,COUNT(t.id) AS target_count,SUM(CASE WHEN t.enabled=1 THEN 1 ELSE 0 END) AS enabled_count "
+                "FROM target_sets s LEFT JOIN targets t ON t.target_set_id=s.id "
+                "GROUP BY s.id ORDER BY s.name COLLATE NOCASE");
+  if (!query.exec()) return out;
+  while (query.next()) {
+    out.append(QJsonObject{{"id", query.value("id").toString()}, {"name", query.value("name").toString()},
+                           {"description", query.value("description").toString()},
+                           {"revision", query.value("revision").toInt()},
+                           {"targetCount", query.value("target_count").toInt()},
+                           {"enabledCount", query.value("enabled_count").toInt()},
+                           {"createdAt", query.value("created_at").toString()},
+                           {"updatedAt", query.value("updated_at").toString()}});
+  }
+  return out;
+}
+
+QJsonObject ProjectStore::targetSet(const QString &id) const {
+  QSqlQuery query(m_db);
+  query.prepare("SELECT * FROM target_sets WHERE id=?");
+  query.addBindValue(id);
+  if (!query.exec() || !query.next()) return {};
+  QJsonObject out{{"id", query.value("id").toString()}, {"name", query.value("name").toString()},
+                  {"description", query.value("description").toString()},
+                  {"revision", query.value("revision").toInt()},
+                  {"createdAt", query.value("created_at").toString()},
+                  {"updatedAt", query.value("updated_at").toString()}};
+  QJsonArray targetsValue;
+  QSqlQuery targetsQuery(m_db);
+  targetsQuery.prepare("SELECT * FROM targets WHERE target_set_id=? ORDER BY position,id");
+  targetsQuery.addBindValue(id);
+  if (targetsQuery.exec()) while (targetsQuery.next()) {
+    targetsValue.append(QJsonObject{{"id", targetsQuery.value("id").toString()},
+                                    {"label", targetsQuery.value("label").toString()},
+                                    {"url", targetsQuery.value("url").toString()},
+                                    {"enabled", targetsQuery.value("enabled").toBool()},
+                                    {"position", targetsQuery.value("position").toInt()}});
+  }
+  out.insert("targets", targetsValue);
+  return out;
+}
+
+QJsonObject ProjectStore::saveTargetSet(const QJsonObject &value, QString *error) {
+  const QString id = value.value("id").toString().isEmpty() ? newId() : value.value("id").toString();
+  const QString now = utcNow();
+  QString description = value.value("description").toString().trimmed();
+  if (description.isNull()) description = QStringLiteral("");
+  QSqlQuery current(m_db);
+  current.prepare("SELECT revision,created_at FROM target_sets WHERE id=?");
+  current.addBindValue(id);
+  const bool exists = current.exec() && current.next();
+  const int revision = exists ? current.value(0).toInt() + 1 : 1;
+  const QString createdAt = exists ? current.value(1).toString() : now;
+  if (!m_db.transaction()) { if (error) *error = m_db.lastError().text(); return {}; }
+  QSqlQuery setQuery(m_db);
+  setQuery.prepare("INSERT INTO target_sets(id,name,description,revision,created_at,updated_at) VALUES(?,?,?,?,?,?) "
+                   "ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,revision=excluded.revision,updated_at=excluded.updated_at");
+  setQuery.addBindValue(id);
+  setQuery.addBindValue(value.value("name").toString().trimmed());
+  setQuery.addBindValue(description);
+  setQuery.addBindValue(revision);
+  setQuery.addBindValue(createdAt);
+  setQuery.addBindValue(now);
+  bool ok = setQuery.exec();
+  QSqlQuery clear(m_db);
+  clear.prepare("DELETE FROM targets WHERE target_set_id=?");
+  clear.addBindValue(id);
+  ok = ok && clear.exec();
+  int position = 0;
+  for (const auto &entry : value.value("targets").toArray()) {
+    const QJsonObject target = entry.toObject();
+    QSqlQuery targetQuery(m_db);
+    targetQuery.prepare("INSERT INTO targets(id,target_set_id,position,label,url,enabled) VALUES(?,?,?,?,?,?)");
+    targetQuery.addBindValue(target.value("id").toString(newId()));
+    targetQuery.addBindValue(id);
+    targetQuery.addBindValue(position++);
+    QString label = target.value("label").toString().trimmed();
+    if (label.isNull()) label = QStringLiteral("");
+    targetQuery.addBindValue(label);
+    targetQuery.addBindValue(target.value("url").toString().trimmed());
+    targetQuery.addBindValue(target.value("enabled").toBool(true) ? 1 : 0);
+    ok = ok && targetQuery.exec();
+    if (!ok) { if (error) *error = targetQuery.lastError().text(); break; }
+  }
+  if (!ok || !m_db.commit()) {
+    if (error && error->isEmpty()) *error = setQuery.lastError().text().isEmpty() ? m_db.lastError().text() : setQuery.lastError().text();
+    m_db.rollback(); return {};
+  }
+  return targetSet(id);
+}
+
+bool ProjectStore::removeTargetSet(const QString &id, QString *error) {
+  QSqlQuery dependencies(m_db);
+  dependencies.prepare("SELECT name FROM schedules WHERE target_set_id=? ORDER BY name");
+  dependencies.addBindValue(id);
+  QStringList names;
+  if (dependencies.exec()) while (dependencies.next()) names.append(dependencies.value(0).toString());
+  if (!names.isEmpty()) {
+    if (error) *error = "Target set is used by: " + names.join(", ");
+    return false;
+  }
+  QSqlQuery query(m_db);
+  query.prepare("DELETE FROM target_sets WHERE id=?");
+  query.addBindValue(id);
+  if (query.exec() && query.numRowsAffected() > 0) return true;
+  if (error) *error = query.lastError().text().isEmpty() ? "Target set not found" : query.lastError().text();
   return false;
 }
 
@@ -446,10 +640,14 @@ bool ProjectStore::insertArtifact(const QString &jobId, const QJsonObject &artif
   QJsonObject artifact = artifactValue;
   const QString id = artifact.value("id").toString(newId());
   QSqlQuery query(m_db);
-  query.prepare("INSERT OR REPLACE INTO artifacts(id,job_id,target_url,engine,viewport_id,viewport_name,capture_mode,format,relative_path,width,height,sha256,status,error,created_at,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  query.prepare("INSERT OR REPLACE INTO artifacts(id,job_id,target_url,target_id,target_name,target_set_id,target_set_name,engine,viewport_id,viewport_name,capture_mode,format,relative_path,width,height,sha256,status,error,created_at,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   query.addBindValue(id);
   query.addBindValue(jobId);
   query.addBindValue(artifact.value("url").toString());
+  query.addBindValue(artifact.value("targetId").toString());
+  query.addBindValue(artifact.value("targetName").toString());
+  query.addBindValue(artifact.value("targetSetId").toString());
+  query.addBindValue(artifact.value("targetSetName").toString());
   query.addBindValue(artifact.value("engine").toString());
   query.addBindValue(artifact.value("viewportId").toString());
   query.addBindValue(artifact.value("viewportName").toString());
@@ -492,12 +690,13 @@ QJsonObject ProjectStore::artifact(const QString &artifactId) const {
 bool ProjectStore::upsertSchedule(const QJsonObject &schedule, QString *error) {
   const QString id = schedule.value("id").toString(newId());
   QSqlQuery query(m_db);
-  query.prepare("INSERT INTO schedules(id,name,enabled,profile_id,urls_json,recurrence_json,last_run,next_run,last_status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,profile_id=excluded.profile_id,urls_json=excluded.urls_json,recurrence_json=excluded.recurrence_json,last_run=excluded.last_run,next_run=excluded.next_run,last_status=excluded.last_status,updated_at=excluded.updated_at");
+  query.prepare("INSERT INTO schedules(id,name,enabled,profile_id,target_set_id,urls_json,recurrence_json,last_run,next_run,last_status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,profile_id=excluded.profile_id,target_set_id=excluded.target_set_id,urls_json=excluded.urls_json,recurrence_json=excluded.recurrence_json,last_run=excluded.last_run,next_run=excluded.next_run,last_status=excluded.last_status,updated_at=excluded.updated_at");
   query.addBindValue(id);
   query.addBindValue(schedule.value("name").toString("Schedule"));
   query.addBindValue(schedule.value("enabled").toBool(true) ? 1 : 0);
   query.addBindValue(schedule.value("profileId").toString("default"));
+  query.addBindValue(schedule.value("targetSetId").toString());
   query.addBindValue(compactJson(schedule.value("urls")));
   query.addBindValue(compactJson(schedule.value("recurrence")));
   query.addBindValue(schedule.value("lastRun").toString());
@@ -527,6 +726,7 @@ QJsonArray ProjectStore::schedules(bool enabledOnly) const {
                            {"name", query.value("name").toString()},
                            {"enabled", query.value("enabled").toBool()},
                            {"profileId", query.value("profile_id").toString()},
+                           {"targetSetId", query.value("target_set_id").toString()},
                            {"urls", parseArray(query.value("urls_json"))},
                            {"recurrence", parseObject(query.value("recurrence_json"))},
                            {"lastRun", query.value("last_run").toString()},
@@ -592,7 +792,7 @@ bool ProjectStore::removeBaseline(const QString &key, QString *error) {
 
 bool ProjectStore::insertComparison(const QJsonObject &comparison) {
   QSqlQuery query(m_db);
-  query.prepare("INSERT OR REPLACE INTO comparisons(id,job_id,comparison_key,baseline_artifact_id,current_artifact_id,status,mismatch_ratio,diff_relative_path,created_at,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)");
+  query.prepare("INSERT OR REPLACE INTO comparisons(id,job_id,comparison_key,baseline_artifact_id,current_artifact_id,status,mismatch_ratio,diff_relative_path,created_at,target_url,target_id,target_name,target_set_id,target_set_name,engine,viewport_id,viewport_name,capture_mode,format,analysis_width,analysis_height,analysis_scale,baseline_relative_path,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   query.addBindValue(comparison.value("id").toString(newId()));
   query.addBindValue(comparison.value("jobId").toString());
   query.addBindValue(comparison.value("comparisonKey").toString());
@@ -602,6 +802,20 @@ bool ProjectStore::insertComparison(const QJsonObject &comparison) {
   query.addBindValue(comparison.value("mismatchRatio").toDouble());
   query.addBindValue(comparison.value("diffRelativePath").toString());
   query.addBindValue(comparison.value("createdAt").toString(utcNow()));
+  query.addBindValue(comparison.value("url").toString());
+  query.addBindValue(comparison.value("targetId").toString());
+  query.addBindValue(comparison.value("targetName").toString());
+  query.addBindValue(comparison.value("targetSetId").toString());
+  query.addBindValue(comparison.value("targetSetName").toString());
+  query.addBindValue(comparison.value("engine").toString());
+  query.addBindValue(comparison.value("viewportId").toString());
+  query.addBindValue(comparison.value("viewportName").toString());
+  query.addBindValue(comparison.value("captureMode").toString());
+  query.addBindValue(comparison.value("format").toString());
+  query.addBindValue(comparison.value("analysisWidth").toInt());
+  query.addBindValue(comparison.value("analysisHeight").toInt());
+  query.addBindValue(comparison.value("analysisScale").toDouble(1.0));
+  query.addBindValue(comparison.value("baselineRelativePath").toString());
   query.addBindValue(compactJson(comparison));
   return query.exec();
 }
@@ -609,22 +823,134 @@ bool ProjectStore::insertComparison(const QJsonObject &comparison) {
 QJsonArray ProjectStore::comparisons(const QString &jobId) const {
   QJsonArray out;
   QSqlQuery query(m_db);
+  const QString columns = "SELECT c.*,r.status AS review_status,r.note AS review_note,r.reviewed_at,r.updated_at AS review_updated_at,r.revision AS review_revision,r.promoted_artifact_id ";
   if (jobId.isEmpty()) {
-    query.prepare("SELECT metadata_json FROM comparisons ORDER BY created_at DESC LIMIT 2000");
+    query.prepare(columns + "FROM comparisons c LEFT JOIN comparison_reviews r ON r.comparison_id=c.id ORDER BY c.created_at DESC,c.id DESC LIMIT 2000");
   } else {
-    query.prepare("SELECT metadata_json FROM comparisons WHERE job_id=? ORDER BY created_at ASC");
+    query.prepare(columns + "FROM comparisons c LEFT JOIN comparison_reviews r ON r.comparison_id=c.id WHERE c.job_id=? ORDER BY c.created_at ASC,c.id ASC");
     query.addBindValue(jobId);
   }
   if (!query.exec()) return out;
-  while (query.next()) out.append(QJsonDocument::fromJson(query.value(0).toByteArray()).object());
+  while (query.next()) out.append(queryComparison(query));
   return out;
 }
 
 QJsonObject ProjectStore::comparison(const QString &id) const {
   QSqlQuery query(m_db);
-  query.prepare("SELECT metadata_json FROM comparisons WHERE id=?");
+  query.prepare("SELECT c.*,r.status AS review_status,r.note AS review_note,r.reviewed_at,r.updated_at AS review_updated_at,r.revision AS review_revision,r.promoted_artifact_id "
+                "FROM comparisons c LEFT JOIN comparison_reviews r ON r.comparison_id=c.id WHERE c.id=?");
   query.addBindValue(id);
-  return query.exec() && query.next() ? parseObject(query.value(0)) : QJsonObject{};
+  return query.exec() && query.next() ? queryComparison(query) : QJsonObject{};
+}
+
+QJsonObject ProjectStore::setComparisonReview(const QString &comparisonId, const QString &status,
+                                              const QString &note, int expectedRevision,
+                                              QString *error) {
+  if (!QStringList{"unreviewed", "accepted", "ignored"}.contains(status)) {
+    if (error) *error = "Review status must be unreviewed, accepted, or ignored";
+    return {};
+  }
+  const QJsonObject selected = comparison(comparisonId);
+  if (selected.isEmpty()) { if (error) *error = "Comparison not found"; return {}; }
+  if (selected.value("status").toString() == "matched") {
+    if (error) *error = "Matched comparisons do not need review";
+    return {};
+  }
+  const int revision = selected.value("review").toObject().value("revision").toInt();
+  if (expectedRevision >= 0 && revision != expectedRevision) {
+    if (error) *error = "Review changed since it was loaded";
+    return {};
+  }
+  QSqlQuery query(m_db);
+  query.prepare("INSERT INTO comparison_reviews(comparison_id,status,note,reviewed_at,updated_at,revision,promoted_artifact_id) VALUES(?,?,?,?,?,?,?) "
+                "ON CONFLICT(comparison_id) DO UPDATE SET status=excluded.status,note=excluded.note,reviewed_at=excluded.reviewed_at,updated_at=excluded.updated_at,revision=excluded.revision,promoted_artifact_id=CASE WHEN excluded.promoted_artifact_id='' THEN comparison_reviews.promoted_artifact_id ELSE excluded.promoted_artifact_id END");
+  const QString now = utcNow();
+  QString normalizedNote = note.left(4096);
+  if (normalizedNote.isNull()) normalizedNote = QStringLiteral("");
+  query.addBindValue(comparisonId);
+  query.addBindValue(status);
+  query.addBindValue(normalizedNote);
+  query.addBindValue(status == "unreviewed" ? QString{} : now);
+  query.addBindValue(now);
+  query.addBindValue(revision + 1);
+  query.addBindValue(QString{});
+  if (!query.exec()) { if (error) *error = query.lastError().text(); return {}; }
+  return comparison(comparisonId);
+}
+
+QJsonObject ProjectStore::acceptComparison(const QString &comparisonId, const QString &baselineRelativePath,
+                                           const QString &note, int expectedRevision, bool force,
+                                           QString *error) {
+  const QJsonObject selected = comparison(comparisonId);
+  if (selected.isEmpty()) { if (error) *error = "Comparison not found"; return {}; }
+  if (selected.value("status").toString() == "matched" || selected.value("status").toString() == "error") {
+    if (error) *error = "This comparison cannot be accepted as a baseline";
+    return {};
+  }
+  const int revision = selected.value("review").toObject().value("revision").toInt();
+  if (expectedRevision >= 0 && revision != expectedRevision) {
+    if (error) *error = "Review changed since it was loaded";
+    return {};
+  }
+  const QString key = selected.value("comparisonKey").toString();
+  const QString currentArtifact = selected.value("currentArtifactId").toString();
+  const QString expectedBaseline = selected.value("baselineArtifactId").toString();
+  const QJsonObject activeBaseline = baseline(key);
+  if (!force && activeBaseline.value("artifactId").toString() != expectedBaseline) {
+    if (error) *error = "The baseline changed since this comparison was created";
+    return {};
+  }
+  if (!m_db.transaction()) { if (error) *error = m_db.lastError().text(); return {}; }
+  QSqlQuery baselineQuery(m_db);
+  baselineQuery.prepare("INSERT INTO baselines(comparison_key,artifact_id,relative_path,updated_at) VALUES(?,?,?,?) "
+                        "ON CONFLICT(comparison_key) DO UPDATE SET artifact_id=excluded.artifact_id,relative_path=excluded.relative_path,updated_at=excluded.updated_at");
+  baselineQuery.addBindValue(key); baselineQuery.addBindValue(currentArtifact);
+  baselineQuery.addBindValue(baselineRelativePath); baselineQuery.addBindValue(utcNow());
+  QSqlQuery reviewQuery(m_db);
+  reviewQuery.prepare("INSERT INTO comparison_reviews(comparison_id,status,note,reviewed_at,updated_at,revision,promoted_artifact_id) VALUES(?,?,?,?,?,?,?) "
+                      "ON CONFLICT(comparison_id) DO UPDATE SET status=excluded.status,note=excluded.note,reviewed_at=excluded.reviewed_at,updated_at=excluded.updated_at,revision=excluded.revision,promoted_artifact_id=excluded.promoted_artifact_id");
+  const QString now = utcNow();
+  QString normalizedNote = note.left(4096);
+  if (normalizedNote.isNull()) normalizedNote = QStringLiteral("");
+  reviewQuery.addBindValue(comparisonId); reviewQuery.addBindValue("accepted");
+  reviewQuery.addBindValue(normalizedNote); reviewQuery.addBindValue(now); reviewQuery.addBindValue(now);
+  reviewQuery.addBindValue(revision + 1); reviewQuery.addBindValue(currentArtifact);
+  if (!baselineQuery.exec() || !reviewQuery.exec() || !m_db.commit()) {
+    if (error) *error = !baselineQuery.lastError().text().isEmpty() ? baselineQuery.lastError().text() :
+                        !reviewQuery.lastError().text().isEmpty() ? reviewQuery.lastError().text() : m_db.lastError().text();
+    m_db.rollback(); return {};
+  }
+  return comparison(comparisonId);
+}
+
+QJsonObject ProjectStore::dashboard() const {
+  auto scalar = [this](const QString &sql) {
+    QSqlQuery query(m_db);
+    return query.exec(sql) && query.next() ? query.value(0).toInt() : 0;
+  };
+  QJsonObject out{{"activeJobs", scalar("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','preparing','running','cancelling')")},
+                  {"failedRuns", scalar("SELECT COUNT(*) FROM jobs WHERE status IN ('failed','partial','interrupted') AND created_at>=datetime('now','-7 days')")},
+                  {"needsReview", scalar("SELECT COUNT(*) FROM comparisons c LEFT JOIN comparison_reviews r ON r.comparison_id=c.id WHERE c.status IN ('changed','dimensions_changed','missing_baseline','error') AND COALESCE(r.status,'unreviewed')='unreviewed'")},
+                  {"missingBaselines", scalar("SELECT COUNT(*) FROM comparisons c LEFT JOIN comparison_reviews r ON r.comparison_id=c.id WHERE c.status='missing_baseline' AND COALESCE(r.status,'unreviewed')='unreviewed'")}};
+  QSqlQuery next(m_db);
+  if (next.exec("SELECT id,name,next_run FROM schedules WHERE enabled=1 AND next_run<>'' ORDER BY next_run LIMIT 1") && next.next()) {
+    out.insert("nextSchedule", QJsonObject{{"id", next.value(0).toString()}, {"name", next.value(1).toString()},
+                                           {"nextRun", next.value(2).toString()}});
+  }
+  QJsonArray recentJobs = jobs(5);
+  out.insert("recentJobs", recentJobs);
+  QJsonArray recentReviews;
+  for (const auto &value : comparisons()) {
+    const QJsonObject comparisonValue = value.toObject();
+    if (comparisonValue.value("status").toString() != "matched" &&
+        comparisonValue.value("review").toObject().value("status").toString("unreviewed") == "unreviewed") {
+      recentReviews.append(comparisonValue);
+      if (recentReviews.size() == 5) break;
+    }
+  }
+  out.insert("recentReviews", recentReviews);
+  out.insert("targetSets", targetSets());
+  return out;
 }
 
 QJsonObject ProjectStore::parseObject(const QVariant &value) {

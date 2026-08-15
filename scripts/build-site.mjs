@@ -21,7 +21,7 @@ await sharp(logo).resize(192, 192, { fit: 'cover' }).png({ compressionLevel: 9 }
 await sharp(logo).resize(96, 96, { fit: 'cover' }).png({ compressionLevel: 9 }).toFile(path.join(outputAssets, 'logo-96.png'));
 await sharp(logo).resize(48, 48, { fit: 'cover' }).png({ compressionLevel: 9 }).toFile(path.join(outputAssets, 'favicon.png'));
 
-const screenshots = ['capture', 'history', 'compare', 'schedules'];
+const screenshots = ['dashboard', 'capture', 'targets', 'review'];
 for (const name of screenshots) {
   const input = path.join(screenshotSource, `app-${name}.png`);
   const metadata = await sharp(input).metadata();

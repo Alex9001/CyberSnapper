@@ -11,6 +11,7 @@ class QCheckBox;
 class QComboBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QSpinBox;
 class QDoubleSpinBox;
 class QTableWidget;
@@ -19,6 +20,9 @@ class QTreeWidget;
 class QPushButton;
 class QSplitter;
 class QTabWidget;
+class QToolBar;
+class QAction;
+class QMenu;
 
 namespace CyberSnapper {
 
@@ -42,6 +46,7 @@ private:
   QJsonArray m_jobsCache;
   QJsonArray m_schedulesCache;
   QJsonArray m_comparisonsCache;
+  QJsonArray m_targetSetsCache;
   QSet<QString> m_installedBrowsers;
   bool m_loadingProfile = false;
   bool m_profileDirty = false;
@@ -51,6 +56,8 @@ private:
   QLabel *m_connectionStatus = nullptr;
   QComboBox *m_projectCombo = nullptr;
   QComboBox *m_profileCombo = nullptr;
+  QComboBox *m_targetSource = nullptr;
+  QComboBox *m_captureTargetSet = nullptr;
   QTextEdit *m_urls = nullptr;
   QComboBox *m_captureMode = nullptr;
   QLineEdit *m_elementSelector = nullptr;
@@ -79,6 +86,8 @@ private:
   QPushButton *m_saveProfile = nullptr;
   QPushButton *m_revertProfile = nullptr;
   QTreeWidget *m_activeJobs = nullptr;
+  QWidget *m_activeJobsGroup = nullptr;
+  QPushButton *m_cancelActiveJob = nullptr;
   QTableWidget *m_history = nullptr;
   QLineEdit *m_historySearch = nullptr;
   QComboBox *m_historyStatus = nullptr;
@@ -86,6 +95,13 @@ private:
   QLabel *m_jobSummary = nullptr;
   QTableWidget *m_artifacts = nullptr;
   QTableWidget *m_comparisons = nullptr;
+  QLineEdit *m_reviewSearch = nullptr;
+  QComboBox *m_reviewFilter = nullptr;
+  QLabel *m_reviewSummary = nullptr;
+  QTextEdit *m_reviewNote = nullptr;
+  QPushButton *m_reviewAccept = nullptr;
+  QPushButton *m_reviewIgnore = nullptr;
+  QPushButton *m_reviewReset = nullptr;
   QTableWidget *m_baselines = nullptr;
   ImageCanvas *m_baselineImage = nullptr;
   ImageCanvas *m_currentImage = nullptr;
@@ -104,11 +120,29 @@ private:
   QSplitter *m_captureColumns = nullptr;
   QSplitter *m_historySplit = nullptr;
   QSplitter *m_compareSplit = nullptr;
+  QLabel *m_dashboardNeedsReview = nullptr;
+  QLabel *m_dashboardFailedRuns = nullptr;
+  QLabel *m_dashboardActiveJobs = nullptr;
+  QLabel *m_dashboardNextSchedule = nullptr;
+  QTableWidget *m_dashboardRecent = nullptr;
+  QTableWidget *m_dashboardReview = nullptr;
+  QListWidget *m_targetSetList = nullptr;
+  QLineEdit *m_targetSetName = nullptr;
+  QTextEdit *m_targetSetDescription = nullptr;
+  QTableWidget *m_targetTable = nullptr;
+  QToolBar *m_toolbar = nullptr;
+  QHash<QString, QAction *> m_toolbarActions;
+  QMenu *m_moreMenu = nullptr;
+  QAction *m_projectWidgetAction = nullptr;
+  QAction *m_toolbarSpacerAction = nullptr;
+  QAction *m_moreWidgetAction = nullptr;
 
   void buildUi();
+  QWidget *buildDashboardPage();
   QWidget *buildCapturePage();
   QWidget *buildHistoryPage();
   QWidget *buildComparePage();
+  QWidget *buildTargetsPage();
   QWidget *buildSchedulesPage();
   QWidget *buildSettingsPage();
   QWidget *buildHelpPage();
@@ -118,6 +152,8 @@ private:
   void refreshAll();
   void refreshProjects();
   void refreshProfiles();
+  void refreshDashboard();
+  void refreshTargetSets();
   void refreshJobs();
   void refreshSchedules();
   void refreshSettings();
@@ -133,6 +169,12 @@ private:
   void openProfileManager();
   void applyHistoryFilters();
   void showSelectedComparison();
+  void applyReviewFilters();
+  void reviewSelected(const QString &status);
+  void loadSelectedTargetSet();
+  void saveTargetSet();
+  void applyToolbarPreferences();
+  void openToolbarCustomizer();
   void restoreUiState();
   void saveUiState() const;
   void showFirstRun();

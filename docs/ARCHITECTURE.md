@@ -19,7 +19,13 @@ The agent launches one worker process per active job and exchanges protocol-v2 n
 
 Only the agent opens project SQLite databases for normal operation. SQLite uses WAL mode, foreign keys, and a per-project lock file. The worker receives an agent-approved absolute project root and refuses a different root. Artifact paths are relative to that root and are containment-checked before API or desktop access.
 
-The queue is FIFO. One job runs by default and the user may opt into two active jobs. Each profile independently controls capture concurrency up to ten page contexts.
+The queue is FIFO. One job runs by default and the user may opt into two active jobs. Each profile independently controls capture concurrency up to ten page contexts. Saved target sets are resolved by the agent at submission time and embedded as a job snapshot, which keeps scheduled runs, retries, history, and review provenance deterministic even after a set is edited.
+
+## Visual review model
+
+The worker persists actionable comparison records for changed images, missing baselines, and analysis failures. It records the exact baseline snapshot, analyzed pixel dimensions, counts, algorithm version, and changed-region metadata. The native Review workspace renders those records rather than recomputing state in the UI.
+
+Review decisions are separate durable rows with an optimistic revision number. Accepting a result copies its artifact to an immutable versioned baseline file and atomically updates both the active baseline pointer and the review decision. Ignoring or resetting a result changes only its review record. Old comparisons continue to reference the baseline file they were originally measured against.
 
 ## Capture boundary
 
