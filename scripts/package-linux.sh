@@ -51,6 +51,16 @@ desktop-file-validate "$desktop_file"
 [[ -s "$icon_file" ]] || { echo "Linux application icon is missing" >&2; exit 1; }
 
 qt_plugins=$("$qmake" -query QT_INSTALL_PLUGINS)
+
+# CyberSnapper only uses the SQLite driver. The MySQL, Mimer, ODBC, and
+# PostgreSQL drivers pull in server libraries the package does not ship and
+# that linuxdeploy cannot always resolve (libmimerapi.so is absent on the
+# x64 runners), which aborts plugin deployment.
+rm -f "$qt_plugins"/sqldrivers/libqsqlmysql.so \
+      "$qt_plugins"/sqldrivers/libqsqlmimer.so \
+      "$qt_plugins"/sqldrivers/libqsqlodbc.so \
+      "$qt_plugins"/sqldrivers/libqsqlpsql.so
+
 wayland_plugins=()
 for plugin in libqwayland-egl.so libqwayland-generic.so; do
   [[ -f "$qt_plugins/platforms/$plugin" ]] && wayland_plugins+=("$plugin")
