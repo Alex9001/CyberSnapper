@@ -31,8 +31,14 @@ void printJson(const QJsonValue &value) {
 }
 
 bool ensureAgent(QString *error) {
-  if (!blockingRpcCall(Paths::agentServerName(), "agent.ping", {}, 300, error).isEmpty()) return true;
-  if (qEnvironmentVariableIsSet("CYBERSNAPPER_NO_AUTOSTART")) return false;
+  // Probe into a local string: a cold-start ping is expected to fail, and its
+  // "agent not listening" error must not leak into the caller's error slot.
+  QString probeError;
+  if (!blockingRpcCall(Paths::agentServerName(), "agent.ping", {}, 300, &probeError).isEmpty()) return true;
+  if (qEnvironmentVariableIsSet("CYBERSNAPPER_NO_AUTOSTART")) {
+    if (error) *error = probeError;
+    return false;
+  }
   if (!QProcess::startDetached(Paths::agentExecutable(), {"--headless"})) {
     if (error) *error = "Could not launch " + Paths::agentExecutable();
     return false;
