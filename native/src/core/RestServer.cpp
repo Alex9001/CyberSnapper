@@ -63,13 +63,15 @@ bool RestServer::start(quint16 portValue, const QByteArray &tokenHash, Handler h
   m_server->set_write_timeout(30, 0);
   m_server->set_keep_alive_timeout(5);
   configureRoutes();
-  const int boundPort = m_server->bind_to_port("127.0.0.1", portValue);
-  if (boundPort <= 0) {
+  if (!m_server->bind_to_port("127.0.0.1", portValue)) {
     if (error) *error = QStringLiteral("Could not bind REST API to 127.0.0.1:%1").arg(portValue);
     m_server.reset();
     return false;
   }
-  m_port = quint16(boundPort);
+  // cpp-httplib's bind_to_port returns success, not the selected port. The
+  // server binds the explicit port above, so preserve that value for API
+  // status responses and clients instead of reporting boolean true as port 1.
+  m_port = portValue;
   m_thread = std::thread([this] {
     if (!m_server->listen_after_bind() && !m_stopping) emit serverError("REST API server stopped unexpectedly");
   });

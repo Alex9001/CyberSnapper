@@ -1,5 +1,6 @@
 #include "core/Models.h"
 #include "core/ProjectStore.h"
+#include "core/RestServer.h"
 #include "core/Scheduler.h"
 
 #include <QFile>
@@ -8,6 +9,7 @@
 #include <QJsonDocument>
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -22,6 +24,7 @@ private slots:
   void transactionalWorkerEvents();
   void schemaThreeMigration();
   void targetSetsAndReviewWorkflow();
+  void restServerReportsRequestedPort();
   void intervalSchedule();
   void dailySchedule();
   void weeklyMonthlyAndOnceSchedules();
@@ -238,6 +241,25 @@ void TestCore::targetSetsAndReviewWorkflow() {
   QVERIFY(store.upsertSchedule(schedule, &error));
   QVERIFY(!store.removeTargetSet(saved.value("id").toString(), &error));
   QVERIFY(error.contains("Daily"));
+}
+
+void TestCore::restServerReportsRequestedPort() {
+  QTcpServer probe;
+  QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+  const quint16 port = probe.serverPort();
+  probe.close();
+
+  RestServer server;
+  QString error;
+  QVERIFY2(server.start(port, QByteArray(64, '0'),
+                        [](const QString &, const QJsonObject &) {
+                          return QJsonObject{{"ok", true}};
+                        }, &error), qPrintable(error));
+  QVERIFY(server.isRunning());
+  QCOMPARE(server.port(), port);
+  server.stop();
+  QVERIFY(!server.isRunning());
+  QCOMPARE(server.port(), quint16(0));
 }
 
 void TestCore::intervalSchedule() {

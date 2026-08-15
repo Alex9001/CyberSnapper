@@ -7,8 +7,10 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QTextStream>
-#include <QThread>
 
 #include <cmath>
 
@@ -35,6 +37,12 @@ struct DiffResult {
   qint64 analyzedPixels = 0;
   int width = 0;
   int height = 0;
+};
+
+struct JobTimeline {
+  QString createdAt;
+  QString startedAt;
+  QString finishedAt;
 };
 
 DiffResult drawDiff(const QString &baselinePath, const QString &currentPath, const QString &path,
@@ -77,7 +85,8 @@ DiffResult drawDiff(const QString &baselinePath, const QString &currentPath, con
 }
 
 QJsonObject artifact(const QString &id, const QString &relativePath, const QString &viewport,
-                     const QString &engine = "chromium", const QString &status = "succeeded") {
+                     const QString &createdAt, const QString &engine = "chromium",
+                     const QString &status = "succeeded") {
   const int width = viewport == "Mobile" ? 390 : viewport == "Tablet" ? 768 : 1440;
   const int height = viewport == "Mobile" ? 844 : viewport == "Tablet" ? 1024 : 900;
   return {{"id", id}, {"url", ShowcaseUrl}, {"engine", engine}, {"viewportId", viewport.toLower()},
@@ -86,12 +95,48 @@ QJsonObject artifact(const QString &id, const QString &relativePath, const QStri
           {"viewportName", viewport}, {"captureMode", "fullPage"}, {"format", "png"},
           {"relativePath", relativePath}, {"width", width}, {"height", height}, {"sha256", id + "-fixture"},
           {"status", status}, {"error", status == "failed" ? "Navigation timed out" : QString{}},
-          {"createdAt", utcNow()}};
+          {"createdAt", createdAt}};
+}
+
+bool setJobTimeline(const QString &projectRoot, const QString &jobId, const JobTimeline &timeline,
+                    QString *error) {
+  const QString connectionName = "cybersnapper-doc-timeline-" + jobId;
+  QString databaseError;
+  bool updated = false;
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+    database.setDatabaseName(QDir(projectRoot).filePath(".cybersnapper/project.sqlite"));
+    if (!database.open()) {
+      databaseError = database.lastError().text();
+    } else {
+      QSqlQuery job(database);
+      job.prepare("UPDATE jobs SET created_at=?,started_at=?,finished_at=? WHERE id=?");
+      job.addBindValue(timeline.createdAt);
+      job.addBindValue(timeline.startedAt);
+      job.addBindValue(timeline.finishedAt);
+      job.addBindValue(jobId);
+      updated = job.exec() && job.numRowsAffected() == 1;
+      if (!updated) databaseError = job.lastError().text().isEmpty() ? "Fixture job was not found" : job.lastError().text();
+      if (updated) {
+        QSqlQuery events(database);
+        events.prepare("UPDATE events SET created_at=?,event_json=json_set(event_json,'$.timestamp',?) WHERE job_id=?");
+        events.addBindValue(timeline.createdAt);
+        events.addBindValue(timeline.createdAt);
+        events.addBindValue(jobId);
+        updated = events.exec();
+        if (!updated) databaseError = events.lastError().text();
+      }
+      database.close();
+    }
+  }
+  QSqlDatabase::removeDatabase(connectionName);
+  if (!updated && error) *error = databaseError;
+  return updated;
 }
 
 bool addJob(ProjectStore &store, const CaptureProfile &profile, const QString &id, const QString &source,
             const QString &status, int completed, int failed, const QList<QJsonObject> &artifacts,
-            const QString &message = {}) {
+            const JobTimeline &timeline, const QString &message = {}) {
   JobRequest request;
   request.id = id;
   request.projectId = store.projectId();
@@ -104,8 +149,7 @@ bool addJob(ProjectStore &store, const CaptureProfile &profile, const QString &i
   if (!store.insertJob(request, &error) || !store.updateJob(id, "running")) return false;
   for (const auto &value : artifacts) if (!store.insertArtifact(id, value)) return false;
   if (!store.updateJob(id, status, message, completed, failed)) return false;
-  QThread::msleep(3);
-  return true;
+  return setJobTimeline(store.root(), id, timeline, &error);
 }
 
 int fail(const QString &message) {
@@ -168,17 +212,23 @@ int main(int argc, char **argv) {
   const DiffResult diff = drawDiff(baselinePath, currentPath, QDir(root).filePath(diffRelative), profile.pixelThreshold);
   if (!diff.ok) return fail("could not compare CYBER BRAND source captures");
 
-  if (!addJob(store, profile, "job-api-failure", "api", "failed", 0, 1, {}, "DNS lookup failed")) return fail("could not add API job");
+  if (!addJob(store, profile, "job-api-failure", "api", "failed", 0, 1, {},
+              {"2026-08-14T14:00:00.000Z", "2026-08-14T14:00:01.000Z", "2026-08-14T14:00:40.000Z"},
+              "DNS lookup failed")) return fail("could not add API job");
   if (!addJob(store, profile, "job-weekday-schedule", "schedule:weekday", "succeeded", 12, 0,
-              {artifact("artifact-schedule", tabletRelative, "Tablet", "firefox")})) return fail("could not add scheduled job");
+              {artifact("artifact-schedule", tabletRelative, "Tablet", "2026-08-14T15:31:30.000Z", "firefox")},
+              {"2026-08-14T15:30:00.000Z", "2026-08-14T15:30:01.000Z", "2026-08-14T15:32:00.000Z"})) return fail("could not add scheduled job");
   if (!addJob(store, profile, "job-partial", "gui", "partial", 5, 1,
-              {artifact("artifact-partial", mobileRelative, "Mobile"),
-               artifact("artifact-timeout", "captures/showcase/missing.png", "Desktop", "firefox", "failed")},
+              {artifact("artifact-partial", mobileRelative, "Mobile", "2026-08-14T16:16:00.000Z"),
+               artifact("artifact-timeout", "captures/showcase/missing.png", "Desktop", "2026-08-14T16:16:30.000Z", "firefox", "failed")},
+              {"2026-08-14T16:15:00.000Z", "2026-08-14T16:15:01.000Z", "2026-08-14T16:17:00.000Z"},
               "One Firefox target timed out")) return fail("could not add partial job");
   if (!addJob(store, profile, "job-baseline", "gui", "succeeded", 1, 0,
-              {artifact("artifact-baseline", baseRelative, "Desktop")})) return fail("could not add baseline job");
+              {artifact("artifact-baseline", baseRelative, "Desktop", "2026-08-14T17:01:00.000Z")},
+              {"2026-08-14T17:00:00.000Z", "2026-08-14T17:00:01.000Z", "2026-08-14T17:02:00.000Z"})) return fail("could not add baseline job");
   if (!addJob(store, profile, "job-visual-change", "schedule:release-watch", "succeeded", 1, 0,
-              {artifact("artifact-current", currentRelative, "Desktop")})) return fail("could not add comparison job");
+              {artifact("artifact-current", currentRelative, "Desktop", "2026-08-14T18:01:00.000Z")},
+              {"2026-08-14T18:00:00.000Z", "2026-08-14T18:00:01.000Z", "2026-08-14T18:02:00.000Z"})) return fail("could not add comparison job");
 
   const QString key = QString(ShowcaseUrl) + "|chromium|desktop|fullPage|png";
   if (!store.setBaseline(key, "artifact-baseline", baseRelative)) return fail("could not set baseline");
@@ -193,7 +243,7 @@ int main(int argc, char **argv) {
                                {"analysisWidth", diff.width}, {"analysisHeight", diff.height}, {"analysisScale", 1.0},
                                {"mismatchedPixels", diff.mismatchedPixels}, {"analyzedPixels", diff.analyzedPixels}, {"algorithmVersion", 2},
                                {"baselineRelativePath", baseRelative},
-                               {"createdAt", utcNow()}})) return fail("could not add comparison");
+                               {"createdAt", "2026-08-14T18:02:10.000Z"}})) return fail("could not add comparison");
   if (!store.insertComparison({{"id", "comparison-mobile-baseline"}, {"jobId", "job-partial"},
                                {"comparisonKey", QString(ShowcaseUrl) + "|chromium|mobile|fullPage|png"},
                                {"currentArtifactId", "artifact-partial"}, {"status", "missing_baseline"},
@@ -201,7 +251,8 @@ int main(int argc, char **argv) {
                                {"targetSetId", "target-set-production"}, {"targetSetName", "Production site"},
                                {"engine", "chromium"}, {"viewportId", "mobile"}, {"viewportName", "Mobile"},
                                {"captureMode", "fullPage"}, {"format", "png"}, {"analysisWidth", 390},
-                               {"analysisHeight", 844}, {"analysisScale", 1.0}, {"createdAt", utcNow()}})) return fail("could not add missing baseline");
+                               {"analysisHeight", 844}, {"analysisScale", 1.0},
+                               {"createdAt", "2026-08-14T16:17:10.000Z"}})) return fail("could not add missing baseline");
 
   const QJsonArray urls{ShowcaseUrl, "https://cyberbrand.net/pricing"};
   const QList<QJsonObject> schedules{

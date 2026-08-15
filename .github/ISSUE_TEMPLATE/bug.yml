@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible problem in CyberSnapper
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. For security vulnerabilities, stop here and use [private vulnerability reporting](https://github.com/Alex9001/CyberSnapper/security/advisories/new).
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues for this problem.
+          required: true
+        - label: I checked the latest stable release, or I am reporting a source build with its commit.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: CyberSnapper version
+      description: Find this in Help > About or provide the release tag or commit.
+      placeholder: "2.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux x64
+        - macOS Apple silicon
+        - macOS Intel
+        - Windows x64
+        - Other source build
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include the smallest project, URL, capture settings, or sequence that reproduces the issue. Remove private data first.
+      placeholder: |
+        1. Open ...
+        2. Configure ...
+        3. Click ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Screenshots and additional context
+      description: Drag in screenshots and include the installation method, browser engine, site authentication, or other relevant details. Remove private site content first.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only the relevant section. Remove credentials, tokens, and private data first.
+      render: shell
