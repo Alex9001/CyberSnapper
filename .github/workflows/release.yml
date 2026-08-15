@@ -431,6 +431,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}"
