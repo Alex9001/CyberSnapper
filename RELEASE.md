@@ -23,7 +23,7 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 
 1. Confirm `master` is clean, synchronized with GitHub, and still points to the rehearsed commit.
 2. Confirm the package and CMake versions exactly match the release tag.
-3. Create an annotated tag on that commit, for example `git tag -a v2.2.1 -m "CyberSnapper 2.2.1"`, and push the tag.
+3. Create an annotated tag on that commit, for example `git tag -a v2.2.2 -m "CyberSnapper 2.2.2"`, and push the tag.
 4. Treat a pushed release tag as immutable. Never move or replace a published `v*` tag; ship a new patch version if tagged source needs a code change.
 
 ## 4. Publish
@@ -54,6 +54,12 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If valid packages were built but assets were not attached correctly, manually dispatch **Native Release** with the existing `release_tag`; verify the rebuilt assets and checksums again.
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
+
+## v2.2.2
+
+- The Chromium engine falls back to Google Chrome and then Microsoft Edge when the bundled Chromium is missing.
+- On Windows arm64, an x64 (emulated) bundled Chromium is replaced by a native system Chrome or Edge when available.
+- The fallback applies automatically on Windows, Linux, and macOS.
 
 ## v2.2.1
 

@@ -27,7 +27,7 @@ The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder
 
 ## Download
 
-CyberSnapper 2.2.1 is the current stable release. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
+CyberSnapper 2.2.2 is the current stable release. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
 
 | Platform | Recommended | Portable archive |
 | --- | --- | --- |
