@@ -24,7 +24,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-24.04, name: Linux x64, artifact: CyberSnapper-linux-x64 }
-          - { os: windows-2025, name: Windows x64, artifact: CyberSnapper-windows-x64 }
+          - { os: windows-2022, name: Windows x64, artifact: CyberSnapper-windows-x64 }
           - { os: macos-15-intel, name: macOS x64, artifact: CyberSnapper-macos-x64 }
           - { os: macos-15, name: macOS arm64, artifact: CyberSnapper-macos-arm64 }
 
@@ -116,7 +116,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          macdeployqt stage/CyberSnapper.app
+          macdeployqt stage/CyberSnapper.app \
+            -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
+            -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli
           codesign --force --deep --sign - stage/CyberSnapper.app
           ditto -c -k --sequesterRsrc --keepParent stage/CyberSnapper.app ${{ matrix.artifact }}.zip
 
