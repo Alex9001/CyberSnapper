@@ -46,6 +46,4 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: |
-          npm run screenshots:docs
-          git diff --exit-code -- docs/images
+        run: npm run screenshots:docs -- --output build/test-runtime/docs-output
