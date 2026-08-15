@@ -13,3 +13,9 @@ set_tests_properties(cybersnapper-gui-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATF
 
 qt_add_executable(cybersnapper-doc-fixture DocFixture.cpp)
 target_link_libraries(cybersnapper-doc-fixture PRIVATE cybersnapper_core Qt6::Gui)
+
+add_test(NAME cybersnapper-cli-version COMMAND $<TARGET_FILE:cybersnapper_cli> --version)
+set_tests_properties(cybersnapper-cli-version PROPERTIES
+  PASS_REGULAR_EXPRESSION "cybersnapper-cli ${PROJECT_VERSION}"
+  TIMEOUT 15
+)

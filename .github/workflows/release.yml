@@ -125,7 +125,9 @@ jobs:
             -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-agent \
             -executable=stage/CyberSnapper.app/Contents/MacOS/cybersnapper-cli
           frameworks=stage/CyberSnapper.app/Contents/Frameworks
-          cp -L "$QT_ROOT_DIR/lib/libbrotlicommon.1.dylib" "$frameworks/libbrotlicommon.1.dylib"
+          brew list brotli >/dev/null 2>&1 || brew install brotli
+          brotli_prefix="$(brew --prefix brotli)"
+          cp -L "$brotli_prefix/lib/libbrotlicommon.1.dylib" "$frameworks/libbrotlicommon.1.dylib"
           for library in "$frameworks/libbrotlidec.1.dylib" "$frameworks/libbrotlienc.1.dylib"; do
             install_name_tool -change @rpath/libbrotlicommon.1.dylib \
               @loader_path/libbrotlicommon.1.dylib "$library"

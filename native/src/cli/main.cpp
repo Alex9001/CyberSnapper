@@ -12,6 +12,8 @@
 #include <QThread>
 #include <atomic>
 #include <csignal>
+#include <cstdio>
+#include <cstring>
 
 using namespace CyberSnapper;
 
@@ -79,6 +81,14 @@ void printJobLine(const QJsonObject &job) {
 } // namespace
 
 int main(int argc, char **argv) {
+  // Keep the version probe independent of Qt initialization. Release packaging
+  // uses this path to verify that the installed executable and its loader-level
+  // dependencies can start on every supported platform.
+  if (argc == 2 && std::strcmp(argv[1], "--version") == 0) {
+    std::printf("cybersnapper-cli %s\n", CYBERSNAPPER_VERSION);
+    return 0;
+  }
+
   QCoreApplication application(argc, argv);
   application.setOrganizationName("CyberBrand");
   application.setOrganizationDomain("cyberbrand.net");

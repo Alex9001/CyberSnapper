@@ -13,7 +13,6 @@ add_library(cybersnapper_core STATIC ${CYBERSNAPPER_CORE_SOURCES})
 target_include_directories(cybersnapper_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(cybersnapper_core
   PUBLIC Qt6::Core Qt6::Network Qt6::Sql
-  PRIVATE Qt6::Gui
 )
 target_compile_definitions(cybersnapper_core PUBLIC
   CYBERSNAPPER_VERSION="${PROJECT_VERSION}"
