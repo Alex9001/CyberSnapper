@@ -2,7 +2,7 @@
   <img src="assets/logo.png" width="190" alt="CyberSnapper camera logo">
   <h1>CyberSnapper</h1>
   <p><strong>Capture your work. Build your portfolio.</strong></p>
-  <p>Native website screenshot capture for macOS, Windows, and Linux.</p>
+  <p>Native, open-source website screenshot tool and portfolio mockup generator for macOS, Windows, and Linux.</p>
 
   <p>
     <a href="https://github.com/Alex9001/CyberSnapper/actions/workflows/ci.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/Alex9001/CyberSnapper/ci.yml?branch=master&style=for-the-badge&logo=githubactions&logoColor=white&label=Build"></a>
@@ -21,7 +21,7 @@
 
 ![CyberSnapper Capture workspace creating portfolio screenshots across desktop, tablet, and mobile](docs/images/app-capture.png)
 
-CyberSnapper is a local-first screenshot studio for designers and developers who need polished images of their websites. Give it one project or an entire portfolio, choose the exact desktop, tablet, and mobile views, and create a consistent set of full-page, viewport, or element screenshots in one run.
+CyberSnapper is a local-first, cross-platform website screenshot tool for designers and developers who need polished portfolio images and device mockups of their work. Give it one project or an entire portfolio, choose the exact desktop, tablet, and mobile views, and create a consistent set of full-page, viewport, or element screenshots in one run.
 
 The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder you control. It is not a web UI wrapped in a desktop shell: the interface is native Qt Widgets, and a private Playwright worker exists only to render and capture your pages.
 
@@ -178,6 +178,8 @@ The API supports target sets, dashboard summaries, capture submission, job inspe
 ## CyberSnapper 1.x archive
 
 CyberSnapper 2 is a clean break from the original script. It does not import, read, or depend on 1.x state, and no migration path is required. The final 1.x source and downloadable archive remain frozen in the [v1.0.0 release](https://github.com/Alex9001/CyberSnapper/releases/tag/v1.0.0) for anyone who still needs them.
+
+If CyberSnapper improves your portfolio workflow, [star the repository](https://github.com/Alex9001/CyberSnapper) to help more designers and developers find it.
 
 ## License
 
