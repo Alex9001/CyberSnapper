@@ -22,7 +22,9 @@ documentation improvements, and cross-platform compatibility work are welcome.
    ```
    The `commit-msg` hook rejects commits that carry AI-tool attribution
    trailers ("Generated with Codebuff" / "Co-Authored-By: Codebuff" /
-   "Co-Authored-By: Copilot", etc.).
+   "Co-Authored-By: Copilot", etc.). See
+   [docs/MAINTENANCE.md](docs/MAINTENANCE.md) for the full attribution
+   policy, the history rewrite, and the immutable-release-tag rule.
 3. Add or update tests for behavior changes and run the relevant checks.
 4. For UI changes, attach before-and-after screenshots to the pull request. If
    documentation imagery changes, regenerate it with
