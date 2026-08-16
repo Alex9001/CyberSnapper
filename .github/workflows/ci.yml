@@ -6,6 +6,42 @@ on:
   pull_request:
 
 jobs:
+  lint-commit-messages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Block AI-tool attribution trailers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git rev-parse -q --verify "${base}^{commit}" >/dev/null 2>&1; then
+            echo "No valid base commit; skipping footer check."
+            exit 0
+          fi
+          bad=0
+          for c in $(git rev-list "${base}..HEAD"); do
+            msg=$(git log -1 --format='%B' "$c")
+            if offending=$(printf '%s' "$msg" | ./.githooks/check-attribution.sh); then
+              :
+            else
+              echo "::error::Commit $c carries an AI-tool attribution trailer:"
+              printf '%s\n' "$offending"
+              bad=1
+            fi
+          done
+          if [ "$bad" -eq 1 ]; then
+            echo "Remove AI-tool attribution lines (e.g. \"Generated with Codebuff\" or \"Co-Authored-By: Copilot\") before merging; see AGENTS.md."
+            exit 1
+          fi
+          echo "No commit messages contain AI-tool attribution trailers."
+
   test:
     strategy:
       fail-fast: false

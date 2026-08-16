@@ -1,0 +1,22 @@
+#!/bin/sh
+# Reject commits that carry AI-tool attribution trailers.
+#
+# The blocklist and matching live in check-attribution.sh, which is shared
+# with the CI lint job, so the two never drift apart. Human
+# "Co-Authored-By: Real Person <person@example.com>" trailers are allowed.
+
+msg_file="$1"
+if [ -z "$msg_file" ] || [ ! -r "$msg_file" ]; then
+  exit 0
+fi
+
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if "$hook_dir/check-attribution.sh" "$msg_file" >/dev/null; then
+  exit 0
+fi
+
+echo "error: commit message contains an AI-tool attribution trailer" >&2
+echo "Remove lines like \"Generated with Codebuff\" or \"Co-Authored-By: Copilot\"" >&2
+echo "before committing; see AGENTS.md." >&2
+exit 1

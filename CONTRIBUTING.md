@@ -15,8 +15,14 @@ documentation improvements, and cross-platform compatibility work are welcome.
 ## Development workflow
 
 1. Create a focused branch from `master`.
-2. Follow [the build guide](docs/BUILDING.md) to install prerequisites and run
-   the worker and native builds.
+2. Enable the project's git hooks and follow [the build guide](docs/BUILDING.md)
+   to install prerequisites and run the worker and native builds:
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+   The `commit-msg` hook rejects commits that carry AI-tool attribution
+   trailers ("Generated with Codebuff" / "Co-Authored-By: Codebuff" /
+   "Co-Authored-By: Copilot", etc.).
 3. Add or update tests for behavior changes and run the relevant checks.
 4. For UI changes, attach before-and-after screenshots to the pull request. If
    documentation imagery changes, regenerate it with
