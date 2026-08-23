@@ -79,6 +79,22 @@ void TestCore::browserManagerQueuesVerifiesAndCancels() {
   QCOMPARE(manager.cancel(webkitId).value("cancelling").toBool(), true);
   QTRY_COMPARE_WITH_TIMEOUT(manager.task(webkitId).value("install").toObject()
                                 .value("state").toString(), QString("cancelled"), 3000);
+
+  const QJsonObject firefoxCheck = manager.verify("firefox");
+  const QString firefoxCheckId = firefoxCheck.value("installId").toString();
+  QTRY_COMPARE_WITH_TIMEOUT(manager.task(firefoxCheckId).value("install").toObject()
+                                .value("state").toString(), QString("ready"), 3000);
+  const QJsonArray firefoxLogs = manager.task(firefoxCheckId).value("install").toObject()
+                                     .value("logs").toArray();
+  for (const QJsonValue &line : firefoxLogs) {
+    QVERIFY2(!line.toString().contains("browser_install_result"),
+             "Terminal protocol JSON leaked into user-visible browser logs");
+  }
+
+  const QJsonObject failedWebkit = manager.install("webkit");
+  const QString failedWebkitId = failedWebkit.value("installId").toString();
+  QTRY_COMPARE_WITH_TIMEOUT(manager.task(failedWebkitId).value("install").toObject()
+                                .value("state").toString(), QString("failed"), 3000);
   QVERIFY(!manager.hasPendingOperations());
 
   if (oldWorker.isNull()) qunsetenv("CYBERSNAPPER_WORKER_ENTRY");

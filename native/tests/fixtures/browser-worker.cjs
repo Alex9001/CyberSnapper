@@ -23,7 +23,7 @@ let done = false;
 const finish = (state, code) => {
   if (done) return;
   done = true;
-  process.stdout.write(`${JSON.stringify({
+  const result = `${JSON.stringify({
     protocolVersion: 1,
     type: 'browser_install_result',
     engine,
@@ -32,8 +32,14 @@ const finish = (state, code) => {
     installed: state === 'ready',
     ready: state === 'ready',
     ok: state === 'ready',
-    message: state === 'ready' ? `${engine} launched successfully.` : `${engine} installation was cancelled.`,
-  })}\n`);
+    message: state === 'ready' ? `${engine} launched successfully.`
+      : state === 'failed' ? `${engine} installation failed.`
+      : `${engine} installation was cancelled.`,
+  })}\n`;
+  // Exercise the packaged-runtime case where a terminal protocol line arrives
+  // on stderr. The native manager must consume it as control data, not display
+  // the raw JSON as installer output.
+  (engine === 'firefox' ? process.stderr : process.stdout).write(result);
   setTimeout(() => process.exit(code), 0);
 };
 
@@ -51,4 +57,5 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (input) => {
   if (/"command"\s*:\s*"cancel"/.test(input)) finish('cancelled', 2);
 });
-setTimeout(() => finish('ready', 0), 500);
+setTimeout(() => finish(engine === 'webkit' && installIndex >= 0 ? 'failed' : 'ready',
+                        engine === 'webkit' && installIndex >= 0 ? 1 : 0), 500);

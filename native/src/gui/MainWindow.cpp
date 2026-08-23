@@ -229,6 +229,23 @@ QString displayTime(const QString &iso) {
   return value.isValid() ? value.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : iso;
 }
 
+QString displayBrowserEngine(const QString &engine) {
+  if (engine == QStringLiteral("webkit")) return QStringLiteral("WebKit");
+  if (engine.isEmpty()) return {};
+  QString display = engine;
+  display[0] = display.at(0).toUpper();
+  return display;
+}
+
+bool isBrowserProtocolLine(const QString &text) {
+  QJsonParseError error;
+  const QJsonObject object = QJsonDocument::fromJson(text.trimmed().toUtf8(), &error).object();
+  if (error.error != QJsonParseError::NoError || object.isEmpty()) return false;
+  const QString type = object.value(QStringLiteral("type")).toString();
+  return type == QStringLiteral("browser_install_progress") ||
+         type == QStringLiteral("browser_install_result");
+}
+
 QStringList checkedValues(const QList<QPair<QCheckBox *, QString>> &items) {
   QStringList result;
   for (const auto &[box, value] : items) if (box->isChecked()) result.append(value);
@@ -1416,8 +1433,7 @@ QWidget *MainWindow::buildSettingsPage() {
   browserLayout->setSpacing(10);
   for (const QString &engine : {QStringLiteral("chromium"), QStringLiteral("firefox"),
                                 QStringLiteral("webkit")}) {
-    const QString display = engine == QStringLiteral("webkit")
-        ? QStringLiteral("WebKit") : engine.at(0).toUpper() + engine.mid(1);
+    const QString display = displayBrowserEngine(engine);
     auto *card = new QGroupBox(display);
     card->setObjectName("browserCard_" + engine);
     auto *cardLayout = new QVBoxLayout(card);
@@ -2286,7 +2302,16 @@ void MainWindow::applyBrowserState(const QString &engine, const QJsonObject &upd
   status->setText(statusText);
   status->setStyleSheet(statusStyle);
 
+  const QString display = displayBrowserEngine(engine);
   QString messageText = state.value("message").toString();
+  if (isBrowserProtocolLine(messageText)) messageText.clear();
+  if (ready) {
+    messageText = display + " is installed and ready.";
+  } else if (stateName == "failed" && messageText.isEmpty()) {
+    messageText = display + " could not be installed. Open Details for diagnostic output.";
+  } else if (stateName == "cancelled" && messageText.isEmpty()) {
+    messageText = display + " installation was cancelled.";
+  }
   const QJsonObject diagnostics = state.value("diagnostics").toObject();
   const QStringList missingLibraries = [&diagnostics] {
     QStringList values;
@@ -2342,7 +2367,10 @@ void MainWindow::applyBrowserState(const QString &engine, const QJsonObject &upd
     details.append("Launch diagnostics:\n" + diagnostics.value("message").toString());
   }
   QStringList logs;
-  for (const QJsonValue &value : state.value("logs").toArray()) logs.append(value.toString());
+  for (const QJsonValue &value : state.value("logs").toArray()) {
+    const QString line = value.toString();
+    if (!isBrowserProtocolLine(line)) logs.append(line);
+  }
   if (!logs.isEmpty()) details.append("Installer output:\n" + logs.join('\n'));
   QPlainTextEdit *log = m_browserLogs.value(engine);
   log->setPlainText(details.join("\n\n"));

@@ -234,6 +234,11 @@ void BrowserManager::startNext() {
   connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
           [this, process](int code, QProcess::ExitStatus exitStatus) {
     if (m_process != process) return;
+    // QProcess may emit finished before the last readyRead signal is delivered.
+    // Drain both channels here so a terminal result cannot be mistaken for a
+    // missing result and leave clients displaying the preceding progress state.
+    consumeOutput(m_stdoutBuffer, process->readAllStandardOutput(), true);
+    consumeOutput(m_stderrBuffer, process->readAllStandardError(), false);
     consumeOutput(m_stdoutBuffer, QByteArrayLiteral("\n"), true);
     consumeOutput(m_stderrBuffer, QByteArrayLiteral("\n"), false);
     QJsonObject result = m_workerResult;
@@ -273,41 +278,49 @@ void BrowserManager::consumeOutput(QByteArray &buffer, const QByteArray &chunk, 
 void BrowserManager::processLine(const QByteArray &line, bool structured) {
   const QString text = QString::fromUtf8(line).trimmed();
   if (text.isEmpty() || !m_active) return;
-  if (!structured) {
-    appendLog(text);
+
+  QJsonParseError parseError;
+  const QJsonObject message = QJsonDocument::fromJson(line, &parseError).object();
+  const QString type = message.value(QStringLiteral("type")).toString();
+  if (parseError.error == QJsonParseError::NoError && !message.isEmpty() &&
+      type == QStringLiteral("browser_install_result")) {
+    // Recognize protocol events on either process channel. Some packaged
+    // runtimes can route the final write through stderr; it is control data,
+    // never installer output intended for the UI.
+    m_workerResult = message;
+    return;
+  }
+  if (parseError.error == QJsonParseError::NoError && !message.isEmpty() &&
+      type == QStringLiteral("browser_install_progress")) {
     QJsonObject snapshot = m_tasks.value(m_active->id);
-    snapshot.insert(QStringLiteral("message"), text);
+    for (auto iterator = message.begin(); iterator != message.end(); ++iterator) {
+      if (iterator.key() != QStringLiteral("type") &&
+          iterator.key() != QStringLiteral("protocolVersion")) {
+        snapshot.insert(iterator.key(), iterator.value());
+      }
+    }
+    const QString phase = snapshot.value(QStringLiteral("phase")).toString();
+    snapshot.insert(QStringLiteral("state"), phase == QStringLiteral("verifying")
+                                                    ? QStringLiteral("verifying")
+                                                    : QStringLiteral("installing"));
+    appendLog(snapshot.value(QStringLiteral("message")).toString());
     snapshot.insert(QStringLiteral("logs"), jsonLines(m_logs));
     m_tasks.insert(m_active->id, snapshot);
     emit progressPublished(snapshot);
     return;
   }
 
-  QJsonParseError parseError;
-  const QJsonObject message = QJsonDocument::fromJson(line, &parseError).object();
-  if (parseError.error != QJsonParseError::NoError || message.isEmpty()) {
+  if (structured) {
     appendLog(text);
     return;
   }
-  const QString type = message.value(QStringLiteral("type")).toString();
-  if (type == QStringLiteral("browser_install_result")) {
-    m_workerResult = message;
-    return;
-  }
-  if (type != QStringLiteral("browser_install_progress")) return;
 
+  // Unstructured stderr remains useful diagnostic output. A JSON object with
+  // an unknown type is deliberately treated as diagnostics, while recognized
+  // browser protocol messages above are filtered from user-visible logs.
+  appendLog(text);
   QJsonObject snapshot = m_tasks.value(m_active->id);
-  for (auto iterator = message.begin(); iterator != message.end(); ++iterator) {
-    if (iterator.key() != QStringLiteral("type") &&
-        iterator.key() != QStringLiteral("protocolVersion")) {
-      snapshot.insert(iterator.key(), iterator.value());
-    }
-  }
-  const QString phase = snapshot.value(QStringLiteral("phase")).toString();
-  snapshot.insert(QStringLiteral("state"), phase == QStringLiteral("verifying")
-                                                  ? QStringLiteral("verifying")
-                                                  : QStringLiteral("installing"));
-  appendLog(snapshot.value(QStringLiteral("message")).toString());
+  snapshot.insert(QStringLiteral("message"), text);
   snapshot.insert(QStringLiteral("logs"), jsonLines(m_logs));
   m_tasks.insert(m_active->id, snapshot);
   emit progressPublished(snapshot);
