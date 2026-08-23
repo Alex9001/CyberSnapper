@@ -5,6 +5,7 @@ add_test(NAME cybersnapper-core-tests COMMAND cybersnapper-core-tests)
 qt_add_executable(cybersnapper-gui-tests
   TestGui.cpp
   ../src/gui/MainWindow.cpp
+  ../src/gui/ContentBlockingDialog.cpp
   ../resources/native.qrc
 )
 target_link_libraries(cybersnapper-gui-tests PRIVATE cybersnapper_core Qt6::Test Qt6::Widgets Qt6::Svg)

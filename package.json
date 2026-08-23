@@ -1,6 +1,6 @@
 {
   "name": "cybersnapper",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "Native cross-platform website screenshot tool and portfolio mockup generator, powered by Qt and Playwright",
   "scripts": {
     "build:worker": "node worker/build.mjs",
@@ -38,6 +38,7 @@
   "homepage": "https://alex9001.github.io/CyberSnapper/",
   "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
+    "@ghostery/adblocker": "^2.18.2",
     "playwright": "^1.61.1",
     "sharp": "^0.35.3"
   },

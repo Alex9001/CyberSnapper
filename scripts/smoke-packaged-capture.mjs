@@ -41,9 +41,20 @@ const server = http.createServer((request, response) => {
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   response.end(`<!doctype html><html><head><style>
     body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-      color: #e9f8ff; background: linear-gradient(135deg, #07111f, #123b59); font: 20px system-ui; }
+      color: #e9f8ff; background: linear-gradient(135deg, #07111f, #123b59); font: 20px system-ui;
+      overflow: hidden; }
     main { padding: 48px; border: 1px solid #2bc6ee; border-radius: 24px; }
-  </style></head><body><main><h1>CyberSnapper package smoke</h1><p>${request.url}</p></main></body></html>`);
+    #cookieConsent { position: fixed; bottom: 0; left: 0; right: 0; padding: 18px 24px;
+      background: #101d2c; border-top: 1px solid #2bc6ee; font-size: 15px;
+      display: flex; gap: 16px; align-items: center; }
+  </style></head><body>
+    <main><h1>CyberSnapper package smoke</h1><p>${request.url}</p></main>
+    <div id="cookieConsent" role="dialog" aria-label="Cookie consent">
+      <span>We use cookies</span>
+      <button id="reject-all" onclick="this.closest('#cookieConsent').remove()">Reject all</button>
+      <button onclick="this.closest('#cookieConsent').remove()">Accept all</button>
+    </div>
+  </body></html>`);
 });
 await new Promise((resolve, reject) => {
   server.once('error', reject);
@@ -100,10 +111,30 @@ try {
   const result = JSON.parse(output);
   const status = result.job?.status ?? result.status;
   if (status !== 'succeeded') throw new Error(`Packaged capture ended with status ${status ?? 'unknown'}`);
+  const jobId = result.job?.id ?? result.jobId;
+  if (!jobId) throw new Error('Packaged capture did not report a job id');
+
+  // The default profile ships with cookie-banner removal enabled. With no
+  // cached community lists the capture must still succeed via built-in
+  // consent handling, and the artifacts must record that provenance.
+  const detail = JSON.parse(await packagedCli(['--json', 'job', 'show', jobId]));
+  const artifacts = (detail.artifacts ?? detail.job?.artifacts ?? []).filter((artifact) => artifact.format === 'png');
+  if (artifacts.length < 3) throw new Error(`Expected three responsive PNG artifacts, found ${artifacts.length}`);
+  for (const artifact of artifacts) {
+    const blocking = artifact.contentBlocking;
+    if (!blocking) throw new Error('Artifact is missing content-blocking provenance');
+    if (blocking.consentActionsSucceeded < 1) {
+      throw new Error(`Artifact did not record a successful consent action: ${JSON.stringify(blocking)}`);
+    }
+    if (!blocking.warnings.some((warning) => /snapshot|not.*download/i.test(warning))) {
+      throw new Error(`Expected a missing-snapshot warning, found: ${JSON.stringify(blocking.warnings)}`);
+    }
+  }
 
   const captures = await collectPngs(path.join(projectRoot, 'captures'));
   if (captures.length < 3) throw new Error(`Expected three responsive PNG captures, found ${captures.length}`);
-  console.log(`Packaged Chromium capture succeeded with ${captures.length} PNG files.`);
+  console.log(`Packaged Chromium capture succeeded with ${captures.length} PNG files; ` +
+              'cookie banner handled and provenance recorded.');
 } finally {
   await packagedCli(['--force', 'agent', 'stop'], 30_000).catch(() => {});
   await new Promise((resolve) => server.close(resolve));

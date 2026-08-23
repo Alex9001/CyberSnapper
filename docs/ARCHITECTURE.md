@@ -35,6 +35,12 @@ Jobs are capped at 10,000 artifacts. Raster work is capped at 64 million device 
 
 Each browser engine is launched headlessly. Each target uses an isolated Playwright context. Browser installation is an explicit agent operation and capture jobs never install software automatically.
 
+## Content blocking boundary
+
+Content blocking removes cookie-consent banners and optionally filters subresources, but it never weakens the capture boundary. The agent combines cached community lists and project custom rulesets into a content-addressed snapshot (`.cybersnapper/rulesets/<digest>.json`) at submission time; the digest travels in the job request and the worker re-verifies it before use. Community lists are downloaded only by the agent into app-local cache — never during a capture.
+
+Inside the worker's route handler, the localhost/private-network policy is evaluated first and always wins. Community network filters can only reject subresource requests: exceptions from community lists cannot allow a blocked destination, and the main document request is never community-blocked. Custom rulesets support only structured hide/click actions with bounded selectors and delays; scriptlets other than a strictly parsed trusted-click form, response rewriting, redirects, CSP manipulation, and cookie/local-storage mutation are rejected before storage. Consent handling is best effort and scoped to identified banner containers; normal application dialogs are left untouched. Per-artifact provenance (digest, blocked counts, warnings) is recorded so history explains why a capture differs from an unblocked page.
+
 ## REST boundary
 
 REST v1 is disabled by default and binds to `127.0.0.1` only. All routes except health require a high-entropy bearer token. CyberSnapper stores only a SHA-256 token digest and compares digests without an early exit. Request bodies are capped at 1 MiB.

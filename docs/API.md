@@ -1,6 +1,59 @@
 # REST API v1
 
-The optional API listens on `http://127.0.0.1:39071` by default. With the exception of health, requests require:
+## Content blocking
+
+### `GET /v1/contentBlocking/catalog`
+
+Returns the list of available subscription lists and their metadata.
+
+**Response**:
+```json
+{
+  "contentBlockingCatalog": [
+    {
+      "id": "easylist-cookie",
+      "name": "EasyList Cookie",
+      "homepage": "https://easylist.to/",
+      "lastUpdated": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "ublock-cookie",
+      "name": "uBlock Origin Cookie",
+      "homepage": "https://github.com/gorhill/uBlock",
+      "lastUpdated": "2026-08-22T00:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /v1/contentBlocking/status`
+
+Returns the current content blocking status and metrics.
+
+**Response**:
+```json
+{
+  "contentBlockingStatus": {
+    "enabled": true,
+    "subscriptionIds": ["easylist-cookie", "ublock-cookie"],
+    "customRulesetIds": [],
+    "lastRefresh": "2026-08-22T00:00:00Z",
+    "metrics": {
+      "blockedSubresources": 42,
+      "consentActionsAttempted": 5,
+      "consentActionsSucceeded": 3
+    }
+  }
+}
+```
+
+### `POST /v1/contentBlocking/refresh`
+
+Refreshes the content blocking snapshots. Returns the new status.
+
+**Response**: Same as `GET /v1/contentBlocking/status`.
+
+## Projects
 
 ```http
 Authorization: Bearer YOUR_TOKEN

@@ -55,6 +55,15 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.3.0
+
+- **Content blocking**: Cookie banner removal, consent handling, site exceptions, custom rulesets, and visual review.  
+- **Security**: Capture boundary, HTTPS-only downloads, atomic writes, and last-known-good snapshots.  
+- **Compatibility**: Browser matrix (Chromium/Firefox/WebKit) and schema v5.  
+- **Developer**: REST API v1 (`/v1/contentBlocking/*`), RPC v1 (`contentBlocking.*`), and worker protocol v2.  
+- **Documentation**: Updated `ARCHITECTURE.md`, `PROJECT_FORMAT.md`, and `THIRD-PARTY.md`.  
+- **Packaging**: AppImage/tar.gz (Linux x64/arm64), NSIS/ZIP (Windows x64), DMG/ZIP (macOS x64/arm64).
+
 ## v2.2.2
 
 - The Chromium engine falls back to Google Chrome and then Microsoft Edge when the bundled Chromium is missing.

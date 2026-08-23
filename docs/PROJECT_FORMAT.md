@@ -12,12 +12,15 @@ baselines/
   previews/
   diffs/JOB_ID/*
   logs/
+  rulesets/<digest>.json
   tmp/
 ```
 
 `project.cybersnapper.json` contains a stable project UUID, display name, schema version, database path, capture root, creation timestamp, and the per-project localhost policy. It contains no credentials.
 
-SQLite schema v4 records profiles, named target sets and their ordered targets, jobs, ordered job events, artifacts, immutable baseline pointers, comparison results, review decisions, and schedules. Artifact metadata includes normalized target and target-set provenance alongside the original/final URL, browser engine, viewport, mode, format, relative path, dimensions, SHA-256 hash, status, timestamp, and the `original` or `portfolio` variant. Portfolio artifacts also retain the effective scene, frame, canvas, padding, shadow, and solid-color settings. These fields live in the existing JSON metadata, so presentation output does not require a schema migration.
+SQLite schema v5 records profiles, named target sets and their ordered targets, jobs, ordered job events, artifacts, immutable baseline pointers, comparison results, review decisions, schedules, and reusable content-blocking rulesets. Artifact metadata includes normalized target and target-set provenance alongside the original/final URL, browser engine, viewport, mode, format, relative path, dimensions, SHA-256 hash, status, timestamp, the `original` or `portfolio` variant, and content-blocking provenance (ruleset digest, blocked subresource count, cosmetic rule count, consent-action counts, warnings). Portfolio artifacts also retain the effective scene, frame, canvas, padding, shadow, and solid-color settings.
+
+Content-blocking ruleset snapshots are written by the agent into `.cybersnapper/rulesets/<digest>.json` when a job is submitted. Each file is a JSON envelope whose `payload` string is hashed with SHA-256; the digest is stored in the job request so retries replay the exact same rules, and the worker re-verifies the hash before use. Downloaded community filter lists themselves are cached in the app-local data directory, never inside a project.
 
 When portfolio styling is enabled, every raster original is preserved and a collision-safe `-portfolio` sibling is created. PDF output is not styled. Portfolio variants cannot become visual-comparison baselines; comparisons remain tied to the original capture pixels.
 

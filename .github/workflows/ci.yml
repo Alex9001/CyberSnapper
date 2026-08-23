@@ -64,7 +64,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
       - name: Worker checks
         shell: bash
-        run: npm ci && npm run typecheck:worker && npm run build:worker && npm run test:worker && npm run test:site
+        run: |
+          npm ci
+          npx playwright install chromium
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            npx playwright install firefox webkit
+          fi
+          npm run typecheck:worker
+          npm run build:worker
+          npm run test:worker
+          npm run test:site
       - name: Native checks (Unix)
         if: runner.os != 'Windows'
         shell: bash

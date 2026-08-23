@@ -2,6 +2,8 @@ set(CYBERSNAPPER_CORE_SOURCES
   src/core/Models.cpp
   src/core/Paths.cpp
   src/core/ProjectStore.cpp
+  src/core/ContentRulesets.cpp
+  src/core/SubscriptionRefresher.cpp
   src/core/Rpc.cpp
   src/core/JobManager.cpp
   src/core/Scheduler.cpp
@@ -37,6 +39,7 @@ endif()
 qt_add_executable(CyberSnapper
   src/gui/main.cpp
   src/gui/MainWindow.cpp
+  src/gui/ContentBlockingDialog.cpp
   resources/native.qrc
 )
 if(WIN32)
