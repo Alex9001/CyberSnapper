@@ -55,6 +55,14 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.3.2
+
+- **Working managed installs**: Fixes Playwright CLI resolution in packaged applications, including AppImages, so Firefox, WebKit, and Chromium repair operations can actually run.
+- **Visible progress**: Settings now shows one-at-a-time download queues, component progress, elapsed time, verification, cancellation, repair, and expandable installer output.
+- **Honest readiness**: Downloaded engines must launch successfully before capture is enabled; missing host libraries remain installed and are reported with exact diagnostics and safe, reviewable guidance.
+- **CLI controls**: Adds `browsers status`, `install`, `verify`, and `cancel` commands for local automation.
+- **Packaging confidence**: The release smoke test now exercises the packaged installer before a real capture, and detached agent startup no longer leaves automation callers waiting on inherited output handles.
+
 ## v2.3.1
 
 - **Correct packages**: Restores the complete Linux, Windows, and macOS x64/arm64 release matrix with immutable, checksum-verified Linux packaging tools.
