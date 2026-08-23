@@ -4,6 +4,7 @@ const { mkdtemp, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
+const net = require('node:net');
 const { once } = require('node:events');
 const { assertPublicUrl, captureBaseName, captureName, OutputPathAllocator, safeSegment, startFilteringProxy } = require('../dist/testing.cjs');
 
@@ -75,5 +76,61 @@ test('filtering proxy enforces the localhost policy on the actual connection', a
     assert.deepEqual(await requestThrough(allowed.url), { status: 200, body: 'reachable' });
   } finally {
     await denied.close(); await allowed.close(); destination.close(); await once(destination, 'close');
+  }
+});
+
+test('filtering proxy survives abruptly closed CONNECT tunnels', async (context) => {
+  const destinationSockets = new Set();
+  const destination = net.createServer((socket) => {
+    destinationSockets.add(socket);
+    socket.on('close', () => destinationSockets.delete(socket));
+    socket.on('error', () => undefined);
+    const chunk = Buffer.alloc(64 * 1024, 0x41);
+    let remaining = 128;
+    const write = () => {
+      while (remaining > 0 && !socket.destroyed && socket.write(chunk)) remaining -= 1;
+      if (remaining > 0 && !socket.destroyed) socket.once('drain', write);
+    };
+    write();
+  });
+  destination.listen(0, '127.0.0.1');
+  try { await once(destination, 'listening'); }
+  catch (error) {
+    if (error?.code === 'EPERM') {
+      context.skip('Local sockets are blocked by the test sandbox');
+      return;
+    }
+    throw error;
+  }
+
+  const proxy = await startFilteringProxy({ allowLocalhost: true });
+  const proxyAddress = new URL(proxy.url);
+  const destinationAddress = destination.address();
+  assert.ok(destinationAddress && typeof destinationAddress !== 'string');
+  const openAndDropTunnel = () => new Promise((resolve, reject) => {
+    const client = net.connect({ host: proxyAddress.hostname, port: Number(proxyAddress.port) });
+    client.on('error', (error) => {
+      if (error.code !== 'ECONNRESET') reject(error);
+    });
+    client.once('connect', () => {
+      client.write(`CONNECT 127.0.0.1:${destinationAddress.port} HTTP/1.1\r\n` +
+                   `Host: 127.0.0.1:${destinationAddress.port}\r\n\r\n`);
+    });
+    client.once('data', (data) => {
+      assert.match(data.toString('latin1'), /^HTTP\/1\.1 200 Connection Established/);
+      client.destroy();
+      resolve();
+    });
+  });
+
+  try {
+    await openAndDropTunnel();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await openAndDropTunnel();
+  } finally {
+    await proxy.close();
+    for (const socket of destinationSockets) socket.destroy();
+    destination.close();
+    await once(destination, 'close');
   }
 });

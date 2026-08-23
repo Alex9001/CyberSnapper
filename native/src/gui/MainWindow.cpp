@@ -287,11 +287,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), m_rpc(this) {
   buildUi();
   restoreUiState();
   connect(&m_rpc, &RpcClient::connected, this, [this] {
-    m_connectionStatus->setText("Ready");
-    m_connectionStatus->setToolTip({});
-    m_connectionStatus->setStyleSheet("color: palette(highlight);");
-    refreshAll();
-    QTimer::singleShot(300, this, &MainWindow::showFirstRun);
+    m_connectionStatus->setText("Checking background service…");
+    m_connectionStatus->setStyleSheet("color: palette(mid);");
+    m_rpc.call("agent.ping", {}, [this](const QJsonObject &result, const QJsonObject &error) {
+      if (!error.isEmpty()) {
+        m_connectionStatus->setText("Background service unavailable — retrying…");
+        m_connectionStatus->setToolTip(error.value("message").toString());
+        return;
+      }
+      const QString agentVersion = result.value("version").toString();
+      if (agentVersion != QCoreApplication::applicationVersion()) {
+        const QString message = QStringLiteral("CyberSnapper %1 cannot use background service %2. "
+                                               "Close and reopen CyberSnapper after current jobs finish.")
+                                    .arg(QCoreApplication::applicationVersion(), agentVersion);
+        m_connectionStatus->setText("Background service version mismatch");
+        m_connectionStatus->setToolTip(message);
+        m_connectionStatus->setStyleSheet("color: #d66a5e; font-weight: 600;");
+        statusBar()->showMessage(message);
+        return;
+      }
+      m_connectionStatus->setText("Ready");
+      m_connectionStatus->setToolTip({});
+      m_connectionStatus->setStyleSheet("color: palette(highlight);");
+      refreshAll();
+      QTimer::singleShot(300, this, &MainWindow::showFirstRun);
+    });
   });
   connect(&m_rpc, &RpcClient::disconnected, this, [this] {
     m_connectionStatus->setText("Reconnecting…");

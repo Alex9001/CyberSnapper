@@ -97,7 +97,26 @@ function splitAuthority(authority: string, fallbackPort: number): { hostname: st
 }
 
 function rejectSocket(socket: net.Socket, status = '403 Forbidden'): void {
+  if (socket.destroyed) return;
+  socket.on('error', () => socket.destroy());
   socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
+function bridgeSockets(left: net.Socket, right: net.Socket, beforePipe: () => void): void {
+  let closing = false;
+  const closeBoth = (): void => {
+    if (closing) return;
+    closing = true;
+    if (!left.destroyed) left.destroy();
+    if (!right.destroyed) right.destroy();
+  };
+  left.on('error', closeBoth);
+  right.on('error', closeBoth);
+  left.on('close', closeBoth);
+  right.on('close', closeBoth);
+  beforePipe();
+  left.pipe(right);
+  right.pipe(left);
 }
 
 export async function startFilteringProxy(policy: NetworkPolicy = {}): Promise<{ url: string; close: () => Promise<void> }> {
@@ -114,10 +133,15 @@ export async function startFilteringProxy(policy: NetworkPolicy = {}): Promise<{
         port: Number(targetUrl.port || 80), method: request.method, path: `${targetUrl.pathname}${targetUrl.search}`,
         headers });
       upstream.on('response', (upstreamResponse: IncomingMessage) => {
+        upstreamResponse.on('error', () => response.destroy());
+        response.on('error', () => upstreamResponse.destroy());
         response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.statusMessage, upstreamResponse.headers);
         upstreamResponse.pipe(response);
       });
       upstream.on('error', () => { if (!response.headersSent) response.writeHead(502); response.end(); });
+      request.on('aborted', () => upstream.destroy());
+      request.on('error', () => upstream.destroy());
+      response.on('close', () => upstream.destroy());
       request.pipe(upstream);
     } catch { response.writeHead(403, { Connection: 'close' }); response.end(); }
   });
@@ -127,11 +151,10 @@ export async function startFilteringProxy(policy: NetworkPolicy = {}): Promise<{
     if (!hostname || port < 1 || port > 65535) return rejectSocket(clientSocket, '400 Bad Request');
     try {
       const upstream = await connectDestination(hostname, port, policy);
-      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      if (head.length) upstream.write(head);
-      upstream.pipe(clientSocket);
-      clientSocket.pipe(upstream);
-      upstream.on('error', () => clientSocket.destroy());
+      bridgeSockets(clientSocket, upstream, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head.length) upstream.write(head);
+      });
     } catch { rejectSocket(clientSocket); }
   });
   server.on('upgrade', async (request, socket, head) => {
@@ -147,10 +170,10 @@ export async function startFilteringProxy(policy: NetworkPolicy = {}): Promise<{
         if (value === undefined || name === 'proxy-authorization' || name === 'proxy-connection') continue;
         headerLines.push(`${name}: ${Array.isArray(value) ? value.join(', ') : value}`);
       }
-      upstream.write(`${request.method ?? 'GET'} ${targetUrl.pathname}${targetUrl.search} HTTP/${request.httpVersion}\r\n${headerLines.join('\r\n')}\r\n\r\n`);
-      if (head.length) upstream.write(head);
-      upstream.pipe(client); client.pipe(upstream);
-      upstream.on('error', () => client.destroy());
+      bridgeSockets(client, upstream, () => {
+        upstream.write(`${request.method ?? 'GET'} ${targetUrl.pathname}${targetUrl.search} HTTP/${request.httpVersion}\r\n${headerLines.join('\r\n')}\r\n\r\n`);
+        if (head.length) upstream.write(head);
+      });
     } catch { rejectSocket(client); }
   });
   server.listen(0, '127.0.0.1');

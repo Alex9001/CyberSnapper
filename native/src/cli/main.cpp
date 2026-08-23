@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QTextStream>
 #include <QThread>
+#include <QVersionNumber>
 #include <atomic>
 #include <csignal>
 #include <cstdio>
@@ -23,6 +24,12 @@ std::atomic_bool interrupted = false;
 
 void interruptHandler(int) { interrupted = true; }
 
+bool newerApplicationVersion(const QString &agentVersion) {
+  const QVersionNumber application = QVersionNumber::fromString(QCoreApplication::applicationVersion());
+  const QVersionNumber agent = QVersionNumber::fromString(agentVersion);
+  return !application.isNull() && !agent.isNull() && QVersionNumber::compare(application, agent) > 0;
+}
+
 void printJson(const QJsonValue &value) {
   const QByteArray bytes = value.isArray()
       ? QJsonDocument(value.toArray()).toJson(QJsonDocument::Indented)
@@ -34,7 +41,58 @@ bool ensureAgent(QString *error) {
   // Probe into a local string: a cold-start ping is expected to fail, and its
   // "agent not listening" error must not leak into the caller's error slot.
   QString probeError;
-  if (!blockingRpcCall(Paths::agentServerName(), "agent.ping", {}, 300, &probeError).isEmpty()) return true;
+  const QString server = Paths::agentServerName();
+  const QJsonObject ping = blockingRpcCall(server, "agent.ping", {}, 300, &probeError);
+  if (!ping.isEmpty()) {
+    const QString agentVersion = ping.value("version").toString();
+    if (agentVersion == QCoreApplication::applicationVersion()) return true;
+    if (qEnvironmentVariableIsSet("CYBERSNAPPER_NO_AUTOSTART")) {
+      if (error) {
+        *error = QStringLiteral("CLI %1 cannot use background service %2")
+                     .arg(QCoreApplication::applicationVersion(), agentVersion);
+      }
+      return false;
+    }
+    if (!newerApplicationVersion(agentVersion)) {
+      if (error) {
+        *error = QStringLiteral("CLI %1 cannot use background service %2")
+                     .arg(QCoreApplication::applicationVersion(), agentVersion);
+      }
+      return false;
+    }
+
+    probeError.clear();
+    const QJsonObject status = blockingRpcCall(server, "agent.status", {}, 1000, &probeError);
+    if (status.isEmpty() || status.value("activeJobs").toInt() > 0 ||
+        status.value("queuedJobs").toInt() > 0 || status.value("browserOperations").toBool() ||
+        status.value("queuedBrowserOperations").toInt() > 0) {
+      if (error) {
+        *error = QStringLiteral("Background service %1 is busy; let its operations finish before using CLI %2")
+                     .arg(agentVersion, QCoreApplication::applicationVersion());
+      }
+      return false;
+    }
+
+    probeError.clear();
+    if (blockingRpcCall(server, "agent.stop", {{"force", false}}, 1000, &probeError).isEmpty()) {
+      if (error) *error = QStringLiteral("Could not stop background service %1: %2")
+                              .arg(agentVersion, probeError);
+      return false;
+    }
+    bool stopped = false;
+    for (int attempt = 0; attempt < 30; ++attempt) {
+      QThread::msleep(100);
+      QString ignored;
+      if (blockingRpcCall(server, "agent.ping", {}, 100, &ignored).isEmpty()) {
+        stopped = true;
+        break;
+      }
+    }
+    if (!stopped) {
+      if (error) *error = QStringLiteral("Background service %1 did not stop in time").arg(agentVersion);
+      return false;
+    }
+  }
   if (qEnvironmentVariableIsSet("CYBERSNAPPER_NO_AUTOSTART")) {
     if (error) *error = probeError;
     return false;
@@ -52,7 +110,9 @@ bool ensureAgent(QString *error) {
   for (int attempt = 0; attempt < 30; ++attempt) {
     QThread::msleep(100);
     QString ignored;
-    if (!blockingRpcCall(Paths::agentServerName(), "agent.ping", {}, 300, &ignored).isEmpty()) return true;
+    const QJsonObject started = blockingRpcCall(server, "agent.ping", {}, 300, &ignored);
+    if (!started.isEmpty() &&
+        started.value("version").toString() == QCoreApplication::applicationVersion()) return true;
   }
   if (error) *error = "Timed out waiting for CyberSnapper agent";
   return false;
