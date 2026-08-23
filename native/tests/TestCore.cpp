@@ -344,6 +344,12 @@ void TestCore::rulesSnapshotBuilderAndJobContract() {
   QVERIFY(parsed.value("rulesText").toArray().contains(QJsonValue("example.org##.banner")));
   QCOMPARE(parsed.value("actions").toArray().size(), 1);
 
+  // Identical source content must reuse the same content-addressed snapshot.
+  // Wall-clock creation time belongs to the envelope, not the hashed payload.
+  const RulesetReferenceInfo repeated = ContentRulesets::buildSnapshot(&store, profile, &error);
+  QCOMPARE(repeated.digest, reference.digest);
+  QCOMPARE(repeated.relativePath, reference.relativePath);
+
   // The job contract carries the snapshot as a nested ruleset object and
   // round-trips through the stored request JSON for recovery.
   JobRequest request;

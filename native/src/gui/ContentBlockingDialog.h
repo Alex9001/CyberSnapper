@@ -2,6 +2,9 @@
 
 #include <QDialog>
 #include <QJsonObject>
+#include <QStringList>
+
+#include <functional>
 
 class QCheckBox;
 class QComboBox;
@@ -42,8 +45,8 @@ private:
   bool m_enabled = true;
   QList<QCheckBox *> m_subscriptionChecks;
   QStringList m_subscriptionIds;
+  QStringList m_selectedRulesetIds;
   QComboBox *m_consentStrategy = nullptr;
-  QComboBox *m_versionPolicy = nullptr;
   QLineEdit *m_disabledDomains = nullptr;
   QListWidget *m_rulesetList = nullptr;
   QWidget *m_editor = nullptr;

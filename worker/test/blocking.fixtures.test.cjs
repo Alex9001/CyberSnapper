@@ -7,7 +7,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
@@ -33,6 +32,12 @@ async function availableEngines() {
       await probe.close();
       engines.push(name);
     } catch { /* engine not installed or missing system dependencies */ }
+  }
+  const required = (process.env.CYBERSNAPPER_REQUIRED_BROWSERS ?? '')
+    .split(',').map((name) => name.trim()).filter(Boolean);
+  const missing = required.filter((name) => !engines.includes(name));
+  if (missing.length > 0) {
+    throw new Error(`Required Playwright browser(s) unavailable: ${missing.join(', ')}`);
   }
   return engines;
 }
@@ -68,16 +73,18 @@ function writeSnapshot(root, rulesText, { actions = [] } = {}) {
 async function withFixture(pageHtml, rulesText, run, settingsExtra = {}) {
   const engines = await getEngines();
   if (engines.length === 0) return;
-  
+
   const server = http.createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(pageHtml);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/`;
-  
+
+  const testRoot = path.join(process.cwd(), 'build', 'test-runtime');
+  fs.mkdirSync(testRoot, { recursive: true });
   for (const engineName of engines) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-fixture-'));
+    const root = fs.mkdtempSync(path.join(testRoot, 'cs-fixture-'));
     const ruleset = writeSnapshot(root, rulesText, settingsExtra);
     const blocker = await ContentBlocker.load({
       projectRoot: root,

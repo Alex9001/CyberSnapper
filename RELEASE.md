@@ -55,13 +55,21 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.3.1
+
+- **Correct packages**: Restores the complete Linux, Windows, and macOS x64/arm64 release matrix with immutable, checksum-verified Linux packaging tools.
+- **Safer blocking**: Rejected filters can no longer reach the rules engine, consent handling covers frames, and delayed banner removal releases scroll locks correctly.
+- **Working custom rulesets**: Profile selections now survive the configuration dialog and newly created rulesets can be enabled immediately.
+- **Reliable subscriptions**: Redirects use their validated destination, oversized downloads abort early, and identical rules produce one stable content-addressed snapshot.
+- **Release integrity**: Fixes malformed workflow YAML, native source warnings, version metadata, browser-matrix enforcement, and inaccurate packaging documentation.
+
 ## v2.3.0
 
-- **Content blocking**: Cookie banner removal, consent handling, site exceptions, custom rulesets, and visual review.  
-- **Security**: Capture boundary, HTTPS-only downloads, atomic writes, and last-known-good snapshots.  
-- **Compatibility**: Browser matrix (Chromium/Firefox/WebKit) and schema v5.  
-- **Developer**: REST API v1 (`/v1/contentBlocking/*`), RPC v1 (`contentBlocking.*`), and worker protocol v2.  
-- **Documentation**: Updated `ARCHITECTURE.md`, `PROJECT_FORMAT.md`, and `THIRD-PARTY.md`.  
+- **Content blocking**: Cookie banner removal, consent handling, site exceptions, custom rulesets, and visual review.
+- **Security**: Capture boundary, HTTPS-only downloads, atomic writes, and last-known-good snapshots.
+- **Compatibility**: Browser matrix (Chromium/Firefox/WebKit) and schema v5.
+- **Developer**: REST API v1 (`/v1/contentBlocking/*`), RPC v1 (`contentBlocking.*`), and worker protocol v2.
+- **Documentation**: Updated `ARCHITECTURE.md`, `PROJECT_FORMAT.md`, and `THIRD-PARTY.md`.
 - **Packaging**: AppImage/tar.gz (Linux x64/arm64), NSIS/ZIP (Windows x64), DMG/ZIP (macOS x64/arm64).
 
 ## v2.2.2

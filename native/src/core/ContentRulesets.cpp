@@ -24,7 +24,7 @@ const QList<SubscriptionInfo> &catalog() {
        QStringLiteral("CC BY-SA 3.0"), true},
       {QStringLiteral("ublock-cookie"), QStringLiteral("uBlock Cookie Notices"),
        QStringLiteral(
-           "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/cookies.txt"),
+           "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt"),
        QStringLiteral("GPLv3"), true},
       {QStringLiteral("easylist-ads"), QStringLiteral("EasyList"),
        QStringLiteral("https://easylist.to/easylist/easylist.txt"),
@@ -34,7 +34,7 @@ const QList<SubscriptionInfo> &catalog() {
        QStringLiteral("CC BY-SA 3.0"), false},
       {QStringLiteral("ublock-annoyances"), QStringLiteral("uBlock Annoyances"),
        QStringLiteral(
-           "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances.txt"),
+           "https://ublockorigin.github.io/uAssets/filters/annoyances.txt"),
        QStringLiteral("GPLv3"), false},
   };
   return subscriptions;
@@ -144,7 +144,7 @@ RulesetReferenceInfo buildSnapshot(ProjectStore *store, const CaptureProfile &pr
   }
 
   qsizetype totalBytes = 0;
-  for (const QString &line : collected.lines) totalBytes += line.size() + 1;
+  for (const QString &line : collected.lines) totalBytes += line.toUtf8().size() + 1;
   if (totalBytes > 32 * 1024 * 1024) {
     collected.warnings.append(
         QStringLiteral("Combined filter text exceeded the 32 MiB limit; content blocking is "
@@ -155,14 +155,25 @@ RulesetReferenceInfo buildSnapshot(ProjectStore *store, const CaptureProfile &pr
   }
 
   QJsonObject payloadObject;
-  payloadObject.insert("generatedAt", utcNow());
   payloadObject.insert("subscriptions", collected.sources);
   QJsonArray rulesJson;
   for (const QString &line : collected.lines) rulesJson.append(line);
   payloadObject.insert("rulesText", rulesJson);
   payloadObject.insert("actions", collected.actions);
-  const QString payload =
+  QString payload =
       QString::fromUtf8(QJsonDocument(payloadObject).toJson(QJsonDocument::Compact));
+  if (payload.toUtf8().size() > 32 * 1024 * 1024) {
+    collected.warnings.append(
+        QStringLiteral("Encoded filter snapshot exceeded the 32 MiB limit; content blocking is "
+                       "limited to built-in consent handling for this capture"));
+    collected.lines.clear();
+    collected.actions = {};
+    collected.sources = {};
+    payloadObject.insert("subscriptions", collected.sources);
+    payloadObject.insert("rulesText", QJsonArray{});
+    payloadObject.insert("actions", collected.actions);
+    payload = QString::fromUtf8(QJsonDocument(payloadObject).toJson(QJsonDocument::Compact));
+  }
 
   const QString digest = sha256Hex(payload.toUtf8());
   const QString relativePath = QStringLiteral(".cybersnapper/rulesets/%1.json").arg(digest);
@@ -176,7 +187,8 @@ RulesetReferenceInfo buildSnapshot(ProjectStore *store, const CaptureProfile &pr
     if (error) *error = file.errorString();
     return reference;
   }
-  const QJsonObject envelope{{"format", 1}, {"digest", digest}, {"payload", payload}};
+  const QJsonObject envelope{{"format", 1}, {"digest", digest}, {"createdAt", utcNow()},
+                             {"payload", payload}};
   file.write(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
   if (!file.commit()) {
     if (error) *error = file.errorString();

@@ -92,10 +92,10 @@ void TestGui::contentBlockingDialog() {
     obj["versionPolicy"] = "latest";
     return obj;
   }();
-  
+
   // Null RPC: simulates no agent connection (editor disabled)
   ContentBlockingDialog dialog(settings, {}, nullptr);
-  
+
   // Subscription checkboxes: easylist-cookie and ublock-cookie should be checked
   const auto &checks = dialog.findChildren<QCheckBox *>();
   bool easylistFound = false, ublockFound = false;
@@ -111,7 +111,7 @@ void TestGui::contentBlockingDialog() {
   }
   QVERIFY(easylistFound);
   QVERIFY(ublockFound);
-  
+
   // Strategy combo: rejectThenDismiss (index 0)
   const auto &combos = dialog.findChildren<QComboBox *>();
   QComboBox *strategy = nullptr;
@@ -123,34 +123,21 @@ void TestGui::contentBlockingDialog() {
   }
   QVERIFY(strategy);
   QCOMPARE(strategy->currentIndex(), 0);
-  
-  // Version policy combo: latest (index 0)
-  QComboBox *version = nullptr;
-  for (QComboBox *combo : combos) {
-    if (combo->count() == 2 && combo->itemData(0).toString() == "latest") {
-      version = combo;
-      break;
-    }
-  }
-  QVERIFY(version);
-  QCOMPARE(version->currentIndex(), 0);
-  
+
   // Editor disabled when no RPC
   QTest::qWait(50);
-  qDebug() << "Editor widgets:" << dialog.findChildren<QWidget *>();
   QWidget *editor = nullptr;
   for (QWidget *widget : dialog.findChildren<QWidget *>()) {
     QLineEdit *nameEdit = widget->findChild<QLineEdit *>();
     QTextEdit *rulesText = widget->findChild<QTextEdit *>();
     if (nameEdit && rulesText) {
       editor = widget;
-      qDebug() << "Found editor:" << editor << "enabled:" << editor->isEnabled();
       break;
     }
   }
   QVERIFY(editor);
   QVERIFY(!editor->isEnabled());
-  
+
   // Validation: add ruleset with empty name → expect rejection
   QPushButton *addButton = nullptr;
   for (QPushButton *button : dialog.findChildren<QPushButton *>()) {
@@ -161,9 +148,32 @@ void TestGui::contentBlockingDialog() {
   }
   QVERIFY(addButton);
   QTest::mouseClick(addButton, Qt::LeftButton);
-  
+
   // Editor should stay disabled (no RPC)
   QVERIFY(!editor->isEnabled());
+
+  // A selected custom ruleset must survive opening and accepting the dialog.
+  QJsonObject customSettings = settings;
+  customSettings.insert("customRulesetIds", QJsonArray{"ruleset-one"});
+  const ContentBlockingDialog::RpcInvoker rpc = [](
+      const QString &method, const QJsonObject &,
+      std::function<void(const QJsonObject &)> success,
+      std::function<void(const QString &)>) {
+    if (method == "contentBlocking.status") {
+      success({{"subscriptions", QJsonArray{}}});
+    } else if (method == "contentRuleset.list") {
+      success({{"contentRulesets", QJsonArray{QJsonObject{{"id", "ruleset-one"},
+          {"name", "Portfolio cleanup"}, {"kind", "custom"},
+          {"rulesText", "example.org##.banner"}, {"actions", QJsonArray{}}}}}});
+    }
+  };
+  ContentBlockingDialog customDialog(customSettings, rpc, nullptr);
+  auto *rulesets = customDialog.findChild<QListWidget *>("contentRulesetList");
+  QVERIFY(rulesets);
+  QCOMPARE(rulesets->count(), 1);
+  QCOMPARE(rulesets->item(0)->checkState(), Qt::Checked);
+  QCOMPARE(customDialog.settings().value("customRulesetIds").toArray(),
+           QJsonArray{"ruleset-one"});
 }
 
 QTEST_MAIN(TestGui)

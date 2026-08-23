@@ -177,7 +177,22 @@ int main(int argc, char **argv) {
   profile.engines = {"chromium", "firefox"};
   profile.formats = {"png", "webp"};
   profile.concurrency = 2;
-  profile.blockPopups = true;
+  profile.contentBlocking.enabled = true;
+  if (const QJsonObject ruleset = store.saveContentRuleset(
+          {{"name", "Portfolio banners"},
+           {"rulesText",
+            "! Hide consent banners on the portfolio sites\n"
+            "example.org##.cookie-banner\n"
+            "example.org##.consent-overlay\n"
+            "||cdn.example.net/consent.js^$script\n"},
+           {"actions", QJsonArray{QJsonObject{{"domains", QJsonArray{"example.org"}},
+               {"selector", "button#reject-all"}, {"action", "click"}, {"delayMs", 250}}}}},
+          &error);
+      !ruleset.isEmpty()) {
+    profile.contentBlocking.customRulesetIds.append(ruleset.value("id").toString());
+  } else {
+    return fail(error);
+  }
   profile.presentation.enabled = true;
   profile.presentation.scene = "aurora";
   profile.presentation.frame = "darkTablet";

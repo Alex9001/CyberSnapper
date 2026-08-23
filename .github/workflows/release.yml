@@ -29,9 +29,11 @@ jobs:
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
       - name: Worker checks with all engines
         shell: bash
+        env:
+          CYBERSNAPPER_REQUIRED_BROWSERS: chromium,firefox,webkit
         run: |
           npm ci
-          npx playwright install chromium firefox webkit
+          npx playwright install --with-deps chromium firefox webkit
           npm run typecheck:worker
           npm run build:worker
           npm run test:worker
@@ -43,26 +45,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             arch: x64
-            linuxdeploy_asset: 497463883
-            linuxdeploy_sha256: 421ca71d5c69ea97c6309276232990d43df1dcece0edfaa26bbf926ff96ed12e
-            qt_plugin_asset: 421996681
-            qt_plugin_sha256: be1b7e166bf9975cfb694ebe6759ba40502ffc6196440d3e64aa90c4dbd67e9f
-            appimagetool_asset: 324406736
+            node_arch: x64
+            qt_host: linux
+            qt_arch: linux_gcc_64
+            tool_arch: x86_64
+            linuxdeploy_sha256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+            qt_plugin_sha256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
             appimagetool_sha256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
-            runtime_asset: 456065460
-            runtime_sha256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
+            runtime_sha256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
           - runner: ubuntu-24.04-arm
             arch: arm64
-            linuxdeploy_asset: 497463664
-            linuxdeploy_sha256: 9f04c4c2a8b69c392c4bbcc1a88bdd4d0a8ac03f587cf5242814cb7ae47b78e5
-            qt_plugin_asset: 421996594
-            qt_plugin_sha256: 5525e6c49c3c774c02b8864d2acc2ae4c5c0ccc3327f7dce626deaa36348e5c6
-            appimagetool_asset: 324406707
+            node_arch: arm64
+            qt_host: linux_arm64
+            qt_arch: linux_gcc_arm64
+            tool_arch: aarch64
+            linuxdeploy_sha256: 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+            qt_plugin_sha256: bf1c24aff6d749b5cf423afad6f15abd4440f81dec1aab95706b25f6667cdcf1
             appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
-            runtime_asset: 456064894
-            runtime_sha256: 7d5d772b7c32f0c84caf0a452a3072a5709027d7eac5856feb89a7a7a8881372
+            runtime_sha256: 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -72,6 +74,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          architecture: ${{ matrix.node_arch }}
           cache: npm
 
       - name: Verify release version
@@ -83,12 +86,14 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
+          host: ${{ matrix.qt_host }}
+          arch: ${{ matrix.qt_arch }}
           cache: true
 
       - name: Install Linux build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libfuse2 file desktop-file-utils
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 file desktop-file-utils
 
       - name: Worker checks
         shell: bash
@@ -127,23 +132,23 @@ jobs:
       - name: Keep production worker dependencies
         run: npm prune --omit=dev
 
-      # Each tool is pinned by immutable release-asset id plus its SHA-256 so a
-      # replaced "continuous" asset cannot silently change what we package.
+      # Every tool comes from a versioned upstream release and is verified
+      # before execution. APPIMAGE_EXTRACT_AND_RUN avoids a FUSE dependency.
       - name: Install pinned packaging tools
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
         run: |
           set -euo pipefail
           mkdir -p tools
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/linuxdeploy/linuxdeploy/releases/assets/${{ matrix.linuxdeploy_asset }}" > tools/linuxdeploy
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/${{ matrix.qt_plugin_asset }}" > tools/linuxdeploy-plugin-qt
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/AppImage/appimagetool/releases/assets/${{ matrix.appimagetool_asset }}" > tools/appimagetool
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/AppImage/type2-runtime/releases/assets/${{ matrix.runtime_asset }}" > tools/AppImage-runtime
+          curl --fail --location --retry 3 --output tools/linuxdeploy \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-${{ matrix.tool_arch }}.AppImage"
+          curl --fail --location --retry 3 --output tools/linuxdeploy-plugin-qt \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-${{ matrix.tool_arch }}.AppImage"
+          curl --fail --location --retry 3 --output tools/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-${{ matrix.tool_arch }}.AppImage"
+          curl --fail --location --retry 3 --output tools/AppImage-runtime \
+            "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-${{ matrix.tool_arch }}"
           printf '%s  %s\n' "${{ matrix.linuxdeploy_sha256 }}" tools/linuxdeploy | sha256sum --check --strict
           printf '%s  %s\n' "${{ matrix.qt_plugin_sha256 }}" tools/linuxdeploy-plugin-qt | sha256sum --check --strict
           printf '%s  %s\n' "${{ matrix.appimagetool_sha256 }}" tools/appimagetool | sha256sum --check --strict
@@ -188,10 +193,12 @@ jobs:
         include:
           - runner: windows-2022
             arch: x64
+            node_arch: x64
             qt_arch: win64_msvc2022_64
             msvc_arch: x64
           - runner: windows-11-arm
             arch: arm64
+            node_arch: arm64
             qt_arch: win64_msvc2022_arm64
             msvc_arch: amd64_arm64
     runs-on: ${{ matrix.runner }}
@@ -203,6 +210,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          architecture: ${{ matrix.node_arch }}
           cache: npm
 
       - name: Verify release version
@@ -226,9 +234,6 @@ jobs:
         run: |
           npm ci
           npx playwright install chromium
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            npx playwright install firefox webfox webkit
-          fi
           npm run typecheck:worker
           npm run build:worker
           npm run test:worker
@@ -312,8 +317,12 @@ jobs:
         include:
           - runner: macos-15-intel
             arch: x64
+            node_arch: x64
+            cmake_arch: x86_64
           - runner: macos-15
             arch: arm64
+            node_arch: arm64
+            cmake_arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -323,6 +332,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          architecture: ${{ matrix.node_arch }}
           cache: npm
 
       - name: Verify release version
@@ -381,6 +391,7 @@ jobs:
         run: |
           cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCYBERSNAPPER_BUILD_TESTS=ON \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
             -DCYBERSNAPPER_MACOS_ICON="$RUNNER_TEMP/CyberSnapper.icns"
           cmake --build build/native --parallel
           ctest --test-dir build/native --output-on-failure

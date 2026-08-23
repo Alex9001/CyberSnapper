@@ -9,6 +9,7 @@
 
 class QNetworkAccessManager;
 class QTimer;
+class QUrl;
 
 namespace CyberSnapper {
 
@@ -51,7 +52,7 @@ signals:
   void warning(const QString &message);
 
 private:
-  void refreshOne(const QString &subscriptionId, int redirectBudget);
+  void refreshOne(const QString &subscriptionId, const QUrl &url, int redirectBudget);
   void issueRequest(const QUrl &url, const SubscriptionInfo *info, const QString &subscriptionId,
                     int redirectBudget, std::function<void(const QString &)> finishFailure);
   void scheduleNextCheck();

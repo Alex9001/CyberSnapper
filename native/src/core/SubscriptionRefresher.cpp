@@ -136,11 +136,18 @@ void SubscriptionRefresher::refreshNow(const QString &subscriptionId) {
   for (const QString &id : ids) {
     if (m_pending.contains(id)) continue;
     m_pending.append(id);
-    refreshOne(id, kMaximumRedirects);
+    const auto &subscriptions = subscriptionCatalog();
+    for (const auto &info : subscriptions) {
+      if (info.id == id) {
+        refreshOne(id, QUrl(info.sourceUrl), kMaximumRedirects);
+        break;
+      }
+    }
   }
 }
 
-void SubscriptionRefresher::refreshOne(const QString &subscriptionId, int redirectBudget) {
+void SubscriptionRefresher::refreshOne(const QString &subscriptionId, const QUrl &url,
+                                        int redirectBudget) {
   const SubscriptionInfo *info = nullptr;
   for (const auto &candidate : subscriptionCatalog()) {
     if (candidate.id == subscriptionId) info = &candidate;
@@ -155,7 +162,6 @@ void SubscriptionRefresher::refreshOne(const QString &subscriptionId, int redire
     emit warning(QStringLiteral("Refresh of %1 stopped: %2").arg(info->name, reason));
   };
 
-  const QUrl url(info->sourceUrl);
   QString reason;
   if (!sourceUrlIsAllowed(url, &reason)) return finishFailure(reason);
 
@@ -189,21 +195,39 @@ void SubscriptionRefresher::issueRequest(const QUrl &url, const SubscriptionInfo
   request.setRawHeader(
       "User-Agent",
       QStringLiteral("CyberSnapper/%1").arg(QStringLiteral(CYBERSNAPPER_VERSION)).toUtf8());
-  const CacheMeta conditional = readMeta(subscriptionId);
-  if (!conditional.etag.isEmpty()) {
-    request.setRawHeader("If-None-Match", conditional.etag.toUtf8());
-  }
-  if (!conditional.lastModified.isEmpty()) {
-    request.setRawHeader("If-Modified-Since", conditional.lastModified.toUtf8());
+  if (url == QUrl(info->sourceUrl)) {
+    const CacheMeta conditional = readMeta(subscriptionId);
+    if (!conditional.etag.isEmpty()) {
+      request.setRawHeader("If-None-Match", conditional.etag.toUtf8());
+    }
+    if (!conditional.lastModified.isEmpty()) {
+      request.setRawHeader("If-Modified-Since", conditional.lastModified.toUtf8());
+    }
   }
 
   QNetworkReply *reply = m_network->get(request);
+  const auto stopOversizedTransfer = [reply] {
+    const qint64 declared = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+    if (declared > kMaximumListBytes || reply->bytesAvailable() > kMaximumListBytes) {
+      reply->setProperty("cybersnapperListTooLarge", true);
+      reply->abort();
+    }
+  };
+  connect(reply, &QNetworkReply::metaDataChanged, this, stopOversizedTransfer);
+  connect(reply, &QIODevice::readyRead, this, stopOversizedTransfer);
   connect(reply, &QNetworkReply::finished, this,
           [this, reply, info, subscriptionId, redirectBudget, finishFailure] {
             reply->deleteLater();
             m_pending.removeAll(subscriptionId);
             const int status =
                 reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+            if (reply->property("cybersnapperListTooLarge").toBool()) {
+              emit refreshed(subscriptionId, false, QStringLiteral("List exceeds 10 MiB"));
+              emit warning(QStringLiteral("%1 exceeded the 10 MiB limit and was not updated")
+                               .arg(info->name));
+              return;
+            }
 
             if (status == 304) {
               CacheMeta meta = readMeta(subscriptionId);
@@ -226,7 +250,7 @@ void SubscriptionRefresher::issueRequest(const QUrl &url, const SubscriptionInfo
               }
               // Re-run the full validation chain (DNS included) on the target.
               m_pending.append(subscriptionId);
-              refreshOne(subscriptionId, redirectBudget - 1);
+              refreshOne(subscriptionId, target, redirectBudget - 1);
               return;
             }
 

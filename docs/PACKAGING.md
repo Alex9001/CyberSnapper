@@ -17,7 +17,7 @@ each supported architecture:
 
 | Platform | Architectures | Recommended | Portable | Runners |
 | --- | --- | --- | --- | --- |
-| Linux | x64, arm64 | AppImage | tar.gz | `ubuntu-24.04`, `ubuntu-24.04-arm` |
+| Linux | x64, arm64 | AppImage | tar.gz | `ubuntu-22.04`, `ubuntu-24.04-arm` |
 | Windows | x64, arm64 | NSIS setup `.exe` | ZIP | `windows-2022`, `windows-11-arm` |
 | macOS | x64, arm64 | DMG | ZIP | `macos-15-intel`, `macos-15` |
 
@@ -82,9 +82,11 @@ package:
 1. `cmake --install` into an `AppDir/` tree under the build directory.
 2. The desktop file, metainfo, and icon are validated (these are installed by
    the CMake rules for Linux).
-3. Unused Qt SQL drivers (`mysql`, `mimer`, `odbc`, `psql`) are removed; only
-   SQLite is deployed. `libqsqlmimer.so` in particular depends on an absent
-   `libmimerapi.so` and would otherwise abort deployment.
+3. Qt plugins are copied into a private staging directory, where unused SQL
+   drivers (`mysql`, `mimer`, `odbc`, `psql`) are removed; only SQLite is
+   deployed. The installed Qt SDK is never modified. `libqsqlmimer.so` in
+   particular depends on an absent `libmimerapi.so` and would otherwise abort
+   deployment.
 4. `linuxdeploy` with `linuxdeploy-plugin-qt` bundles non-Qt and Qt
    dependencies into `AppDir/`. A stale Qt 6 hook is removed after deployment.
 5. `appimagetool` with a pinned type-2 runtime turns `AppDir/` into the
@@ -96,11 +98,15 @@ match the target architecture, and `ldd` must report no unresolved libraries
 before the AppImage is produced.
 
 The four external tools — `linuxdeploy`, `linuxdeploy-plugin-qt`,
-`appimagetool`, and the AppImage type-2 runtime — are **pinned by immutable
-GitHub release-asset ID plus SHA-256** and downloaded with `gh api`. Pinning by
-asset ID (not tag name) prevents a replaced "continuous" upstream asset from
-silently changing what gets packaged. The per-architecture IDs and checksums
-live in the workflow matrix.
+`appimagetool`, and the AppImage type-2 runtime — are downloaded from
+**versioned upstream releases and pinned by SHA-256**. The workflow never uses
+moving `continuous` assets or repository-hosted binary mirrors. Tool AppImages
+run with `APPIMAGE_EXTRACT_AND_RUN=1`, so the build does not depend on FUSE.
+The per-architecture checksums live in the workflow matrix.
+
+Linux x64 builds on Ubuntu 22.04 to retain a lower glibc floor. Qt's official
+Linux arm64 package requires Ubuntu 24.04, so the arm64 AppImage has that newer
+glibc compatibility floor.
 
 ## Windows: setup executable and portable ZIP
 
