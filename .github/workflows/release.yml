@@ -189,12 +189,12 @@ jobs:
             fi
             echo "Download complete, checking files..."
             ls -lh tools/
-          fi
+           fi
 #          printf '%s  %s\n' "${{ matrix.linuxdeploy_sha256 }}" tools/linuxdeploy | sha256sum --check --strict
 #          printf '%s  %s\n' "${{ matrix.qt_plugin_sha256 }}" tools/linuxdeploy-plugin-qt | sha256sum --check --strict
 #          printf '%s  %s\n' "${{ matrix.appimagetool_sha256 }}" tools/appimagetool | sha256sum --check --strict
 #          printf '%s  %s\n' "${{ matrix.runtime_sha256 }}" tools/AppImage-runtime | sha256sum --check --strict
-          chmod +x tools/linuxdeploy tools/linuxdeploy-plugin-qt tools/appimagetool
+            chmod +x tools/linuxdeploy tools/linuxdeploy-plugin-qt tools/appimagetool
 
       - name: Package AppImage and portable archive
         shell: bash
