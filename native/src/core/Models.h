@@ -28,6 +28,15 @@ struct PresentationSettings {
   QString solidColor{"#0B1220"};
 };
 
+struct ContentBlockingSettings {
+  bool enabled = true;
+  QString consentStrategy{"rejectThenDismiss"};
+  QStringList subscriptionIds{QStringLiteral("easylist-cookie"), QStringLiteral("ublock-cookie")};
+  QStringList customRulesetIds;
+  QStringList disabledDomains;
+  QString versionPolicy{"latest"};
+};
+
 struct CaptureProfile {
   QString id;
   QString name;
@@ -44,7 +53,6 @@ struct CaptureProfile {
   int selectorTimeoutSeconds = 30;
   int maxScrollSeconds = 120;
   int maxPageHeight = 100000;
-  bool blockPopups = false;
   bool stripWhitespace = true;
   QStringList blocklist;
   QStringList hideSelectors;
@@ -61,6 +69,7 @@ struct CaptureProfile {
   double mismatchThreshold = 0.001;
   QStringList comparisonIgnoreSelectors;
   PresentationSettings presentation;
+  ContentBlockingSettings contentBlocking;
 };
 
 struct CaptureTarget {
@@ -84,6 +93,10 @@ struct JobRequest {
   CaptureProfile profile;
   QJsonObject baselines;
   bool allowLocalhost = false;
+  QString rulesetDigest;
+  QString rulesetRelativePath;
+  QJsonObject rulesetSources;
+  QStringList rulesetWarnings;
 };
 
 struct JobRecord {

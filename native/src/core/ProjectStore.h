@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QLockFile>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QString>
 #include <memory>
 
@@ -32,6 +33,11 @@ public:
   QJsonArray profiles() const;
   bool saveProfile(const CaptureProfile &profile, QString *error = nullptr);
   bool removeProfile(const QString &id, QString *error = nullptr);
+
+  QJsonArray contentRulesets() const;
+  QJsonObject contentRuleset(const QString &id) const;
+  QJsonObject saveContentRuleset(const QJsonObject &ruleset, QString *error = nullptr);
+  bool removeContentRuleset(const QString &id, QString *error = nullptr);
 
   QJsonArray targetSets() const;
   QJsonObject targetSet(const QString &id) const;
@@ -79,6 +85,7 @@ private:
   bool writeManifest(QString *error);
   bool execute(const QString &sql, QString *error = nullptr) const;
   static QJsonObject parseObject(const QVariant &value);
+  QJsonObject contentRulesetsRow(QSqlQuery &query) const;
 
   QString m_root;
   QString m_projectId;

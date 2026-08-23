@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -158,6 +159,7 @@ bool ProjectStore::openInternal(const QString &root, const QString &requestedNam
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/diffs"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/logs"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/tmp"), error) ||
+      !Paths::ensureDirectory(QDir(m_root).filePath(".cybersnapper/rulesets"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath("captures"), error) ||
       !Paths::ensureDirectory(QDir(m_root).filePath("baselines"), error)) {
     return false;
@@ -262,6 +264,7 @@ bool ProjectStore::migrate(QString *error) {
       "CREATE TABLE IF NOT EXISTS targets (id TEXT PRIMARY KEY, target_set_id TEXT NOT NULL, position INTEGER NOT NULL, label TEXT NOT NULL DEFAULT '', url TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(target_set_id) REFERENCES target_sets(id) ON DELETE CASCADE, UNIQUE(target_set_id, position))",
       "CREATE INDEX IF NOT EXISTS targets_set_position_idx ON targets(target_set_id,position)",
       "CREATE TABLE IF NOT EXISTS comparison_reviews (comparison_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK(status IN ('unreviewed','accepted','ignored')), note TEXT NOT NULL DEFAULT '', reviewed_at TEXT DEFAULT '', updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, promoted_artifact_id TEXT DEFAULT '', FOREIGN KEY(comparison_id) REFERENCES comparisons(id) ON DELETE CASCADE)",
+      "CREATE TABLE IF NOT EXISTS content_rulesets (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'custom' CHECK(kind IN ('custom','subscription')), source_url TEXT NOT NULL DEFAULT '', rules_text TEXT NOT NULL DEFAULT '', actions_json TEXT NOT NULL DEFAULT '[]', auto_update INTEGER NOT NULL DEFAULT 0, etag TEXT NOT NULL DEFAULT '', last_modified TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)",
   };
   if (!m_db.transaction()) {
     if (error) *error = m_db.lastError().text();
@@ -273,7 +276,7 @@ bool ProjectStore::migrate(QString *error) {
   if (existingVersion.exec("SELECT value FROM metadata WHERE key='schemaVersion'") && existingVersion.next()) {
     schemaVersion = existingVersion.value(0).toInt();
   }
-  if (schemaVersion > 4) {
+  if (schemaVersion > 5) {
     if (error) *error = QStringLiteral("This project uses newer database schema %1").arg(schemaVersion);
     m_db.rollback();
     return false;
@@ -317,7 +320,7 @@ bool ProjectStore::migrate(QString *error) {
     }
   }
   QSqlQuery version(m_db);
-  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','4') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  version.prepare("INSERT INTO metadata(key,value) VALUES('schemaVersion','5') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
   if (!version.exec() || !m_db.commit()) {
     if (error) *error = version.lastError().text().isEmpty() ? m_db.lastError().text() : version.lastError().text();
     return false;
@@ -390,6 +393,142 @@ bool ProjectStore::removeProfile(const QString &id, QString *error) {
   query.addBindValue(id);
   if (query.exec() && query.numRowsAffected() > 0) return true;
   if (error) *error = query.lastError().text().isEmpty() ? "Profile not found" : query.lastError().text();
+  return false;
+}
+
+namespace {
+
+// Mirrors the structured-action bounds enforced by the worker in
+// worker/src/blocking.ts so rulesets saved on one side are always accepted by
+// the other.
+bool validStructuredAction(const QJsonObject &action) {
+  static const QRegularExpression domainPattern(QStringLiteral("^[a-z0-9*_.\\-]+$"));
+  static const QRegularExpression selectorPattern(
+      QStringLiteral("^[A-Za-z0-9_\\-.>#\\[\\]=|^$:*~\\s,\"']+$"));
+  const QJsonArray domains = action.value("domains").toArray();
+  if (domains.isEmpty() || domains.size() > 8) return false;
+  for (const auto &domain : domains) {
+    if (!domain.isString() || !domainPattern.match(domain.toString()).hasMatch()) return false;
+  }
+  const QString selector = action.value("selector").toString();
+  if (selector.isEmpty() || selector.size() > 200 || selector.contains("..") ||
+      !selectorPattern.match(selector).hasMatch()) {
+    return false;
+  }
+  const QString kind = action.value("action").toString();
+  if (kind != "click" && kind != "hide") return false;
+  const qint64 delayMs = static_cast<qint64>(action.value("delayMs").toDouble(-1));
+  if (delayMs < 0 || delayMs > 5000) return false;
+  return true;
+}
+
+// A missing JSON string must bind as '' rather than SQL NULL.
+QString nonEmptyString(const QJsonValue &value) {
+  QString text = value.toString();
+  if (text.isNull()) text = QStringLiteral("");
+  return text;
+}
+
+} // namespace
+
+QJsonObject ProjectStore::contentRulesetsRow(QSqlQuery &query) const {
+  return QJsonObject{{"id", query.value("id").toString()},
+                     {"name", query.value("name").toString()},
+                     {"kind", query.value("kind").toString()},
+                     {"sourceUrl", query.value("source_url").toString()},
+                     {"rulesText", query.value("rules_text").toString()},
+                     {"actions", parseArray(query.value("actions_json"))},
+                     {"autoUpdate", query.value("auto_update").toBool()},
+                     {"etag", query.value("etag").toString()},
+                     {"lastModified", query.value("last_modified").toString()},
+                     {"digest", query.value("digest").toString()},
+                     {"updatedAt", query.value("updated_at").toString()}};
+}
+
+QJsonArray ProjectStore::contentRulesets() const {
+  QJsonArray out;
+  QSqlQuery query("SELECT * FROM content_rulesets ORDER BY name COLLATE NOCASE", m_db);
+  while (query.next()) out.append(contentRulesetsRow(query));
+  return out;
+}
+
+QJsonObject ProjectStore::contentRuleset(const QString &id) const {
+  QSqlQuery query(m_db);
+  query.prepare("SELECT * FROM content_rulesets WHERE id=?");
+  query.addBindValue(id);
+  if (!query.exec() || !query.next()) return {};
+  return contentRulesetsRow(query);
+}
+
+QJsonObject ProjectStore::saveContentRuleset(const QJsonObject &rulesetValue, QString *error) {
+  QJsonObject normalized = rulesetValue;
+  const QString id = normalized.value("id").toString().trimmed();
+  const QString name = normalized.value("name").toString().trimmed().left(200);
+  if (name.isEmpty()) {
+    if (error) *error = "A ruleset name is required";
+    return {};
+  }
+  const QString kind = normalized.value("kind").toString("custom");
+  if (kind != "custom" && kind != "subscription") {
+    if (error) *error = "Ruleset kind must be custom or subscription";
+    return {};
+  }
+  const QString rulesText = normalized.value("rulesText").toString();
+  if (rulesText.size() > 10 * 1024 * 1024) {
+    if (error) *error = "A ruleset may not exceed 10 MiB of filter text";
+    return {};
+  }
+  QJsonArray actionsIn = normalized.value("actions").toArray();
+  if (actionsIn.size() > 200) {
+    if (error) *error = "A ruleset may not define more than 200 actions";
+    return {};
+  }
+  QJsonArray actionsOut;
+  for (const auto &action : actionsIn) {
+    if (!validStructuredAction(action.toObject())) {
+      if (error) *error = "A structured action is malformed or unsafe";
+      return {};
+    }
+    actionsOut.append(action);
+  }
+  if (kind == "custom" && rulesText.trimmed().isEmpty() && actionsOut.isEmpty()) {
+    if (error) *error = "A custom ruleset needs at least one rule or action";
+    return {};
+  }
+  const QString resolvedId = id.isEmpty() ? newId() : id;
+  QSqlQuery query(m_db);
+  query.prepare("INSERT INTO content_rulesets(id,name,kind,source_url,rules_text,actions_json,"
+                "auto_update,etag,last_modified,digest,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                "name=excluded.name,kind=excluded.kind,source_url=excluded.source_url,"
+                "rules_text=excluded.rules_text,actions_json=excluded.actions_json,"
+                "auto_update=excluded.auto_update,etag=excluded.etag,last_modified=excluded.last_modified,"
+                "digest=excluded.digest,updated_at=excluded.updated_at");
+  query.addBindValue(resolvedId);
+  query.addBindValue(name);
+  query.addBindValue(kind);
+  query.addBindValue(nonEmptyString(normalized.value("sourceUrl")));
+  query.addBindValue(nonEmptyString(rulesText));
+  query.addBindValue(compactJson(actionsOut));
+  query.addBindValue(normalized.value("autoUpdate").toBool(false) ? 1 : 0);
+  query.addBindValue(nonEmptyString(normalized.value("etag")));
+  query.addBindValue(nonEmptyString(normalized.value("lastModified")));
+  query.addBindValue(nonEmptyString(normalized.value("digest")));
+  query.addBindValue(utcNow());
+  if (query.exec()) {
+    normalized.insert("id", resolvedId);
+    return normalized;
+  }
+  if (error) *error = query.lastError().text();
+  return {};
+}
+
+bool ProjectStore::removeContentRuleset(const QString &id, QString *error) {
+  QSqlQuery query(m_db);
+  query.prepare("DELETE FROM content_rulesets WHERE id=?");
+  query.addBindValue(id);
+  if (query.exec() && query.numRowsAffected() > 0) return true;
+  if (error) *error = query.lastError().text().isEmpty() ? "Ruleset not found" : query.lastError().text();
   return false;
 }
 

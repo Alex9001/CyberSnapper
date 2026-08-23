@@ -3,6 +3,7 @@
 #include "core/JobManager.h"
 #include "core/RestServer.h"
 #include "core/Scheduler.h"
+#include "core/SubscriptionRefresher.h"
 
 #include <QHash>
 #include <QJsonObject>
@@ -36,6 +37,7 @@ private:
   QString m_activeProjectId;
   JobManager m_jobs;
   Scheduler m_scheduler;
+  SubscriptionRefresher m_subscriptions;
   RestServer m_rest;
   bool m_started = false;
 

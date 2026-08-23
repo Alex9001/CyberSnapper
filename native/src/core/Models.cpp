@@ -66,6 +66,59 @@ QJsonObject presentationToJson(const PresentationSettings &settings) {
           {"solidColor", settings.solidColor}};
 }
 
+const QStringList &knownSubscriptionIds() {
+  static const QStringList ids{"easylist-cookie", "ublock-cookie", "easylist-ads",
+                               "easyprivacy", "ublock-annoyances"};
+  return ids;
+}
+
+// Profiles written before CyberSnapper 2.3 have no contentBlocking object. The
+// old "Block common overlays" switch maps onto built-in banner handling: a
+// profile that opted in keeps consent removal on, one that opted out stays off.
+ContentBlockingSettings contentBlockingFromJson(const QJsonObject &profile) {
+  ContentBlockingSettings settings;
+  const QJsonValue value = profile.value("contentBlocking");
+  if (value.isObject()) {
+    const QJsonObject object = value.toObject();
+    settings.enabled = object.value("enabled").toBool(false);
+    settings.consentStrategy = object.value("consentStrategy").toString(settings.consentStrategy);
+    if (settings.consentStrategy != "rejectThenDismiss" && settings.consentStrategy != "dismiss") {
+      settings.consentStrategy = QStringLiteral("rejectThenDismiss");
+    }
+    if (!object.contains("subscriptionIds")) {
+      // Keep the curated default subscriptions when the key is missing.
+    } else {
+      QStringList requested = stringList(object.value("subscriptionIds"));
+      requested.removeDuplicates();
+      QStringList accepted;
+      for (const QString &id : requested) {
+        if (knownSubscriptionIds().contains(id)) accepted.append(id);
+      }
+      settings.subscriptionIds = accepted;
+    }
+    settings.customRulesetIds = stringList(object.value("customRulesetIds"));
+    if (settings.customRulesetIds.size() > 64) settings.customRulesetIds = settings.customRulesetIds.mid(0, 64);
+    settings.disabledDomains = stringList(object.value("disabledDomains"));
+    if (settings.disabledDomains.size() > 1000) settings.disabledDomains = settings.disabledDomains.mid(0, 1000);
+    settings.versionPolicy = object.value("versionPolicy").toString(settings.versionPolicy);
+    if (settings.versionPolicy != "latest" && settings.versionPolicy != "pinned") {
+      settings.versionPolicy = QStringLiteral("latest");
+    }
+    return settings;
+  }
+  settings.enabled = profile.value("blockPopups").toBool(false);
+  return settings;
+}
+
+QJsonObject contentBlockingToJson(const ContentBlockingSettings &settings) {
+  return {{"enabled", settings.enabled},
+          {"consentStrategy", settings.consentStrategy},
+          {"subscriptionIds", jsonList(settings.subscriptionIds)},
+          {"customRulesetIds", jsonList(settings.customRulesetIds)},
+          {"disabledDomains", jsonList(settings.disabledDomains)},
+          {"versionPolicy", settings.versionPolicy}};
+}
+
 } // namespace
 
 CaptureProfile defaultProfile() {
@@ -120,7 +173,6 @@ QJsonObject toJson(const CaptureProfile &profile) {
           {"selectorTimeoutSeconds", profile.selectorTimeoutSeconds},
           {"maxScrollSeconds", profile.maxScrollSeconds},
           {"maxPageHeight", profile.maxPageHeight},
-          {"blockPopups", profile.blockPopups},
           {"stripWhitespace", profile.stripWhitespace},
           {"blocklist", jsonList(profile.blocklist)},
           {"hideSelectors", jsonList(profile.hideSelectors)},
@@ -136,7 +188,8 @@ QJsonObject toJson(const CaptureProfile &profile) {
           {"pixelThreshold", profile.pixelThreshold},
           {"mismatchThreshold", profile.mismatchThreshold},
           {"comparisonIgnoreSelectors", jsonList(profile.comparisonIgnoreSelectors)},
-          {"presentation", presentationToJson(profile.presentation)}};
+          {"presentation", presentationToJson(profile.presentation)},
+          {"contentBlocking", contentBlockingToJson(profile.contentBlocking)}};
 }
 
 CaptureProfile profileFromJson(const QJsonObject &object) {
@@ -166,7 +219,6 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   profile.selectorTimeoutSeconds = boundedInt(object, "selectorTimeoutSeconds", 30, 1, 300);
   profile.maxScrollSeconds = boundedInt(object, "maxScrollSeconds", 120, 5, 1800);
   profile.maxPageHeight = boundedInt(object, "maxPageHeight", 100000, 1000, 1000000);
-  profile.blockPopups = object.value("blockPopups").toBool(profile.blockPopups);
   profile.stripWhitespace = object.value("stripWhitespace").toBool(profile.stripWhitespace);
   profile.blocklist = stringList(object.value("blocklist"));
   profile.hideSelectors = stringList(object.value("hideSelectors"));
@@ -185,6 +237,7 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   profile.mismatchThreshold = boundedDouble(object, "mismatchThreshold", 0.001, 0.0, 1.0);
   profile.comparisonIgnoreSelectors = stringList(object.value("comparisonIgnoreSelectors"));
   profile.presentation = presentationFromJson(object.value("presentation"));
+  profile.contentBlocking = contentBlockingFromJson(object);
   return profile;
 }
 
@@ -211,17 +264,26 @@ CaptureTarget captureTargetFromJson(const QJsonObject &object) {
 QJsonObject toJson(const JobRequest &request) {
   QJsonArray targets;
   for (const auto &target : request.targets) targets.append(toJson(target));
-  return {{"id", request.id},
-          {"projectId", request.projectId},
-          {"projectRoot", request.projectRoot},
-          {"profileId", request.profileId},
-          {"source", request.source},
-          {"urls", jsonList(request.urls)},
-          {"targetSetId", request.targetSetId},
-          {"targets", targets},
-          {"profile", toJson(request.profile)},
-          {"baselines", request.baselines},
-          {"allowLocalhost", request.allowLocalhost}};
+  QJsonObject json{{"id", request.id},
+                   {"projectId", request.projectId},
+                   {"projectRoot", request.projectRoot},
+                   {"profileId", request.profileId},
+                   {"source", request.source},
+                   {"urls", jsonList(request.urls)},
+                   {"targetSetId", request.targetSetId},
+                   {"targets", targets},
+                   {"profile", toJson(request.profile)},
+                   {"baselines", request.baselines},
+                   {"allowLocalhost", request.allowLocalhost}};
+  // The worker contract carries ruleset provenance as a nested object; omit it
+  // entirely when no snapshot was produced.
+  if (!request.rulesetDigest.isEmpty()) {
+    json.insert("ruleset", QJsonObject{{"digest", request.rulesetDigest},
+                                       {"relativePath", request.rulesetRelativePath},
+                                       {"sources", request.rulesetSources},
+                                       {"warnings", jsonList(request.rulesetWarnings)}});
+  }
+  return json;
 }
 
 JobRequest jobRequestFromJson(const QJsonObject &object) {
@@ -240,6 +302,11 @@ JobRequest jobRequestFromJson(const QJsonObject &object) {
   request.profile = profileFromJson(object.value("profile").toObject());
   request.baselines = object.value("baselines").toObject();
   request.allowLocalhost = object.value("allowLocalhost").toBool(false);
+  const QJsonObject ruleset = object.value("ruleset").toObject();
+  request.rulesetDigest = ruleset.value("digest").toString().trimmed().left(128);
+  request.rulesetRelativePath = ruleset.value("relativePath").toString().trimmed().left(4096);
+  request.rulesetSources = ruleset.value("sources").toObject();
+  request.rulesetWarnings = stringList(ruleset.value("warnings"));
   return request;
 }
 

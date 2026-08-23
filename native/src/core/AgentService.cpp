@@ -1,5 +1,6 @@
 #include "core/AgentService.h"
 
+#include "core/ContentRulesets.h"
 #include "core/Models.h"
 #include "core/Paths.h"
 #include "core/ProjectStore.h"
@@ -8,8 +9,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
-#include <QJsonArray>
+#include <QFileInfo>#include <QJsonArray>
 #include <QJsonDocument>
 #include <QMetaObject>
 #include <QProcess>
@@ -170,6 +170,16 @@ AgentService::AgentService(QObject *parent)
   connect(&m_rest, &RestServer::serverError, this, [this](const QString &message) {
     emit eventPublished("api.error", {{"message", message}});
   });
+  connect(&m_subscriptions, &SubscriptionRefresher::warning, this,
+          [this](const QString &message) {
+            emit eventPublished("subscriptions.warning", {{"message", message}});
+          });
+  connect(&m_subscriptions, &SubscriptionRefresher::refreshed, this,
+          [this](const QString &subscriptionId, bool ok, const QString &message) {
+            emit eventPublished("subscriptions.changed",
+                                {{"subscriptionId", subscriptionId}, {"ok", ok},
+                                 {"message", message}});
+          });
 }
 
 AgentService::~AgentService() { shutdown(); }
@@ -205,6 +215,9 @@ bool AgentService::start(QString *error) {
   m_jobs.setMaximumActiveJobs(m_settings.value("jobs/maximumActive", 1).toInt());
   recoverQueuedJobs();
   m_scheduler.start();
+  // Filter-list refresh runs in the background only; captures always use the
+  // snapshot that was current at submission time.
+  m_subscriptions.start();
   if (m_settings.value("api/enabled", false).toBool()) {
     QString apiError;
     if (!configureApi(true, nullptr, &apiError)) {
@@ -218,6 +231,7 @@ bool AgentService::start(QString *error) {
 void AgentService::shutdown() {
   if (!m_started && m_projects.isEmpty()) return;
   m_scheduler.stop();
+  m_subscriptions.stop();
   m_rest.stop();
   m_jobs.shutdown();
   m_projects.clear();
@@ -305,6 +319,27 @@ QString AgentService::submitJob(ProjectStore *store, JobRequest request, QString
     for (const auto &target : request.targets) if (target.enabled) request.urls.append(target.url);
   }
   request.baselines = {};
+  if (request.profile.contentBlocking.enabled && !recovering) {
+    // Build the content-addressed rules snapshot before the job is queued so
+    // retries replay the exact same rules. Missing lists only produce
+    // warnings: captures fall back to built-in consent handling.
+    QString rulesetError;
+    const RulesetReferenceInfo reference =
+        ContentRulesets::buildSnapshot(store, request.profile, &rulesetError);
+    if (reference.enabled) {
+      request.rulesetDigest = reference.digest;
+      request.rulesetRelativePath = reference.relativePath;
+      request.rulesetSources = reference.sources;
+      request.rulesetWarnings = reference.warnings;
+    } else {
+      request.rulesetDigest.clear();
+      request.rulesetRelativePath.clear();
+      request.rulesetSources = {};
+      QStringList warnings = reference.warnings;
+      if (!rulesetError.isEmpty()) warnings.append(rulesetError);
+      request.rulesetWarnings = warnings;
+    }
+  }
   if (request.profile.comparisonEnabled) {
     for (const auto &url : request.urls) {
       for (const auto &engine : request.profile.engines) {
@@ -477,9 +512,66 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
   }
 
   ProjectStore *store = project(params.value("projectId").toString());
-  if (method.startsWith("profile.") || method.startsWith("targetSet.") || method == "dashboard.get" ||
+  if (method.startsWith("profile.") || method.startsWith("targetSet.") ||
+      method.startsWith("contentRuleset.") || method == "dashboard.get" ||
       method == "job.submit" || method == "job.list" || method.startsWith("schedule.")) {
     if (!store) return failure("not_found", "Project not found", 404);
+  }
+  if (method == "contentBlocking.catalog") {
+    QJsonArray subscriptions;
+    for (const auto &info : subscriptionCatalog()) {
+      const QJsonObject cache = subscriptionCacheMeta(info.id);
+      subscriptions.append(QJsonObject{{"id", info.id}, {"name", info.name},
+          {"sourceUrl", info.sourceUrl}, {"license", info.license},
+          {"defaultEnabled", info.defaultEnabled},
+          {"downloaded", cache.value("downloaded").toBool()},
+          {"cachedBytes", int(cache.value("cachedBytes").toDouble())},
+          {"ruleCount", int(cache.value("ruleCount").toDouble())},
+          {"fetchedAt", cache.value("fetchedAt").toString()},
+          {"expiresAt", cache.value("expiresAt").toString()}});
+    }
+    return {{"subscriptions", subscriptions}};
+  }
+  if (method == "contentBlocking.status") {
+    QJsonArray subscriptions;
+    for (const auto &info : subscriptionCatalog()) {
+      const QJsonObject cache = subscriptionCacheMeta(info.id);
+      subscriptions.append(QJsonObject{{"id", info.id}, {"name", info.name},
+          {"sourceUrl", info.sourceUrl}, {"license", info.license},
+          {"downloaded", cache.value("downloaded").toBool()},
+          {"digest", cache.value("digest").toString()},
+          {"ruleCount", int(cache.value("ruleCount").toDouble())},
+          {"fetchedAt", cache.value("fetchedAt").toString()},
+          {"expiresAt", cache.value("expiresAt").toString()}});
+    }
+    return {{"subscriptions", subscriptions}, {"refreshing", m_subscriptions.busy()}};
+  }
+  if (method == "contentBlocking.refresh") {
+    const QString subscriptionId = params.value("subscriptionId").toString();
+    if (!subscriptionId.isEmpty()) {
+      bool known = false;
+      for (const auto &info : subscriptionCatalog()) known = known || info.id == subscriptionId;
+      if (!known) return failure("not_found", "Subscription not found", 404);
+    }
+    m_subscriptions.refreshNow(subscriptionId);
+    return {{"refreshing", true}};
+  }
+  if (method == "contentRuleset.list") return {{"contentRulesets", store->contentRulesets()}};
+  if (method == "contentRuleset.save") {
+    QString error;
+    const QJsonObject saved = store->saveContentRuleset(params.value("ruleset").toObject(), &error);
+    if (saved.isEmpty()) return failure("ruleset_rejected", error);
+    emit eventPublished("project.contentRulesets.changed", {{"projectId", store->projectId()}});
+    return {{"ruleset", saved}};
+  }
+  if (method == "contentRuleset.remove") {
+    QString error;
+    const QString rulesetId = params.value("id").toString();
+    if (!store->removeContentRuleset(rulesetId, &error)) {
+      return failure("ruleset_remove_failed", error, 409);
+    }
+    emit eventPublished("project.contentRulesets.changed", {{"projectId", store->projectId()}});
+    return {{"removed", true}};
   }
   if (method == "profile.list") return {{"profiles", store->profiles()}};
   if (method == "profile.get") {

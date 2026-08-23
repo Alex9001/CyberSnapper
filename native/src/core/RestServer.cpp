@@ -195,6 +195,43 @@ void RestServer::configureRoutes() {
     resultResponse(response, invoke("profile.remove", {{"projectId", QString::fromStdString(request.matches[1])},
                                                           {"profileId", QString::fromStdString(request.matches[2])}}));
   });
+  m_server->Get("/api/v1/content-blocking/catalog",
+                [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response, invoke("contentBlocking.catalog", {}));
+  });
+  m_server->Get("/api/v1/content-blocking/subscriptions",
+                [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response, invoke("contentBlocking.status", {}));
+  });
+  m_server->Post(R"(/api/v1/content-blocking/subscriptions/([0-9a-z-]+)/refresh)",
+                 [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response,
+                   invoke("contentBlocking.refresh",
+                          {{"subscriptionId", QString::fromStdString(request.matches[1])}}));
+  });
+  m_server->Get(R"(/api/v1/projects/([0-9A-Za-z-]+)/content-rulesets)",
+                [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response, invoke("contentRuleset.list", {{"projectId", QString::fromStdString(request.matches[1])}}));
+  });
+  m_server->Put(R"(/api/v1/projects/([0-9A-Za-z-]+)/content-rulesets/([0-9A-Za-z-]+))",
+                [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    QString parseError; QJsonObject ruleset = parseBody(request, &parseError);
+    if (!parseError.isEmpty()) return sendError(response, 400, "invalid_json", parseError);
+    ruleset.insert("id", QString::fromStdString(request.matches[2]));
+    resultResponse(response, invoke("contentRuleset.save", {{"projectId", QString::fromStdString(request.matches[1])},
+                                                               {"ruleset", ruleset}}));
+  });
+  m_server->Delete(R"(/api/v1/projects/([0-9A-Za-z-]+)/content-rulesets/([0-9A-Za-z-]+))",
+                   [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
+    if (!requireAuth(request, response)) return;
+    resultResponse(response, invoke("contentRuleset.remove", {{"projectId", QString::fromStdString(request.matches[1])},
+                                                                 {"id", QString::fromStdString(request.matches[2])}}));
+  });
   m_server->Patch(R"(/api/v1/projects/([0-9A-Za-z-]+)/settings)",
                   [requireAuth, invoke, resultResponse](const httplib::Request &request, httplib::Response &response) {
     if (!requireAuth(request, response)) return;
