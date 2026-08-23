@@ -27,7 +27,7 @@ The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder
 
 ## Download
 
-CyberSnapper 2.2.2 is the current stable release. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
+CyberSnapper 2.3.1 is the current stable release. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings.
 
 | Platform | Recommended | Portable archive |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ Every release includes SHA-256 checksums and GitHub build-provenance attestation
 
 - Capture full scrolling pages, exact viewports, or one CSS-selected element.
 - Produce desktop, tablet, mobile, and custom-sized images together with explicit pixel density and mobile-browser controls.
-- Wait for pages to settle, block common overlays, and hide chosen elements so banners and animation do not spoil the shot.
+- Wait for pages to settle, remove cookie banners with curated or custom rules, and hide chosen elements so overlays and animation do not spoil the shot.
 - Create portfolio-ready copies with Clean, Aurora, Sunset, Midnight, Graphite, or custom-solid scenes; add browser, tablet, phone, or rounded-card frames; and target 16:9, 4:3, square, or content-fit canvases.
 - Save labeled target sets for all the projects and pages in a portfolio, then recapture them as one batch.
 - Export PNG, WebP, AVIF, and Chromium PDF with collision-safe names into ordinary folders.

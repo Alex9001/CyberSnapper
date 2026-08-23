@@ -100,10 +100,11 @@ ContentBlockingSettings contentBlockingFromJson(const QJsonObject &profile) {
     if (settings.customRulesetIds.size() > 64) settings.customRulesetIds = settings.customRulesetIds.mid(0, 64);
     settings.disabledDomains = stringList(object.value("disabledDomains"));
     if (settings.disabledDomains.size() > 1000) settings.disabledDomains = settings.disabledDomains.mid(0, 1000);
-    settings.versionPolicy = object.value("versionPolicy").toString(settings.versionPolicy);
-    if (settings.versionPolicy != "latest" && settings.versionPolicy != "pinned") {
-      settings.versionPolicy = QStringLiteral("latest");
-    }
+    // Snapshot pinning was exposed prematurely in 2.3.0 without storing a
+    // profile-specific digest. Keep the JSON field stable but use the only
+    // implemented, reproducible policy: snapshot the latest cached lists when
+    // the job is submitted, then reuse that exact snapshot for retries.
+    settings.versionPolicy = QStringLiteral("latest");
     return settings;
   }
   settings.enabled = profile.value("blockPopups").toBool(false);

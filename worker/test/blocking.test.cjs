@@ -3,7 +3,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const {
@@ -128,6 +127,24 @@ test('ContentBlocker blocks matching subresources but not unrelated requests', a
   assert.equal(blocker.metrics.blockedSubresources, 0, 'counting happens in routing, not matching');
 });
 
+test('ContentBlocker never loads rules rejected by the safe normalizer', async () => {
+  const reference = snapshotReference(makeSnapshot(), [
+    '||unsafe.example^$redirect=noop.txt',
+    'example.org##.banner:style(position:fixed)',
+    'example.org##+js(set-constant, document.title, changed)',
+  ]);
+  const blocker = await ContentBlocker.load({
+    projectRoot: reference.projectRoot,
+    profile: { contentBlocking: enabledSettings([]) },
+    ruleset: reference,
+  });
+  assert.equal(blocker.metrics.unsupportedRules, 3);
+  assert.equal(blocker.blocksSubresource('https://unsafe.example/file.js', 'script'), false);
+  assert.equal(blocker.cosmeticStyles('https://example.org/', {
+    classes: ['banner'], ids: [], hrefs: [],
+  }), '.banner { display: none !important; }');
+});
+
 test('disabledDomains disable all content blocking for that site', async () => {
   const settings = enabledSettings(['easylist-cookie']);
   settings.disabledDomains = ['exempt.example'];
@@ -153,8 +170,10 @@ test('inert blockers do nothing (blockPopups=false stays off)', async () => {
 });
 
 test('missing or broken snapshots warn and fall back to built-in consent handling', async () => {
+  const testRoot = path.join(process.cwd(), 'build', 'test-runtime');
+  fs.mkdirSync(testRoot, { recursive: true });
   const missing = await ContentBlocker.load({
-    projectRoot: os.tmpdir(),
+    projectRoot: testRoot,
     profile: { contentBlocking: enabledSettings([]) },
     ruleset: {},
   });
@@ -190,7 +209,9 @@ function snapshotReference(snapshotText, extraRules) {
     rulesText: [...JSON.parse(document.payload).rulesText, ...(extraRules ?? [])],
   });
   const finalText = JSON.stringify({ format: 1, digest: sha256Hex(payload), payload });
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cybersnapper-rules-'));
+  const testRoot = path.join(process.cwd(), 'build', 'test-runtime');
+  fs.mkdirSync(testRoot, { recursive: true });
+  const root = fs.mkdtempSync(path.join(testRoot, 'cybersnapper-rules-'));
   fs.mkdirSync(path.join(root, 'rulesets'), { recursive: true });
   fs.writeFileSync(path.join(root, 'rulesets', `${sha256Hex(payload)}.json`), finalText);
   return { projectRoot: root, digest: sha256Hex(payload), relativePath: `rulesets/${sha256Hex(payload)}.json` };
@@ -199,7 +220,9 @@ function snapshotReference(snapshotText, extraRules) {
 const domWithCookieClass = { classes: ['cookie-banner'], ids: [], hrefs: [] };
 
 function writeProjectWithSnapshot(text) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cybersnapper-bad-'));
+  const testRoot = path.join(process.cwd(), 'build', 'test-runtime');
+  fs.mkdirSync(testRoot, { recursive: true });
+  const root = fs.mkdtempSync(path.join(testRoot, 'cybersnapper-bad-'));
   fs.mkdirSync(path.join(root, 'rulesets'), { recursive: true });
   fs.writeFileSync(path.join(root, 'rulesets', `${sha256Hex('mismatch')}.json`), text);
   return root;

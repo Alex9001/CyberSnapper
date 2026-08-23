@@ -3,7 +3,6 @@
 import { execFile } from 'node:child_process';
 import { mkdir, open, readdir, writeFile } from 'node:fs/promises';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
@@ -19,10 +18,9 @@ const [cli, agent, worker, nodeRuntime, browserCache, stateRoot] = process.argv.
 const runRoot = path.join(stateRoot, `run-${process.pid}-${Date.now()}`);
 const projectRoot = path.join(runRoot, 'project');
 const projectState = path.join(projectRoot, '.cybersnapper');
-// The agent hosts its IPC socket inside XDG_RUNTIME_DIR, and Unix socket paths
-// are limited to about 108 bytes. Keep this directory short instead of nesting
-// it under the (potentially deep) state root.
-const runtimeRoot = path.join(process.platform === 'win32' ? os.tmpdir() : '/tmp', `cs-smoke-${process.pid}`);
+// Keep the IPC directory inside the requested work tree while avoiding the
+// deeper smoke-state/project nesting that can exceed Unix socket path limits.
+const runtimeRoot = path.join(path.resolve(stateRoot, '..', '..'), `cs-smoke-${process.pid}`);
 
 await mkdir(projectState, { recursive: true });
 await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
@@ -66,6 +64,10 @@ if (!address || typeof address === 'string') throw new Error('Could not start th
 const childEnvironment = {
   ...process.env,
   CYBERSNAPPER_AGENT: agent,
+  CYBERSNAPPER_AGENT_SERVER: process.platform === 'win32'
+    ? `CyberSnapper.PackageSmoke.${process.pid}`
+    : path.join(runtimeRoot, 'agent.sock'),
+  CYBERSNAPPER_DEFAULT_PROJECT: projectRoot,
   CYBERSNAPPER_WORKER_ENTRY: worker,
   CYBERSNAPPER_NODE: nodeRuntime,
   CYBERSNAPPER_BROWSER_CACHE: browserCache,

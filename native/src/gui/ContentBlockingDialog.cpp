@@ -42,6 +42,10 @@ QString joinedDomains(const QJsonValue &value) {
 ContentBlockingDialog::ContentBlockingDialog(const QJsonObject &settings, const RpcInvoker &rpc,
                                              QWidget *parent)
     : QDialog(parent), m_rpc(rpc), m_enabled(settings.value("enabled").toBool(true)) {
+  for (const auto &value : settings.value("customRulesetIds").toArray()) {
+    const QString id = value.toString().trimmed();
+    if (!id.isEmpty()) m_selectedRulesetIds.append(id);
+  }
   setWindowTitle("Configure Content Blocking");
   resize(780, 620);
   auto *layout = new QVBoxLayout(this);
@@ -85,15 +89,9 @@ ContentBlockingDialog::ContentBlockingDialog(const QJsonObject &settings, const 
   m_consentStrategy->addItem("Dismiss banners using the site's own accept control", "dismiss");
   m_consentStrategy->setCurrentIndex(qMax(0, m_consentStrategy->findData(
       settings.value("consentStrategy").toString("rejectThenDismiss"))));
-  m_versionPolicy = new QComboBox(behavior);
-  m_versionPolicy->addItem("Always use the latest downloaded version", "latest");
-  m_versionPolicy->addItem("Keep the pinned snapshot until refreshed manually", "pinned");
-  m_versionPolicy->setCurrentIndex(qMax(0, m_versionPolicy->findData(
-      settings.value("versionPolicy").toString("latest"))));
   m_disabledDomains = new QLineEdit(joinedDomains(settings.value("disabledDomains")), behavior);
   m_disabledDomains->setPlaceholderText("mail.example.com, app.example.com");
   behaviorForm->addRow("Strategy", m_consentStrategy);
-  behaviorForm->addRow("List versions", m_versionPolicy);
   behaviorForm->addRow("Never block on sites", m_disabledDomains);
   behaviorForm->addRow(new QLabel(
       "Content blocking is skipped entirely on the listed sites.", behavior));
@@ -103,6 +101,7 @@ ContentBlockingDialog::ContentBlockingDialog(const QJsonObject &settings, const 
   auto *rulesetLayout = new QHBoxLayout(rulesetsGroup);
   auto *left = new QVBoxLayout;
   m_rulesetList = new QListWidget(rulesetsGroup);
+  m_rulesetList->setObjectName("contentRulesetList");
   m_rulesetList->setMinimumWidth(190);
   left->addWidget(m_rulesetList, 1);
   auto *addButton = new QPushButton("New ruleset", rulesetsGroup);
@@ -151,6 +150,8 @@ ContentBlockingDialog::ContentBlockingDialog(const QJsonObject &settings, const 
   connect(addButton, &QPushButton::clicked, this, [this] {
     const int newRow = m_rulesetList->count();
     auto *item = new QListWidgetItem(QStringLiteral("Untitled ruleset"));
+    item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+    item->setCheckState(Qt::Checked);
     item->setData(Qt::UserRole, newId());
     item->setData(Qt::UserRole + 1, QJsonObject{{"name", ""}, {"kind", "custom"},
                                                 {"rulesText", ""}, {"actions", QJsonArray{}}});
@@ -227,18 +228,19 @@ void ContentBlockingDialog::refreshSubscriptionStatus() {
 }
 
 void ContentBlockingDialog::loadRulesets() {
-  qDebug() << "loadRulesets: m_rpc is empty:" << m_rpc.target_type().name();
   if (!m_rpc) {
     m_editor->setEnabled(false);
     m_editor->parentWidget()->setEnabled(false);
-    qDebug() << "Editor and parent disabled in loadRulesets";
     return;
   }
   m_rpc("contentRuleset.list", {}, [this](const QJsonObject &result) {
     for (const auto &value : result.value("contentRulesets").toArray()) {
       const QJsonObject ruleset = value.toObject();
       auto *item = new QListWidgetItem(ruleset.value("name").toString());
-      item->setData(Qt::UserRole, ruleset.value("id").toString());
+      const QString id = ruleset.value("id").toString();
+      item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+      item->setCheckState(m_selectedRulesetIds.contains(id) ? Qt::Checked : Qt::Unchecked);
+      item->setData(Qt::UserRole, id);
       item->setData(Qt::UserRole + 1, ruleset);
       m_rulesetList->addItem(item);
     }
@@ -422,10 +424,18 @@ QJsonObject ContentBlockingDialog::settings() const {
   for (const QString &part : m_disabledDomains->text().split(',', Qt::SkipEmptyParts)) {
     disabledDomains.append(part.trimmed().toLower());
   }
+  QJsonArray customRulesetIds;
+  for (int row = 0; row < m_rulesetList->count(); ++row) {
+    const QListWidgetItem *item = m_rulesetList->item(row);
+    if (item->checkState() == Qt::Checked && !item->data(Qt::UserRole).toString().isEmpty()) {
+      customRulesetIds.append(item->data(Qt::UserRole).toString());
+    }
+  }
   return QJsonObject{{"enabled", m_enabled},
                      {"consentStrategy", m_consentStrategy->currentData().toString()},
                      {"subscriptionIds", subscriptionIds},
-                     {"versionPolicy", m_versionPolicy->currentData().toString()},
+                     {"customRulesetIds", customRulesetIds},
+                     {"versionPolicy", "latest"},
                      {"disabledDomains", disabledDomains}};
 }
 

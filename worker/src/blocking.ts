@@ -11,7 +11,7 @@ import type { ContentBlocking, ContentBlockingMetrics, RulesetSourceVersion, Str
 // depending on JSON key ordering across Qt and JavaScript.
 
 export interface RulesetSnapshotPayload {
-  generatedAt: string;
+  generatedAt?: string;
   subscriptions: Record<string, Record<string, unknown>>;
   rulesText: string[];
   actions: StructuredAction[];
@@ -262,6 +262,7 @@ export function hostMatches(host: string, domain: string): boolean {
   const normalizedHost = host.toLowerCase().replace(/\.$/, '');
   const normalizedDomain = domain.toLowerCase().replace(/\.$/, '').replace(/^\*\./, '');
   if (!normalizedDomain) return false;
+  if (normalizedDomain === '*') return true;
   return normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`);
 }
 
@@ -321,9 +322,9 @@ function normalizeSettings(settings?: Partial<ContentBlocking>): ContentBlocking
 // Everything this function needs is defined inside its body: Playwright
 // serializes only the function source into the page, so module-scope
 // constants would not exist there.
-function consentPassInPage(strategy: string): {
+async function consentPassInPage(strategy: string): Promise<{
   attempted: number; succeeded: number; removed: number; locked: boolean;
-} {
+}> {
   const consentContainerSelector = [
     '[id*="cookie" i]', '[class*="cookie" i]', '[name*="cookie" i]', '[aria-label*="cookie" i]',
     '[id*="consent" i]', '[class*="consent" i]', '[aria-label*="consent" i]',
@@ -390,6 +391,10 @@ function consentPassInPage(strategy: string): {
       ? clickFirst(container, rejectPatterns) || clickFirst(container, dismissPatterns)
       : clickFirst(container, dismissPatterns);
     if (!clicked) continue;
+    // Many consent managers remove the banner in a microtask or animation
+    // callback. Give the recognized container a brief chance to disappear
+    // before deciding whether it is safe to release the page's scroll lock.
+    await new Promise((resolve) => setTimeout(resolve, 100));
     const stillThere = container.isConnected && visible(container);
     if (!stillThere) report.removed += 1;
   }
@@ -507,15 +512,19 @@ export class ContentBlocker {
       return blocker;
     }
     blocker.metrics.rulesetDigest = blocker.snapshot.digest;
-    blocker.metrics.unsupportedRules = normalizeRulesText(blocker.snapshot.payload.rulesText.join('\n')).unsupported;
+    const normalized = normalizeRulesText(blocker.snapshot.payload.rulesText.join('\n'));
+    blocker.metrics.unsupportedRules = normalized.unsupported;
     try {
-      blocker.engine = FiltersEngine.parse(blocker.snapshot.payload.rulesText.join('\n'));
+      blocker.engine = normalized.lines.length > 0
+        ? FiltersEngine.parse(normalized.lines.join('\n'))
+        : null;
     } catch (error) {
       blocker.engine = null;
       blocker.metrics.warnings.push(`Rules snapshot could not be parsed: ${
         error instanceof Error ? error.message : String(error)}`);
     }
-    blocker.actions = blocker.snapshot.payload.actions;
+    blocker.actions = [...blocker.snapshot.payload.actions, ...normalized.actions]
+      .slice(0, maximumCustomActions);
     return blocker;
   }
 
@@ -607,11 +616,15 @@ export class ContentBlocker {
           this.metrics.consentActionsAttempted += 1;
           this.metrics.consentActionsSucceeded += 1;
         }
-        return;
+      } else {
+        for (const frame of page.frames()) {
+          try {
+            const report = await frame.evaluate(consentPassInPage, effectiveStrategy);
+            this.metrics.consentActionsAttempted += report.attempted;
+            this.metrics.consentActionsSucceeded += report.succeeded;
+          } catch { /* A frame may navigate or disappear during the pass. */ }
+        }
       }
-      const report = await page.evaluate(consentPassInPage, effectiveStrategy);
-      this.metrics.consentActionsAttempted += report.attempted;
-      this.metrics.consentActionsSucceeded += report.succeeded;
     } catch { /* Consent handling is best effort and never fails a capture. */ }
     await this.runCustomActions(page);
   }
