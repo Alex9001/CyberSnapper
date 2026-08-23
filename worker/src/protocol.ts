@@ -44,7 +44,6 @@ export interface CaptureProfile {
   selectorTimeoutSeconds: number;
   maxScrollSeconds: number;
   maxPageHeight: number;
-  blockPopups: boolean;
   stripWhitespace: boolean;
   blocklist: string[];
   hideSelectors: string[];
@@ -61,6 +60,50 @@ export interface CaptureProfile {
   mismatchThreshold: number;
   comparisonIgnoreSelectors: string[];
   presentation: PresentationSettings;
+  contentBlocking: ContentBlocking;
+}
+
+export interface ContentBlocking {
+  enabled: boolean;
+  consentStrategy: 'rejectThenDismiss' | 'dismiss';
+  subscriptionIds: string[];
+  customRulesetIds: string[];
+  disabledDomains: string[];
+  versionPolicy: 'latest' | 'pinned';
+}
+
+export interface RulesetSourceVersion {
+  id: string;
+  version?: string;
+  digest?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface RulesetReference {
+  digest: string;
+  relativePath: string;
+  sources?: Record<string, RulesetSourceVersion>;
+  warnings?: string[];
+}
+
+export type StructuredAction = {
+  domains: string[];
+  selector: string;
+  action: 'click' | 'hide';
+  delayMs: number;
+};
+
+export interface ContentBlockingMetrics {
+  rulesetDigest?: string;
+  sources?: Record<string, RulesetSourceVersion>;
+  blockedSubresources: number;
+  cosmeticRulesApplied: number;
+  consentActionsAttempted: number;
+  consentActionsSucceeded: number;
+  unsupportedRules: number;
+  staleCache: boolean;
+  warnings: string[];
 }
 
 export interface BaselineRecord {
@@ -90,6 +133,7 @@ export interface CaptureJob {
   profile: CaptureProfile;
   baselines?: Record<string, BaselineRecord>;
   allowLocalhost?: boolean;
+  ruleset?: RulesetReference;
 }
 
 export interface Artifact {
@@ -115,6 +159,7 @@ export interface Artifact {
   createdAt: string;
   variant?: 'original' | 'portfolio';
   presentation?: PresentationSettings & { resolvedFrame?: Exclude<PresentationFrame, 'auto'> };
+  contentBlocking?: ContentBlockingMetrics;
 }
 
 export interface WorkerEvent {

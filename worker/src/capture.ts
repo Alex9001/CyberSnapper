@@ -4,6 +4,7 @@ import { access, mkdir, rename, statfs, writeFile } from 'node:fs/promises';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 import sharp from 'sharp';
 import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './network.js';
+import { ContentBlocker } from './blocking.js';
 import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
 import { normalizePresentation, renderPresentation } from './presentation.js';
 import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
@@ -52,11 +53,6 @@ async function launchChromiumWithSystemFallback(proxyUrl: string, args: string[]
   throw new Error('Chromium is not installed and no system browser (Google Chrome or Microsoft Edge) is available. Install Chromium from Settings, or install Chrome or Edge.');
 }
 
-const popupSelectors = [
-  '[aria-label*="cookie" i]', '[id*="cookie" i]', '[class*="cookie" i]',
-  '[id*="newsletter" i]', '[class*="newsletter" i]', '[class*="modal" i]',
-  '[class*="intercom" i]', '[class*="chat-widget" i]', '[data-testid*="consent" i]',
-];
 const maximumArtifacts = 10_000;
 const maximumDevicePixels = 64_000_000;
 const maximumConcurrentDevicePixels = 128_000_000;
@@ -82,12 +78,57 @@ async function atomicWrite(destination: string, bytes: Buffer): Promise<void> {
   await rename(temporary, destination);
 }
 
-async function installRouting(context: BrowserContext, blocklist: string[], policy: NetworkPolicy): Promise<void> {
+export type RouteDecision =
+  | { action: 'abort'; reason: 'blocklist' | 'policy' | 'filter' }
+  | { action: 'continue' };
+
+interface RoutableRequest {
+  url(): string;
+  resourceType(): string;
+  isNavigationRequest(): boolean;
+  frame(): { parentFrame(): unknown } | null;
+}
+
+/**
+ * Single source of truth for request routing order: user blocklist first,
+ * then the network-security policy, then content-blocking filters. Community
+ * filters only ever reject subresources, so exceptions cannot bypass the
+ * capture boundary, and the main document is never community-blocked.
+ */
+export async function decideRoute(
+  request: RoutableRequest,
+  blocklist: string[],
+  policy: NetworkPolicy,
+  blocker: ContentBlocker | undefined,
+  securityCheck: (url: string, checkPolicy: NetworkPolicy) => Promise<void> = assertPublicUrl,
+): Promise<RouteDecision> {
+  const requestUrl = request.url();
+  if (blocklist.some((part) => part && requestUrl.includes(part))) {
+    return { action: 'abort', reason: 'blocklist' };
+  }
+  if (!requestUrl.startsWith('http:') && !requestUrl.startsWith('https:')) return { action: 'continue' };
+  try {
+    await securityCheck(requestUrl, policy);
+  } catch {
+    return { action: 'abort', reason: 'policy' };
+  }
+  if (blocker?.enabled) {
+    const frame = request.frame();
+    const mainDocument = request.isNavigationRequest() && frame !== null && frame.parentFrame() === null;
+    if (!mainDocument && blocker.blocksSubresource(requestUrl, request.resourceType())) {
+      blocker.metrics.blockedSubresources += 1;
+      return { action: 'abort', reason: 'filter' };
+    }
+  }
+  return { action: 'continue' };
+}
+
+async function installRouting(context: BrowserContext, blocklist: string[], policy: NetworkPolicy,
+                              blocker: ContentBlocker | undefined): Promise<void> {
   await context.route('**/*', async (route) => {
-    const requestUrl = route.request().url();
-    if (blocklist.some((part) => part && requestUrl.includes(part))) return route.abort('blockedbyclient');
-    if (!requestUrl.startsWith('http:') && !requestUrl.startsWith('https:')) return route.continue();
-    try { await assertPublicUrl(requestUrl, policy); await route.continue(); } catch { await route.abort('blockedbyclient'); }
+    const decision = await decideRoute(route.request(), blocklist, policy, blocker);
+    if (decision.action === 'continue') return route.continue();
+    return route.abort('blockedbyclient');
   });
 }
 
@@ -276,8 +317,14 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
   const { engine, viewport, formats } = target;
   const { url } = target.target;
   const presentation = normalizePresentation(job.profile.presentation);
+  let blocker: ContentBlocker | undefined;
+  const blockingMetrics = () => blocker?.enabled
+    ? { ...blocker.metrics, warnings: [...blocker.metrics.warnings],
+        sources: blocker.metrics.sources ? { ...blocker.metrics.sources } : {} }
+    : undefined;
   try {
     if (runtime.cancelled) return { completed, failed };
+    blocker = await ContentBlocker.load(job);
     const networkPolicy = { allowLocalhost: job.allowLocalhost === true };
     await assertPublicUrl(url, networkPolicy);
     context = await browser.newContext({
@@ -287,22 +334,36 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       hasTouch: viewport.mobile,
       ignoreHTTPSErrors: false,
     });
-    await installRouting(context, job.profile.blocklist, networkPolicy);
+    await installRouting(context, job.profile.blocklist, networkPolicy, blocker);
     page = await context.newPage();
     page.setDefaultNavigationTimeout(job.profile.navigationTimeoutSeconds * 1000);
     page.setDefaultTimeout(job.profile.selectorTimeoutSeconds * 1000);
     emit({ type: 'target_started', url, engine, viewportId: viewport.id, viewportName: viewport.name });
+    for (const warning of blocker.metrics.warnings) {
+      emit({ type: 'job_warning', message: `Content blocking: ${warning}` });
+    }
     const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
     if (response && response.status() >= 400) throw new Error(`Navigation returned HTTP ${response.status()}`);
+    // Preparation order per the content-blocking design: load the rules
+    // snapshot before navigation (done above), keep the security policy as the
+    // highest-priority rule (routing), inject static cosmetic filters into the
+    // document and every frame, run consent actions after initial load, after
+    // full-page scrolling, and immediately before capture, then apply the
+    // user's hide selectors. Scroll locking is only restored by the consent
+    // passes themselves and only when a recognized overlay was removed.
     await sleep(job.profile.initialDelay);
+    await blocker.applyCosmeticFilters(page);
+    await blocker.runConsentPass(page);
     if (job.profile.waitForSelector) await page.locator(job.profile.waitForSelector).first().waitFor({ state: 'visible' });
     if (job.profile.captureMode === 'fullPage') {
       await autoScroll(page, job.profile.maxScrollSeconds);
       await sleep(job.profile.scrollDelay);
+      await blocker.applyCosmeticFilters(page);
+      await blocker.runConsentPass(page);
     }
     await hideElements(page, [...job.profile.hideSelectors,
-      ...(job.profile.comparisonEnabled ? job.profile.comparisonIgnoreSelectors : []),
-      ...(job.profile.blockPopups ? popupSelectors : [])]);
+      ...(job.profile.comparisonEnabled ? job.profile.comparisonIgnoreSelectors : [])]);
+    await blocker.runConsentPass(page);
     await sleep(job.profile.finalDelay);
     let png = formats.some((format) => format !== 'pdf') ? await screenshotPng(page, job, viewport) : undefined;
     if (png && job.profile.stripWhitespace && job.profile.captureMode === 'fullPage') png = await stripTopWhitespace(png);
@@ -323,7 +384,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
             targetId: target.target.id, targetName: target.target.name,
             targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
             width: viewport.width, height: viewport.height, sha256: '', status: 'skipped',
-            variant: 'original', createdAt: new Date().toISOString() };
+            variant: 'original', contentBlocking: blockingMetrics(), createdAt: new Date().toISOString() };
           emit({ type: 'artifact_completed', artifact }); completed += 1;
         } else {
           const bytes = format === 'pdf'
@@ -343,7 +404,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
             targetId: target.target.id, targetName: target.target.name,
             targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
             viewportId: viewport.id, viewportName: viewport.name, captureMode: job.profile.captureMode, format,
-            relativePath, width, height, variant: 'original',
+            relativePath, width, height, variant: 'original', contentBlocking: blockingMetrics(),
             sha256: sha256(bytes), status: 'succeeded', createdAt: new Date().toISOString() };
           emit({ type: 'artifact_completed', artifact }); completed += 1;
           if (job.profile.comparisonEnabled && format !== 'pdf') {
@@ -428,6 +489,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
           targetSetId: target.target.targetSetId, targetSetName: target.target.targetSetName,
           viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath: '',
           width: 0, height: 0, sha256: '', status: 'failed', variant: 'original',
+          contentBlocking: blockingMetrics(),
           error: targetError instanceof Error ? targetError.message : String(targetError), createdAt: new Date().toISOString() };
         emit({ type: 'artifact_failed', artifact, message: artifact.error });
         if (presentation.enabled && format !== 'pdf') {
