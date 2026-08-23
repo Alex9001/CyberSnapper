@@ -17,6 +17,7 @@ class TestGui final : public QObject {
 private slots:
   void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
   void primaryNavigationAndWorkspaces();
+  void contentBlockingDialog();
 };
 
 void TestGui::primaryNavigationAndWorkspaces() {
@@ -63,6 +64,106 @@ void TestGui::primaryNavigationAndWorkspaces() {
   QVERIFY(presentation);
   QCOMPARE(presentation->currentData().toString(), QString("off"));
   QVERIFY(presentation->findData("aurora") >= 0);
+}
+
+#include "gui/ContentBlockingDialog.h"
+
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QPushButton>
+#include <QTextEdit>
+
+using namespace CyberSnapper;
+
+void TestGui::contentBlockingDialog() {
+  // Default settings for a new project
+  const QJsonObject settings = [] {
+    QJsonObject obj;
+    obj["enabled"] = true;
+    obj["consentStrategy"] = "rejectThenDismiss";
+    obj["subscriptionIds"] = QJsonArray{"easylist-cookie", "ublock-cookie"};
+    obj["customRulesetIds"] = QJsonArray{};
+    obj["disabledDomains"] = QJsonArray{};
+    obj["versionPolicy"] = "latest";
+    return obj;
+  }();
+  
+  // Null RPC: simulates no agent connection (editor disabled)
+  ContentBlockingDialog dialog(settings, {}, nullptr);
+  
+  // Subscription checkboxes: easylist-cookie and ublock-cookie should be checked
+  const auto &checks = dialog.findChildren<QCheckBox *>();
+  bool easylistFound = false, ublockFound = false;
+  for (QCheckBox *check : checks) {
+    if (check->text().contains("EasyList Cookie")) {
+      easylistFound = true;
+      QVERIFY(check->isChecked());
+    }
+    if (check->text().contains("uBlock Cookie")) {
+      ublockFound = true;
+      QVERIFY(check->isChecked());
+    }
+  }
+  QVERIFY(easylistFound);
+  QVERIFY(ublockFound);
+  
+  // Strategy combo: rejectThenDismiss (index 0)
+  const auto &combos = dialog.findChildren<QComboBox *>();
+  QComboBox *strategy = nullptr;
+  for (QComboBox *combo : combos) {
+    if (combo->count() == 2 && combo->itemData(0).toString() == "rejectThenDismiss") {
+      strategy = combo;
+      break;
+    }
+  }
+  QVERIFY(strategy);
+  QCOMPARE(strategy->currentIndex(), 0);
+  
+  // Version policy combo: latest (index 0)
+  QComboBox *version = nullptr;
+  for (QComboBox *combo : combos) {
+    if (combo->count() == 2 && combo->itemData(0).toString() == "latest") {
+      version = combo;
+      break;
+    }
+  }
+  QVERIFY(version);
+  QCOMPARE(version->currentIndex(), 0);
+  
+  // Editor disabled when no RPC
+  QTest::qWait(50);
+  qDebug() << "Editor widgets:" << dialog.findChildren<QWidget *>();
+  QWidget *editor = nullptr;
+  for (QWidget *widget : dialog.findChildren<QWidget *>()) {
+    QLineEdit *nameEdit = widget->findChild<QLineEdit *>();
+    QTextEdit *rulesText = widget->findChild<QTextEdit *>();
+    if (nameEdit && rulesText) {
+      editor = widget;
+      qDebug() << "Found editor:" << editor << "enabled:" << editor->isEnabled();
+      break;
+    }
+  }
+  QVERIFY(editor);
+  QVERIFY(!editor->isEnabled());
+  
+  // Validation: add ruleset with empty name → expect rejection
+  QPushButton *addButton = nullptr;
+  for (QPushButton *button : dialog.findChildren<QPushButton *>()) {
+    if (button->text() == "New ruleset") {
+      addButton = button;
+      break;
+    }
+  }
+  QVERIFY(addButton);
+  QTest::mouseClick(addButton, Qt::LeftButton);
+  
+  // Editor should stay disabled (no RPC)
+  QVERIFY(!editor->isEnabled());
 }
 
 QTEST_MAIN(TestGui)

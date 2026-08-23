@@ -1,5 +1,7 @@
 #include "core/Models.h"
 #include "core/ProjectStore.h"
+#include "core/ContentRulesets.h"
+#include "core/SubscriptionRefresher.h"
 #include "core/RestServer.h"
 #include "core/Scheduler.h"
 
@@ -7,6 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QCryptographicHash>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTcpServer>
@@ -28,6 +31,9 @@ private slots:
   void intervalSchedule();
   void dailySchedule();
   void weeklyMonthlyAndOnceSchedules();
+  void contentRulesetCrud();
+  void rulesSnapshotBuilderAndJobContract();
+  void rulesSnapshotUsesCachedSubscriptions();
 };
 
 void TestCore::profileNormalization() {
@@ -260,6 +266,176 @@ void TestCore::restServerReportsRequestedPort() {
   server.stop();
   QVERIFY(!server.isRunning());
   QCOMPARE(server.port(), quint16(0));
+}
+
+void TestCore::contentRulesetCrud() {
+  QTemporaryDir temporary;
+  ProjectStore store;
+  QString error;
+  QVERIFY2(store.create(temporary.path(), "Rulesets", &error), qPrintable(error));
+
+  const QJsonObject saved = store.saveContentRuleset({{"name", "My banners"},
+      {"rulesText", "example.org##.cookie-banner\n! kept as-is"},
+      {"actions", QJsonArray{QJsonObject{{"domains", QJsonArray{"example.org"}},
+          {"selector", "button#reject-all"}, {"action", "click"}, {"delayMs", 250}}}}}, &error);
+  QVERIFY2(!saved.isEmpty(), qPrintable(error));
+  QVERIFY(!saved.value("id").toString().isEmpty());
+
+  const QString id = saved.value("id").toString();
+  QCOMPARE(store.contentRuleset(id).value("name").toString(), QString("My banners"));
+  QCOMPARE(store.contentRuleset(id).value("kind").toString(), QString("custom"));
+  QCOMPARE(store.contentRulesets().size(), 1);
+
+  // Unsafe structured actions and oversized rule text are rejected.
+  QString rejection;
+  QVERIFY2(!store.saveContentRuleset({{"id", id}, {"name", "Renamed"}, {"autoUpdate", true},
+      {"rulesText", "example.org##.cookie-banner"}}, &rejection).isEmpty(), qPrintable(rejection));
+  QCOMPARE(store.contentRuleset(id).value("name").toString(), QString("Renamed"));
+  QCOMPARE(store.contentRuleset(id).value("autoUpdate").toBool(), true);
+
+  QVERIFY(store.saveContentRuleset({{"name", "Bad"}, {"actions", QJsonArray{QJsonObject{
+      {"domains", QJsonArray{"example.org"}}, {"selector", "ok"},
+      {"action", "eval"}, {"delayMs", 0}}}}}, &rejection).isEmpty());
+  QVERIFY(store.saveContentRuleset({{"name", "Bad"},
+      {"actions", QJsonArray{QJsonObject{{"domains", QJsonArray{}},
+          {"selector", "ok"}, {"action", "click"}, {"delayMs", 0}}}}}, &rejection).isEmpty());
+  QVERIFY(store.saveContentRuleset({{"name", "Bad"}}, &rejection).isEmpty());
+
+  QVERIFY2(store.removeContentRuleset(id, &error), qPrintable(error));
+  QVERIFY(store.contentRuleset(id).isEmpty());
+}
+
+void TestCore::rulesSnapshotBuilderAndJobContract() {
+  QTemporaryDir temporary;
+  ProjectStore store;
+  QString error;
+  QVERIFY2(store.create(temporary.path(), "Snapshots", &error), qPrintable(error));
+
+  CaptureProfile profile = defaultProfile();
+  QVERIFY(profile.contentBlocking.enabled);
+  profile.contentBlocking.customRulesetIds.append(
+      store.saveContentRuleset({{"name", "Custom"}, {"rulesText", "example.org##.banner"},
+          {"actions", QJsonArray{QJsonObject{{"domains", QJsonArray{"example.org"}},
+              {"selector", "button.accept"}, {"action", "hide"}, {"delayMs", 0}}}}}, &error)
+          .value("id").toString());
+  // A subscription id that has no cached list must only produce a warning.
+  QVERIFY(profile.contentBlocking.subscriptionIds.contains("easylist-cookie"));
+
+  RulesetReferenceInfo reference = ContentRulesets::buildSnapshot(&store, profile, &error);
+  QVERIFY2(reference.enabled, qPrintable(error));
+  QVERIFY(reference.digest.size() == 64);
+  QVERIFY(reference.relativePath.startsWith(".cybersnapper/rulesets/"));
+  QVERIFY(QFile::exists(temporary.filePath(reference.relativePath)));
+  QVERIFY(!reference.warnings.isEmpty());
+  QVERIFY(!reference.sources.isEmpty());
+
+  // The snapshot envelope is exactly what the worker verifies.
+  QFile snapshot(temporary.filePath(reference.relativePath));
+  QVERIFY(snapshot.open(QIODevice::ReadOnly));
+  const QJsonObject envelope =
+      QJsonDocument::fromJson(snapshot.readAll()).object();
+  snapshot.close();
+  QCOMPARE(envelope.value("format").toInt(), 1);
+  QCOMPARE(envelope.value("digest").toString(), reference.digest);
+  const QByteArray payload = envelope.value("payload").toString().toUtf8();
+  QCOMPARE(QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()),
+           reference.digest);
+  const QJsonObject parsed = QJsonDocument::fromJson(payload).object();
+  QVERIFY(parsed.value("rulesText").toArray().contains(QJsonValue("example.org##.banner")));
+  QCOMPARE(parsed.value("actions").toArray().size(), 1);
+
+  // The job contract carries the snapshot as a nested ruleset object and
+  // round-trips through the stored request JSON for recovery.
+  JobRequest request;
+  request.id = newId();
+  request.projectId = store.projectId();
+  request.projectRoot = store.root();
+  request.urls = {"https://example.org"};
+  request.profile = profile;
+  request.rulesetDigest = reference.digest;
+  request.rulesetRelativePath = reference.relativePath;
+  request.rulesetSources = reference.sources;
+  request.rulesetWarnings = reference.warnings;
+  const QJsonObject serialized = toJson(request);
+  const QJsonObject rulesetJson = serialized.value("ruleset").toObject();
+  QCOMPARE(rulesetJson.value("digest").toString(), reference.digest);
+  QCOMPARE(rulesetJson.value("relativePath").toString(), reference.relativePath);
+  QVERIFY(serialized.value("rulesetDigest").isUndefined());
+  QVERIFY2(store.insertJob(request, &error), qPrintable(error));
+  const JobRequest restored =
+      jobRequestFromJson(store.job(request.id).value("request").toObject());
+  QCOMPARE(restored.rulesetDigest, reference.digest);
+  QCOMPARE(restored.rulesetRelativePath, reference.relativePath);
+  QVERIFY(restored.rulesetSources.keys().size() == reference.sources.keys().size());
+  QVERIFY(restored.profile.contentBlocking.enabled);
+
+  // Disabled content blocking produces no snapshot at all.
+  CaptureProfile offProfile = defaultProfile();
+  offProfile.contentBlocking.enabled = false;
+  QVERIFY(!ContentRulesets::buildSnapshot(&store, offProfile, &error).enabled);
+}
+
+void TestCore::rulesSnapshotUsesCachedSubscriptions() {
+  // ContentRulesets reads its cache through Paths::cacheDir(); point
+  // XDG_CACHE_HOME at an isolated directory before touching it.
+  QTemporaryDir cacheRoot;
+  QVERIFY(cacheRoot.isValid());
+  const QString previous = qEnvironmentVariable("XDG_CACHE_HOME");
+  qputenv("XDG_CACHE_HOME", cacheRoot.path().toUtf8());
+  // Resolve through the production path so the test follows whatever
+  // platform-specific sublayout QStandardPaths applies.
+  const QString rulesetCache = ContentRulesets::cacheDirectory();
+  QVERIFY(QDir().mkpath(rulesetCache));
+  const QByteArray listBody =
+      "! EasyList Cookie fixture\n[Adblock Plus 2.0]\n||cdn.example^$script\nexample.org##.consent\n";
+  QFile list(QDir(rulesetCache).filePath("easylist-cookie.txt"));
+  QVERIFY(list.open(QIODevice::WriteOnly));
+  QCOMPARE(list.write(listBody), qint64(listBody.size()));
+  list.close();
+  const QString digest =
+      QString::fromLatin1(QCryptographicHash::hash(listBody, QCryptographicHash::Sha256).toHex());
+  {
+    QFile meta(QDir(rulesetCache).filePath("easylist-cookie.json"));
+    QVERIFY(meta.open(QIODevice::WriteOnly));
+    meta.write(QJsonDocument(QJsonObject{{"digest", digest}, {"ruleCount", 2},
+                                         {"fetchedAt", "2026-01-01T00:00:00Z"}})
+                   .toJson(QJsonDocument::Compact));
+  }
+
+  // The catalog status reflects the cached file.
+  const QJsonObject status = subscriptionCacheMeta("easylist-cookie");
+  QCOMPARE(status.value("downloaded").toBool(), true);
+  QCOMPARE(status.value("ruleCount").toInt(), 2);
+  QCOMPARE(status.value("digest").toString(), digest);
+
+  QTemporaryDir temporary;
+  ProjectStore store;
+  QString error;
+  QVERIFY2(store.create(temporary.path(), "Cached", &error), qPrintable(error));
+
+  CaptureProfile profile = defaultProfile();
+  profile.contentBlocking.customRulesetIds.clear();
+  profile.contentBlocking.subscriptionIds = {"easylist-cookie"};
+
+  RulesetReferenceInfo reference = ContentRulesets::buildSnapshot(&store, profile, &error);
+  QVERIFY2(reference.enabled, qPrintable(error));
+  QVERIFY(reference.warnings.isEmpty());
+  const QJsonObject source = reference.sources.value("easylist-cookie").toObject();
+  QCOMPARE(source.value("digest").toString(), digest);
+  QCOMPARE(source.value("license").toString(), QString("CC BY-SA 3.0"));
+
+  QFile snapshot(QDir(store.root()).filePath(reference.relativePath));
+  QVERIFY(snapshot.open(QIODevice::ReadOnly));
+  const QByteArray payloadBytes = QJsonDocument::fromJson(snapshot.readAll())
+                                      .object().value("payload").toString().toUtf8();
+  snapshot.close();
+  const QJsonObject payload = QJsonDocument::fromJson(payloadBytes).object();
+  QVERIFY(payload.value("rulesText").toArray().contains(QJsonValue("||cdn.example^$script")));
+  QCOMPARE(payload.value("actions").toArray().size(), 0);
+  snapshot.close();
+
+  if (previous.isEmpty()) qunsetenv("XDG_CACHE_HOME");
+  else qputenv("XDG_CACHE_HOME", previous.toUtf8());
 }
 
 void TestCore::intervalSchedule() {
