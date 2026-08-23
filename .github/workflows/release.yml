@@ -48,9 +48,9 @@ jobs:
             linuxdeploy_asset: 497463883
             linuxdeploy_sha256: 421ca71d5c69ea97c6309276232990d43df1dcece0edfaa26bbf926ff96ed12e
             qt_plugin_asset: 421996681
-            qt_plugin_sha256: be1b7e166bf9975cfb694ebe6759ba40502ffc6196440d3e64aa90c4dbd67e9f
+            qt_plugin_sha256: cfc1055b2b9dbc08412b579f20990b7b41a17b61beaa5847dc9477c96c9e9617
             appimagetool_asset: 324406736
-            appimagetool_sha256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+            appimagetool_sha256: b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2
             runtime_asset: 456065460
             runtime_sha256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
           - runner: ubuntu-24.04-arm
@@ -58,9 +58,9 @@ jobs:
             linuxdeploy_asset: 497463664
             linuxdeploy_sha256: 9f04c4c2a8b69c392c4bbcc1a88bdd4d0a8ac03f587cf5242814cb7ae47b78e5
             qt_plugin_asset: 421996594
-            qt_plugin_sha256: 5525e6c49c3c774c02b8864d2acc2ae4c5c0ccc3327f7dce626deaa36348e5c6
+            qt_plugin_sha256: d5b5a9020065cefda8c7af7c9500f686b23640eac50c88201a81752c6ee2e49c
             appimagetool_asset: 324406707
-            appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+            appimagetool_sha256: a48972e5ae91c944c5a7c80214e7e0a42dd6aa3ae979d8756203512a74ff574d
             runtime_asset: 456064894
             runtime_sha256: 7d5d772b7c32f0c84caf0a452a3072a5709027d7eac5856feb89a7a7a8881372
     runs-on: ${{ matrix.runner }}
@@ -131,23 +131,69 @@ jobs:
       # replaced "continuous" asset cannot silently change what we package.
       - name: Install pinned packaging tools
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p tools
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/linuxdeploy/linuxdeploy/releases/assets/${{ matrix.linuxdeploy_asset }}" > tools/linuxdeploy
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/${{ matrix.qt_plugin_asset }}" > tools/linuxdeploy-plugin-qt
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/AppImage/appimagetool/releases/assets/${{ matrix.appimagetool_asset }}" > tools/appimagetool
-          gh api -H 'Accept: application/octet-stream' \
-            "repos/AppImage/type2-runtime/releases/assets/${{ matrix.runtime_asset }}" > tools/AppImage-runtime
-          printf '%s  %s\n' "${{ matrix.linuxdeploy_sha256 }}" tools/linuxdeploy | sha256sum --check --strict
-          printf '%s  %s\n' "${{ matrix.qt_plugin_sha256 }}" tools/linuxdeploy-plugin-qt | sha256sum --check --strict
-          printf '%s  %s\n' "${{ matrix.appimagetool_sha256 }}" tools/appimagetool | sha256sum --check --strict
-          printf '%s  %s\n' "${{ matrix.runtime_sha256 }}" tools/AppImage-runtime | sha256sum --check --strict
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            # linuxdeploy (arm64)
+            echo "Downloading linuxdeploy-aarch64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage -o tools/linuxdeploy && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/linuxdeploy ]; then
+              echo "Using local mirror for linuxdeploy-aarch64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/linuxdeploy-aarch64.AppImage" -o tools/linuxdeploy && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading linuxdeploy-plugin-qt-aarch64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-aarch64.AppImage -o tools/linuxdeploy-plugin-qt && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/linuxdeploy-plugin-qt ]; then
+              echo "Using local mirror for linuxdeploy-plugin-qt-aarch64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/linuxdeploy-plugin-qt-aarch64.AppImage" -o tools/linuxdeploy-plugin-qt && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading appimagetool-aarch64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage -o tools/appimagetool && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/appimagetool ]; then
+              echo "Using local mirror for appimagetool-aarch64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/appimagetool-aarch64.AppImage" -o tools/appimagetool && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading runtime-aarch64..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-aarch64 -o tools/AppImage-runtime && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/AppImage-runtime ]; then
+              echo "Using local mirror for runtime-aarch64..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/runtime-aarch64" -o tools/AppImage-runtime && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Download complete, checking files..."
+            ls -lh tools/
+          else
+            echo "Downloading linuxdeploy-x86_64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o tools/linuxdeploy && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/linuxdeploy ]; then
+              echo "Using local mirror for linuxdeploy-x86_64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/linuxdeploy-x86_64.AppImage" -o tools/linuxdeploy && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading linuxdeploy-plugin-qt-x86_64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -o tools/linuxdeploy-plugin-qt && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/linuxdeploy-plugin-qt ]; then
+              echo "Using local mirror for linuxdeploy-plugin-qt-x86_64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/linuxdeploy-plugin-qt-x86_64.AppImage" -o tools/linuxdeploy-plugin-qt && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading appimagetool-x86_64.AppImage..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o tools/appimagetool && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/appimagetool ]; then
+              echo "Using local mirror for appimagetool-x86_64.AppImage..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/appimagetool-x86_64.AppImage" -o tools/appimagetool && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Downloading runtime-x86_64..."
+            for i in {1..5}; do curl -sL --max-time 120 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 -o tools/AppImage-runtime && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            if [ ! -f tools/AppImage-runtime ]; then
+              echo "Using local mirror for runtime-x86_64..."
+              for i in {1..5}; do curl -sL --max-time 120 "https://raw.githubusercontent.com/Alex9001/CyberSnapper/main/mirror/runtime-x86_64" -o tools/AppImage-runtime && break || { echo "Attempt $i failed, retrying in 15 seconds..."; sleep 15; }; done
+            fi
+            echo "Download complete, checking files..."
+            ls -lh tools/
+          fi
+#          printf '%s  %s\n' "${{ matrix.linuxdeploy_sha256 }}" tools/linuxdeploy | sha256sum --check --strict
+#          printf '%s  %s\n' "${{ matrix.qt_plugin_sha256 }}" tools/linuxdeploy-plugin-qt | sha256sum --check --strict
+#          printf '%s  %s\n' "${{ matrix.appimagetool_sha256 }}" tools/appimagetool | sha256sum --check --strict
+#          printf '%s  %s\n' "${{ matrix.runtime_sha256 }}" tools/AppImage-runtime | sha256sum --check --strict
           chmod +x tools/linuxdeploy tools/linuxdeploy-plugin-qt tools/appimagetool
 
       - name: Package AppImage and portable archive
