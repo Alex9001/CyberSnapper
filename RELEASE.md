@@ -55,6 +55,14 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.3.3
+
+- **Chromium stability**: Abruptly closed HTTPS proxy tunnels no longer raise an unhandled `EPIPE` that terminates the capture worker.
+- **Accurate browser results**: Browser installation and verification completion events are consumed from either process channel, terminal output is drained before exit, and protocol JSON never leaks into the interface.
+- **Honest terminal states**: Successful engines finish as installed and ready; failed installs stop showing an active installation state and retain diagnostics under Details.
+- **Safe upgrades**: A newer GUI or CLI replaces an idle older agent automatically. Busy older agents are left running and reported as incompatible instead of being interrupted or used silently.
+- **Regression coverage**: Adds dropped-tunnel, stderr completion, failed-install, and real three-viewport Chromium capture verification.
+
 ## v2.3.2
 
 - **Working managed installs**: Fixes Playwright CLI resolution in packaged applications, including AppImages, so Firefox, WebKit, and Chromium repair operations can actually run.
