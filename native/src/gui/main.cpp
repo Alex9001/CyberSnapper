@@ -176,10 +176,14 @@ int main(int argc, char **argv) {
           return;
         }
         poll->stop();
-        QTimer::singleShot(200, &window, [&application, &window, screenshotPath, scene, elapsed] {
+        QTimer::singleShot(200, &window, [&application, &window, screenshotPath, elapsed] {
           QDir().mkpath(QFileInfo(screenshotPath).absolutePath());
-          QWidget *target = scene == "presentation" ? QApplication::activeModalWidget() : &window;
-          const bool saved = target && target->grab().save(screenshotPath, "PNG");
+          // Modal-targeting scenes (presentation, pagePreparation,
+          // contentBlocking) grab the open dialog; everything else grabs the
+          // main window.
+          QWidget *target = QApplication::activeModalWidget();
+          if (!target) target = &window;
+          const bool saved = target->grab().save(screenshotPath, "PNG");
           delete elapsed;
           application.exit(saved ? 0 : 4);
         });

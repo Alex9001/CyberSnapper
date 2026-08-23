@@ -4,6 +4,7 @@
 
 #include <QJsonArray>
 #include <QHash>
+#include <QJsonObject>
 #include <QMainWindow>
 #include <QSet>
 
@@ -26,6 +27,7 @@ class QMenu;
 
 namespace CyberSnapper {
 
+class ContentBlockingDialog;
 class ImageCanvas;
 class OverlayCanvas;
 
@@ -50,6 +52,7 @@ private:
   QSet<QString> m_installedBrowsers;
   bool m_loadingProfile = false;
   bool m_profileDirty = false;
+  QString m_screenshotModalScene;
   bool m_refreshPending = false;
   bool m_reconnectPending = false;
 
@@ -74,6 +77,8 @@ private:
   QDoubleSpinBox *m_finalDelay = nullptr;
   QSpinBox *m_concurrency = nullptr;
   QCheckBox *m_blockPopups = nullptr;
+  QPushButton *m_configureBlocking = nullptr;
+  QJsonObject m_contentBlockingDraft;
   QLineEdit *m_waitSelector = nullptr;
   QLineEdit *m_hideSelectors = nullptr;
   QCheckBox *m_comparisonEnabled = nullptr;
@@ -168,6 +173,7 @@ private:
   void updateCapturePlan();
   void saveCurrentProfile();
   void openProfileManager();
+  void openContentBlockingDialog();
   void applyHistoryFilters();
   void showSelectedComparison();
   void applyReviewFilters();

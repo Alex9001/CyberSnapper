@@ -1,6 +1,7 @@
 #include "gui/MainWindow.h"
 
 #include "core/Models.h"
+#include "gui/ContentBlockingDialog.h"
 #include "core/Paths.h"
 
 #include <QAbstractItemView>
@@ -309,7 +310,8 @@ void MainWindow::connectToAgent() {
 bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
   const QString scene = requestedScene.trimmed().toLower();
   const QHash<QString, int> scenes{{"dashboard", 0}, {"capture", 1}, {"review", 2}, {"compare", 2},
-                                  {"presentation", 1},
+                                  {"presentation", 1}, {"pagepreparation", 1},
+                                  {"contentblocking", 1},
                                   {"history", 3}, {"targets", 4}, {"schedules", 5},
                                   {"settings", 6}, {"help", 7}};
   if (!scenes.contains(scene) || !m_tabs) return false;
@@ -321,6 +323,13 @@ bool MainWindow::prepareScreenshotScene(const QString &requestedScene) {
   if (scene == "presentation") {
     if (!m_profileCombo || m_profileCombo->count() == 0 || !m_viewports || m_viewports->rowCount() == 0) return false;
     QTimer::singleShot(0, this, &MainWindow::openProfileManager);
+    return true;
+  }
+  if (scene == "pagepreparation" || scene == "contentblocking") {
+    if (!m_profileCombo || m_profileCombo->count() == 0 || !m_viewports || m_viewports->rowCount() == 0) return false;
+    m_screenshotModalScene = scene;
+    QTimer::singleShot(0, this, scene == "pagepreparation"
+        ? &MainWindow::openProfileManager : &MainWindow::openContentBlockingDialog);
     return true;
   }
   if (scene == "capture") {
@@ -843,14 +852,18 @@ QWidget *MainWindow::buildCapturePage() {
   m_scrollDelay = new QDoubleSpinBox; m_scrollDelay->setRange(0, 300); m_scrollDelay->setValue(1.8); m_scrollDelay->setSuffix(" s");
   m_finalDelay = new QDoubleSpinBox; m_finalDelay->setRange(0, 300); m_finalDelay->setValue(1.0); m_finalDelay->setSuffix(" s");
   m_concurrency = new QSpinBox; m_concurrency->setRange(1, 10); m_concurrency->setValue(1);
-  m_blockPopups = new QCheckBox("Block common overlays");
+  m_blockPopups = new QCheckBox("Remove cookie banners");
+  m_blockPopups->setChecked(true);
+  m_configureBlocking = new QPushButton("Configure…");
+  m_configureBlocking->setFlat(true);
   m_waitSelector = new QLineEdit; m_waitSelector->setPlaceholderText("Optional CSS selector");
   m_hideSelectors = new QLineEdit; m_hideSelectors->setPlaceholderText("Comma-separated CSS selectors");
   explain(m_initialDelay, "Seconds to let the page settle immediately after it loads.");
   explain(m_scrollDelay, "Seconds to let lazy-loaded content settle after automatic full-page scrolling.");
   explain(m_finalDelay, "Seconds to wait after elements are hidden and immediately before capture.");
   explain(m_concurrency, "Browser pages processed in parallel inside this job. Higher values use more CPU and memory.");
-  explain(m_blockPopups, "Hide common cookie banners, newsletter dialogs, chat widgets, and modal overlays before capture.");
+  explain(m_blockPopups, "Reject or dismiss cookie-consent banners before capture. Configure which filter lists and site exceptions apply.");
+  connect(m_configureBlocking, &QPushButton::clicked, this, [this] { openContentBlockingDialog(); });
   explain(m_waitSelector, "Optional CSS selector that must become visible before page preparation continues.");
   explain(m_hideSelectors, "Comma-separated CSS selectors to hide before capture, such as .timestamp, .ad, #chat-widget.");
   timing->addWidget(helperText("Order: load → settle → optional full-page scroll → settle → hide elements → settle → capture."), 0, 0, 1, 6);
@@ -862,7 +875,8 @@ QWidget *MainWindow::buildCapturePage() {
   timing->addWidget(m_finalDelay, 1, 5);
   timing->addWidget(new QLabel("Parallel pages"), 2, 0);
   timing->addWidget(m_concurrency, 2, 1);
-  timing->addWidget(m_blockPopups, 2, 2, 1, 4);
+  timing->addWidget(m_blockPopups, 2, 2, 1, 2);
+  timing->addWidget(m_configureBlocking, 2, 4, 1, 2);
   timing->addWidget(new QLabel("Wait for element"), 3, 0);
   timing->addWidget(m_waitSelector, 3, 1, 1, 5);
   timing->addWidget(new QLabel("Hide elements"), 4, 0);
@@ -2103,7 +2117,13 @@ QJsonObject MainWindow::captureProfile() const {
   profile.insert("scrollDelay", m_scrollDelay->value());
   profile.insert("finalDelay", m_finalDelay->value());
   profile.insert("concurrency", m_concurrency->value());
-  profile.insert("blockPopups", m_blockPopups->isChecked());
+  QJsonObject contentBlocking = profile.value("contentBlocking").toObject();
+  if (!m_contentBlockingDraft.isEmpty()) contentBlocking = m_contentBlockingDraft;
+  if (contentBlocking.isEmpty()) {
+    contentBlocking = toJson(defaultProfile()).value("contentBlocking").toObject();
+  }
+  contentBlocking.insert("enabled", m_blockPopups->isChecked());
+  profile.insert("contentBlocking", contentBlocking);
   profile.insert("waitForSelector", m_waitSelector->text().trimmed());
   QStringList hidden;
   for (const auto &part : m_hideSelectors->text().split(',')) if (!part.trimmed().isEmpty()) hidden.append(part.trimmed());
@@ -2169,7 +2189,13 @@ void MainWindow::loadSelectedProfile() {
   m_scrollDelay->setValue(profile.value("scrollDelay").toDouble(1.8));
   m_finalDelay->setValue(profile.value("finalDelay").toDouble(1.0));
   m_concurrency->setValue(profile.value("concurrency").toInt(1));
-  m_blockPopups->setChecked(profile.value("blockPopups").toBool());
+  m_contentBlockingDraft = profile.value("contentBlocking").toObject();
+  // Profiles written before 2.3 carry only the old "Block common overlays"
+  // switch; its value maps onto built-in banner handling.
+  const bool bannersEnabled = m_contentBlockingDraft.contains("enabled")
+      ? m_contentBlockingDraft.value("enabled").toBool()
+      : profile.value("blockPopups").toBool();
+  m_blockPopups->setChecked(bannersEnabled);
   m_waitSelector->setText(profile.value("waitForSelector").toString());
   QStringList hidden;
   for (const auto &value : profile.value("hideSelectors").toArray()) hidden.append(value.toString());
@@ -2471,7 +2497,42 @@ void MainWindow::openProfileManager() {
   auto *selectorTimeout = new QSpinBox; selectorTimeout->setRange(1, 300); selectorTimeout->setSuffix(" s"); selectorTimeout->setValue(source.value("selectorTimeoutSeconds").toInt(30));
   auto *maxScroll = new QSpinBox; maxScroll->setRange(5, 1800); maxScroll->setSuffix(" s"); maxScroll->setValue(source.value("maxScrollSeconds").toInt(120));
   auto *maxHeight = new QSpinBox; maxHeight->setRange(1000, 1000000); maxHeight->setSuffix(" px"); maxHeight->setValue(source.value("maxPageHeight").toInt(100000));
-  auto *blockPopups = new QCheckBox("Hide common overlays"); blockPopups->setChecked(source.value("blockPopups").toBool());
+  auto *removeBanners = new QCheckBox("Remove cookie banners");
+  removeBanners->setChecked([&source] {
+    const QJsonObject contentBlocking = source.value("contentBlocking").toObject();
+    return contentBlocking.contains("enabled") ? contentBlocking.value("enabled").toBool()
+                                               : source.value("blockPopups").toBool();
+  }());
+  auto *configureBlocking = new QPushButton("Configure…"); configureBlocking->setFlat(true);
+  auto *bannersRow = new QWidget; auto *bannersLayout = new QHBoxLayout(bannersRow);
+  bannersLayout->setContentsMargins(0, 0, 0, 0);
+  bannersLayout->addWidget(removeBanners); bannersLayout->addWidget(configureBlocking); bannersLayout->addStretch();
+  QJsonObject contentBlockingDraft = source.value("contentBlocking").toObject();
+  connect(configureBlocking, &QPushButton::clicked, &dialog, [&, this] {
+    QJsonObject seed = contentBlockingDraft;
+    if (seed.isEmpty()) seed = toJson(defaultProfile()).value("contentBlocking").toObject();
+    seed.insert("enabled", removeBanners->isChecked());
+    ContentBlockingDialog::RpcInvoker invoker =
+        [this](const QString &method, const QJsonObject &params,
+               std::function<void(const QJsonObject &)> success,
+               std::function<void(const QString &)> failure) {
+          if (!m_rpc.isConnected()) {
+            if (failure) failure("CyberSnapper is still connecting to its background agent.");
+            return;
+          }
+          m_rpc.call(method, params,
+                     [success, failure](const QJsonObject &result, const QJsonObject &error) {
+                       if (!error.isEmpty()) {
+                         if (failure) failure(error.value("message").toString("Request failed"));
+                       } else if (success) success(result);
+                     });
+        };
+    ContentBlockingDialog configure(seed, invoker, &dialog);
+    if (configure.exec() == QDialog::Accepted) {
+      contentBlockingDraft = configure.settings();
+      markProfileDirty();
+    }
+  });
   auto *stripWhitespace = new QCheckBox("Trim blank space at the top"); stripWhitespace->setChecked(source.value("stripWhitespace").toBool(true));
   auto *waitSelector = new QLineEdit(source.value("waitForSelector").toString());
   const auto joined = [&source](const char *key) { QStringList values; for (const auto &v : source.value(key).toArray()) values.append(v.toString()); return values.join(", "); };
@@ -2480,9 +2541,10 @@ void MainWindow::openProfileManager() {
   preparationForm->addRow("After load", initialDelay); preparationForm->addRow("After scroll", scrollDelay); preparationForm->addRow("Before capture", finalDelay);
   preparationForm->addRow("Navigation timeout", navigationTimeout); preparationForm->addRow("Selector timeout", selectorTimeout);
   preparationForm->addRow("Maximum auto-scroll", maxScroll); preparationForm->addRow("Maximum page height", maxHeight);
-  preparationForm->addRow(QString(), blockPopups); preparationForm->addRow(QString(), stripWhitespace);
+  preparationForm->addRow(QString(), bannersRow); preparationForm->addRow(QString(), stripWhitespace);
   preparationForm->addRow("Wait for selector", waitSelector); preparationForm->addRow("Hide selectors", hideSelectors); preparationForm->addRow("Block URL fragments", blocklist);
   tabs->addTab(preparation, "Page Preparation");
+  if (m_screenshotModalScene == "pagepreparation") tabs->setCurrentWidget(preparation);
 
   auto *comparison = new QWidget;
   auto *comparisonForm = new QFormLayout(comparison);
@@ -2523,7 +2585,9 @@ void MainWindow::openProfileManager() {
     profile.insert("initialDelay", initialDelay->value()); profile.insert("scrollDelay", scrollDelay->value()); profile.insert("finalDelay", finalDelay->value());
     profile.insert("navigationTimeoutSeconds", navigationTimeout->value()); profile.insert("selectorTimeoutSeconds", selectorTimeout->value());
     profile.insert("maxScrollSeconds", maxScroll->value()); profile.insert("maxPageHeight", maxHeight->value());
-    profile.insert("blockPopups", blockPopups->isChecked()); profile.insert("stripWhitespace", stripWhitespace->isChecked());
+    contentBlockingDraft.insert("enabled", removeBanners->isChecked());
+    profile.insert("contentBlocking", contentBlockingDraft);
+    profile.insert("stripWhitespace", stripWhitespace->isChecked());
     profile.insert("waitForSelector", waitSelector->text().trimmed());
     const auto commaValues = [](const QString &text) { QStringList values; for (const QString &part : text.split(',')) if (!part.trimmed().isEmpty()) values.append(part.trimmed()); return stringArray(values); };
     profile.insert("hideSelectors", commaValues(hideSelectors->text())); profile.insert("blocklist", commaValues(blocklist->text()));
@@ -2594,6 +2658,37 @@ void MainWindow::openProfileManager() {
     });
   }
   dialog.exec();
+}
+
+void MainWindow::openContentBlockingDialog() {
+  QJsonObject settings = m_contentBlockingDraft;
+  if (settings.isEmpty()) {
+    settings = toJson(defaultProfile()).value("contentBlocking").toObject();
+    settings.insert("enabled", m_blockPopups->isChecked());
+  }
+  ContentBlockingDialog::RpcInvoker invoker =
+      [this](const QString &method, const QJsonObject &params,
+             std::function<void(const QJsonObject &)> success,
+             std::function<void(const QString &)> failure) {
+        if (!m_rpc.isConnected()) {
+          if (failure) failure("CyberSnapper is still connecting to its background agent.");
+          return;
+        }
+        m_rpc.call(method, params,
+                   [success, failure](const QJsonObject &result, const QJsonObject &error) {
+                     if (!error.isEmpty()) {
+                       if (failure) failure(error.value("message").toString("Request failed"));
+                     } else if (success) {
+                       success(result);
+                     }
+                   });
+      };
+  ContentBlockingDialog dialog(settings, invoker, this);
+  if (dialog.exec() == QDialog::Accepted) {
+    m_contentBlockingDraft = dialog.settings();
+    m_blockPopups->setChecked(m_contentBlockingDraft.value("enabled").toBool(true));
+    markProfileDirty();
+  }
 }
 
 void MainWindow::submitCapture() {
@@ -2669,7 +2764,26 @@ void MainWindow::showJobDetails() {
       formatItem->setData(Qt::UserRole + 1, variant);
       m_artifacts->setItem(row, 2, formatItem);
       m_artifacts->setItem(row, 3, item(QStringLiteral("%1×%2").arg(artifact.value("width").toInt()).arg(artifact.value("height").toInt())));
-      m_artifacts->setItem(row, 4, item(artifact.value("status").toString()));
+      auto *statusItem = item(artifact.value("status").toString());
+      const QJsonObject blocking = artifact.value("contentBlocking").toObject();
+      if (!blocking.isEmpty()) {
+        QStringList provenance;
+        const QString digest = blocking.value("rulesetDigest").toString();
+        if (!digest.isEmpty()) provenance.append("Rules snapshot " + digest.left(12));
+        else provenance.append("No rules snapshot (built-in consent handling only)");
+        provenance.append(QStringLiteral("%1 subresource(s) blocked · %2 cosmetic rule(s)")
+            .arg(blocking.value("blockedSubresources").toInt())
+            .arg(blocking.value("cosmeticRulesApplied").toInt()));
+        provenance.append(QStringLiteral("Consent actions: %1 attempted, %2 succeeded")
+            .arg(blocking.value("consentActionsAttempted").toInt())
+            .arg(blocking.value("consentActionsSucceeded").toInt()));
+        if (blocking.value("staleCache").toBool()) provenance.append("Stale or missing list cache");
+        for (const auto &warning : blocking.value("warnings").toArray()) {
+          provenance.append("Warning: " + warning.toString());
+        }
+        statusItem->setToolTip(provenance.join('\n'));
+      }
+      m_artifacts->setItem(row, 4, statusItem);
       m_artifacts->setItem(row, 5, item(artifact.value("url").toString()));
       m_artifacts->setItem(row, 6, item(artifact.value("relativePath").toString()));
     }
