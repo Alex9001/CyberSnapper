@@ -33,7 +33,7 @@ The worker accepts explicit `http://` and `https://` URLs. Browsers connect thro
 
 Jobs are capped at 10,000 artifacts. Raster work is capped at 64 million device pixels, worker messages at 16 MiB, and writes require a free-space reserve. Output filenames are allocated serially inside a job so concurrent targets cannot claim the same path.
 
-Each browser engine is launched headlessly. Each target uses an isolated Playwright context. Browser installation is an explicit agent operation and capture jobs never install software automatically.
+Each browser engine is launched headlessly. Each target uses an isolated Playwright context. Browser installation is an explicit, cancellable agent operation and capture jobs never install software automatically. The agent serializes browser installs, publishes structured progress, and verifies a real launch before reporting an engine as ready. A downloaded engine that lacks host libraries remains on disk and is reported as `downloaded_unavailable` with diagnostics; CyberSnapper never invokes a privileged package manager itself.
 
 ## Content blocking boundary
 

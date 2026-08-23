@@ -160,9 +160,14 @@ cybersnapper-cli job show JOB_ID --json
 cybersnapper-cli job retry JOB_ID
 cybersnapper-cli schedules list
 cybersnapper-cli schedules run SCHEDULE_ID
+
+# Inspect, install, or re-check managed browser engines
+cybersnapper-cli browsers status --json
+cybersnapper-cli browsers install firefox --wait
+cybersnapper-cli browsers verify webkit
 ```
 
-Press Ctrl+C while waiting to request cancellation, or add `--no-wait` to return as soon as the job is queued.
+Press Ctrl+C while waiting to request cancellation, or add `--no-wait` to return as soon as a capture job is queued. Browser installs are serialized by the agent; `--wait` streams progress until installation and launch verification finish.
 
 ## REST API
 

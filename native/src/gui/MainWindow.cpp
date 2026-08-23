@@ -9,6 +9,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QColor>
 #include <QComboBox>
@@ -41,6 +42,8 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
+#include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -290,18 +293,60 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), m_rpc(this) {
     }
   });
   connect(&m_rpc, &RpcClient::eventReceived, this,
-          [this](const QString &event, const QJsonObject &) {
+          [this](const QString &event, const QJsonObject &data) {
     if (event == "job.event" || event == "queue.changed" || event == "schedule.changed" ||
         event == "schedule.event") scheduleRefresh();
     if (event == "project.changed") refreshProjects();
     if (event == "project.settings.changed") refreshSettings();
     if (event == "targetSet.changed") { refreshTargetSets(); refreshDashboard(); }
     if (event == "comparison.review.changed" || event == "baseline.changed") { refreshComparisons(); refreshBaselines(); refreshDashboard(); }
-    if (event == "browser.install.finished") refreshSettings();
+    if (event == "browser.install.progress" || event == "browser.install.finished") {
+      applyBrowserState(data.value("engine").toString(), data);
+    }
+    if (event == "browser.install.finished") {
+      m_browserVerificationRequested.remove(data.value("engine").toString());
+      if (m_closeAfterBrowserCancel && !browserOperationsPending()) {
+        m_browserCloseApproved = true;
+        QTimer::singleShot(0, this, &QWidget::close);
+      }
+    }
   });
 }
 
 MainWindow::~MainWindow() { saveUiState(); }
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+  if (m_browserCloseApproved || !browserOperationsPending()) {
+    QMainWindow::closeEvent(event);
+    return;
+  }
+
+  QMessageBox prompt(QMessageBox::Warning, "Browser download in progress",
+                     "CyberSnapper is still downloading or checking a browser. Keep the app open "
+                     "to let it finish, or cancel every browser operation before quitting.",
+                     QMessageBox::NoButton, this);
+  auto *keepOpen = prompt.addButton("Keep Open", QMessageBox::RejectRole);
+  auto *cancelAndQuit = prompt.addButton("Cancel Downloads and Quit", QMessageBox::DestructiveRole);
+  prompt.setDefaultButton(qobject_cast<QPushButton *>(keepOpen));
+  prompt.setEscapeButton(qobject_cast<QPushButton *>(keepOpen));
+  prompt.exec();
+  event->ignore();
+  if (prompt.clickedButton() != cancelAndQuit) return;
+
+  m_closeAfterBrowserCancel = true;
+  statusBar()->showMessage("Cancelling browser operations before closing…");
+  if (!m_rpc.isConnected()) {
+    m_browserCloseApproved = true;
+    QTimer::singleShot(0, this, &QWidget::close);
+    return;
+  }
+  rpcCall("browser.install.cancelAll", {}, [this](const QJsonObject &) {
+    if (!browserOperationsPending()) {
+      m_browserCloseApproved = true;
+      QTimer::singleShot(0, this, &QWidget::close);
+    }
+  });
+}
 
 void MainWindow::connectToAgent() {
   if (!m_rpc.isConnected()) m_rpc.connectToAgent(Paths::agentServerName());
@@ -1366,28 +1411,96 @@ QWidget *MainWindow::buildSettingsPage() {
   explain(m_maximumJobs, "Separate capture jobs allowed to run simultaneously. Each profile’s Parallel pages setting controls concurrency inside one job.");
   explain(saveRuntime, "Apply the simultaneous-job limit to the background capture service.");
   auto *browserCards = new QWidget;
-  auto *browserLayout = new QGridLayout(browserCards);
+  auto *browserLayout = new QVBoxLayout(browserCards);
   browserLayout->setContentsMargins(0, 0, 0, 0);
-  auto *installChromium = new QPushButton("Install Chromium");
-  auto *installFirefox = new QPushButton("Install Firefox");
-  auto *installWebKit = new QPushButton("Install WebKit");
-  explain(installChromium, "Install or repair CyberSnapper’s managed Chromium browser engine.");
-  explain(installFirefox, "Install or repair CyberSnapper’s managed Firefox browser engine.");
-  explain(installWebKit, "Install or repair CyberSnapper’s managed WebKit browser engine.");
-  const QList<QPair<QString, QPushButton *>> browserRows{{"chromium", installChromium},
-                                                         {"firefox", installFirefox},
-                                                         {"webkit", installWebKit}};
-  for (int row = 0; row < browserRows.size(); ++row) {
-    const QString engine = browserRows.at(row).first;
+  browserLayout->setSpacing(10);
+  for (const QString &engine : {QStringLiteral("chromium"), QStringLiteral("firefox"),
+                                QStringLiteral("webkit")}) {
+    const QString display = engine == QStringLiteral("webkit")
+        ? QStringLiteral("WebKit") : engine.at(0).toUpper() + engine.mid(1);
+    auto *card = new QGroupBox(display);
+    card->setObjectName("browserCard_" + engine);
+    auto *cardLayout = new QVBoxLayout(card);
+    auto *actions = new QHBoxLayout;
     auto *status = new QLabel("Checking…");
-    status->setMinimumWidth(100);
+    status->setObjectName("browserStatus_" + engine);
+    status->setMinimumWidth(170);
+    status->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto *install = new QPushButton("Install");
+    install->setObjectName("browserInstall_" + engine);
+    auto *verify = new QPushButton("Check Again");
+    verify->setObjectName("browserVerify_" + engine);
+    auto *cancel = new QPushButton("Cancel");
+    cancel->setObjectName("browserCancel_" + engine);
+    cancel->hide();
+    auto *details = new QToolButton;
+    details->setObjectName("browserDetails_" + engine);
+    details->setText("Details");
+    details->setCheckable(true);
+    details->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    details->setArrowType(Qt::RightArrow);
+    auto *copyDetails = new QPushButton("Copy Details");
+    copyDetails->hide();
+    actions->addWidget(status, 1);
+    actions->addWidget(install);
+    actions->addWidget(verify);
+    actions->addWidget(cancel);
+    actions->addWidget(details);
+    cardLayout->addLayout(actions);
+
+    auto *progress = new QProgressBar;
+    progress->setObjectName("browserProgress_" + engine);
+    progress->setTextVisible(true);
+    progress->hide();
+    cardLayout->addWidget(progress);
+    auto *message = new QLabel;
+    message->setObjectName("browserMessage_" + engine);
+    message->setWordWrap(true);
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    message->hide();
+    cardLayout->addWidget(message);
+    auto *log = new QPlainTextEdit;
+    log->setObjectName("browserLog_" + engine);
+    log->setReadOnly(true);
+    log->setMaximumBlockCount(200);
+    log->setMaximumHeight(150);
+    log->setPlaceholderText("Installation and launch diagnostics will appear here.");
+    log->hide();
+    cardLayout->addWidget(log);
+    cardLayout->addWidget(copyDetails, 0, Qt::AlignRight);
+
     m_browserStatuses.insert(engine, status);
-    browserLayout->addWidget(new QLabel(engine.at(0).toUpper() + engine.mid(1)), row, 0);
-    browserLayout->addWidget(status, row, 1);
-    browserLayout->addWidget(browserRows.at(row).second, row, 2);
+    m_browserMessages.insert(engine, message);
+    m_browserProgress.insert(engine, progress);
+    m_browserInstallButtons.insert(engine, install);
+    m_browserVerifyButtons.insert(engine, verify);
+    m_browserCancelButtons.insert(engine, cancel);
+    m_browserDetailsButtons.insert(engine, details);
+    m_browserLogs.insert(engine, log);
+    explain(install, "Download or repair CyberSnapper’s managed " + display + " browser engine.");
+    explain(verify, "Launch " + display + " briefly to confirm it works on this computer.");
+    explain(cancel, "Cancel this download or remove it from the installation queue.");
+    explain(details, "Show download output, missing system libraries, and recovery guidance.");
+    connect(install, &QPushButton::clicked, this, [this, engine] {
+      requestBrowserInstall(engine, m_browserStates.value(engine).value("downloaded").toBool());
+    });
+    connect(verify, &QPushButton::clicked, this,
+            [this, engine] { requestBrowserVerification(engine); });
+    connect(cancel, &QPushButton::clicked, this, [this, engine] {
+      const QString installId = m_browserStates.value(engine).value("installId").toString();
+      if (!installId.isEmpty()) rpcCall("browser.install.cancel", {{"installId", installId}});
+    });
+    connect(details, &QToolButton::toggled, this, [details, log, copyDetails](bool visible) {
+      details->setArrowType(visible ? Qt::DownArrow : Qt::RightArrow);
+      log->setVisible(visible);
+      copyDetails->setVisible(visible);
+    });
+    connect(copyDetails, &QPushButton::clicked, this, [log] {
+      QApplication::clipboard()->setText(log->toPlainText());
+    });
+    browserLayout->addWidget(card);
   }
-  browserLayout->setColumnStretch(1, 1);
-  runtimeForm->addRow(helperText("The capture engine runs browser automation in the background. Browser installation state is available by hovering over Engine status."));
+  runtimeForm->addRow(helperText("CyberSnapper downloads one browser at a time and queues any others. Each engine is launched once after download so you know it can actually capture pages."));
   runtimeForm->addRow("Engine status", m_workerStatus);
   runtimeForm->addRow("Browser engines", browserCards);
   runtimeForm->addRow("Simultaneous jobs", m_maximumJobs);
@@ -1452,14 +1565,6 @@ QWidget *MainWindow::buildSettingsPage() {
     if (m_compareSplit) m_compareSplit->setSizes({360, 820});
     resize(1180, 780); statusBar()->showMessage("Layout reset", 3000);
   });
-  const auto install = [this](const QString &engine) {
-    rpcCall("browser.install", {{"engine", engine}}, [this, engine](const QJsonObject &) {
-      statusBar()->showMessage("Installing " + engine + " in the background…", 5000);
-    });
-  };
-  connect(installChromium, &QPushButton::clicked, this, [install] { install("chromium"); });
-  connect(installFirefox, &QPushButton::clicked, this, [install] { install("firefox"); });
-  connect(installWebKit, &QPushButton::clicked, this, [install] { install("webkit"); });
   return scrollable(page);
 }
 
@@ -1520,6 +1625,7 @@ QWidget *MainWindow::buildHelpPage() {
 
     <h2>History, schedules, and settings</h2>
     <p><b>History</b> filters jobs and shows files plus failure details. <b>Schedules</b> supports once, interval, daily, multi-day weekly, and monthly recurrences in an IANA time zone. <b>Settings</b> installs browser engines, controls login startup and simultaneous jobs, and optionally enables the authenticated localhost API.</p>
+    <p>Browser installs run one at a time, with additional engines queued. CyberSnapper shows live download progress and verifies that each engine can launch before enabling it for capture. If an engine is downloaded but the operating system is missing libraries, expand <b>Details</b> for the exact diagnostics and a copyable dependency command on supported Debian or Ubuntu systems. CyberSnapper never runs that privileged command for you.</p>
 
     <h2>Network access</h2>
     <p>Public HTTP(S) destinations are allowed by default. Settings can allow localhost for the active project when capturing a development server on this computer. Private LAN addresses remain blocked.</p>
@@ -2086,14 +2192,31 @@ void MainWindow::refreshSettings() {
   rpcCall("browser.status", {}, [this](const QJsonObject &result) {
     QStringList states;
     m_installedBrowsers.clear();
+    m_browserStates.clear();
     const QJsonObject browsers = result.value("browsers").toObject();
     for (const auto &engine : {QString("chromium"), QString("firefox"), QString("webkit")}) {
-      const bool installed = browsers.value(engine).toObject().value("installed").toBool();
-      if (installed) m_installedBrowsers.insert(engine);
-      states.append(engine + ": " + (installed ? "installed" : "not installed"));
-      if (QLabel *label = m_browserStatuses.value(engine)) {
-        label->setText(installed ? "Installed · Ready" : "Not installed");
-        label->setStyleSheet(installed ? "color: palette(highlight); font-weight: 600;" : "color: palette(mid);");
+      QJsonObject state = browsers.value(engine).toObject();
+      if (!state.contains("state")) {
+        state.insert("state", state.value("installed").toBool()
+                                  ? QStringLiteral("ready") : QStringLiteral("not_downloaded"));
+      }
+      if (!state.contains("ready") && state.value("state").toString() == QStringLiteral("ready")) {
+        state.insert("ready", true);
+      }
+      applyBrowserState(engine, state);
+      states.append(engine + ": " + state.value("state").toString());
+    }
+    for (const QJsonValue &value : result.value("installations").toArray()) {
+      const QJsonObject state = value.toObject();
+      applyBrowserState(state.value("engine").toString(), state);
+    }
+    for (const auto &engine : {QString("chromium"), QString("firefox"), QString("webkit")}) {
+      const QJsonObject state = m_browserStates.value(engine);
+      if (state.value("downloaded").toBool(state.value("installed").toBool()) &&
+          !state.value("ready").toBool() && state.value("state").toString() == "downloaded" &&
+          !m_browserVerificationRequested.contains(engine)) {
+        m_browserVerificationRequested.insert(engine);
+        QTimer::singleShot(0, this, [this, engine] { requestBrowserVerification(engine); });
       }
     }
     const QString workerEntry = m_workerStatus->property("workerEntry").toString();
@@ -2101,6 +2224,197 @@ void MainWindow::refreshSettings() {
     m_workerStatus->setToolTip(worker + "Browser engines:\n" + states.join("\n"));
     updateCapturePlan();
   });
+}
+
+void MainWindow::applyBrowserState(const QString &engine, const QJsonObject &update) {
+  if (engine.isEmpty() || !m_browserStatuses.contains(engine)) return;
+  QJsonObject state = m_browserStates.value(engine);
+  for (auto iterator = update.begin(); iterator != update.end(); ++iterator) {
+    state.insert(iterator.key(), iterator.value());
+  }
+  const QString updatedState = update.value("state").toString();
+  if (QStringList{QStringLiteral("queued"), QStringLiteral("preparing"),
+                  QStringLiteral("verifying")}.contains(updatedState) && !update.contains("percent")) {
+    state.remove("percent");
+    state.remove("component");
+    state.remove("total");
+  }
+  if (QStringList{QStringLiteral("ready"), QStringLiteral("not_downloaded"),
+                  QStringLiteral("downloaded_unavailable"), QStringLiteral("failed"),
+                  QStringLiteral("cancelled")}.contains(updatedState)) {
+    state.remove("phase");
+    state.remove("percent");
+    state.remove("component");
+    state.remove("total");
+  }
+  m_browserStates.insert(engine, state);
+
+  const QString stateName = state.value("state").toString("not_downloaded");
+  const bool downloaded = state.value("downloaded").toBool(state.value("installed").toBool());
+  const bool ready = state.value("ready").toBool(stateName == QStringLiteral("ready"));
+  const bool active = QStringList{QStringLiteral("queued"), QStringLiteral("preparing"),
+                                  QStringLiteral("installing"), QStringLiteral("downloading"),
+                                  QStringLiteral("extracting"), QStringLiteral("verifying"),
+                                  QStringLiteral("cancelling")}.contains(stateName);
+
+  QString statusText;
+  QString statusStyle;
+  if (ready) {
+    statusText = "Installed · Ready";
+    statusStyle = "color: palette(highlight); font-weight: 600;";
+    m_installedBrowsers.insert(engine);
+  } else {
+    m_installedBrowsers.remove(engine);
+    if (stateName == "not_downloaded") statusText = "Not installed";
+    else if (stateName == "downloaded") statusText = "Downloaded · Checking required";
+    else if (stateName == "queued") {
+      const int position = state.value("queuePosition").toInt();
+      statusText = position > 0 ? QStringLiteral("Queued · Position %1").arg(position) : "Queued";
+    } else if (stateName == "verifying") statusText = "Checking browser…";
+    else if (stateName == "cancelling") statusText = "Cancelling…";
+    else if (active) statusText = "Installing…";
+    else if (stateName == "downloaded_unavailable") statusText = "Downloaded · Cannot launch";
+    else if (stateName == "failed") statusText = "Installation failed";
+    else if (stateName == "cancelled") statusText = "Cancelled";
+    else statusText = stateName;
+    if (active) statusStyle = "color: palette(highlight); font-weight: 600;";
+    else if (stateName == "failed" || stateName == "downloaded_unavailable") {
+      statusStyle = "color: #d66a5e; font-weight: 600;";
+    } else statusStyle = "color: palette(mid);";
+  }
+  QLabel *status = m_browserStatuses.value(engine);
+  status->setText(statusText);
+  status->setStyleSheet(statusStyle);
+
+  QString messageText = state.value("message").toString();
+  const QJsonObject diagnostics = state.value("diagnostics").toObject();
+  const QStringList missingLibraries = [&diagnostics] {
+    QStringList values;
+    for (const QJsonValue &value : diagnostics.value("missingLibraries").toArray()) {
+      if (!value.toString().isEmpty()) values.append(value.toString());
+    }
+    return values;
+  }();
+  if (stateName == "downloaded_unavailable") {
+    if (!missingLibraries.isEmpty()) {
+      messageText += " Missing system libraries: " + missingLibraries.join(", ") + ".";
+    }
+    if (!diagnostics.value("dependencyCommand").toString().isEmpty()) {
+      messageText += " Open Details for a dependency command you can review and run yourself.";
+    } else if (!diagnostics.value("distribution").toString().isEmpty()) {
+      messageText += " Use your distribution’s package manager to provide the listed libraries.";
+    }
+  }
+  if (active && state.value("elapsedMs").toDouble() >= 1000) {
+    const int seconds = qRound(state.value("elapsedMs").toDouble() / 1000.0);
+    messageText += QStringLiteral(" · Elapsed %1:%2")
+                       .arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+  }
+  QLabel *message = m_browserMessages.value(engine);
+  message->setText(messageText);
+  message->setVisible(!messageText.isEmpty());
+
+  QProgressBar *progress = m_browserProgress.value(engine);
+  progress->setVisible(active);
+  if (active && state.contains("percent")) {
+    progress->setRange(0, 100);
+    progress->setValue(qBound(0, state.value("percent").toInt(), 100));
+    const QString component = state.value("component").toString();
+    progress->setFormat(component.isEmpty() ? "%p%" : component + " · %p%");
+  } else if (active) {
+    progress->setRange(0, 0);
+    progress->setFormat({});
+  }
+
+  QStringList details;
+  if (!state.value("executablePath").toString().isEmpty()) {
+    details.append("Executable: " + state.value("executablePath").toString());
+  }
+  if (!diagnostics.value("distribution").toString().isEmpty()) {
+    details.append("System: " + diagnostics.value("distribution").toString());
+  }
+  if (!missingLibraries.isEmpty()) details.append("Missing libraries: " + missingLibraries.join(" "));
+  if (!diagnostics.value("dependencyCommand").toString().isEmpty()) {
+    details.append("Dependency command (review before running):\n" +
+                   diagnostics.value("dependencyCommand").toString());
+  }
+  if (!diagnostics.value("message").toString().isEmpty()) {
+    details.append("Launch diagnostics:\n" + diagnostics.value("message").toString());
+  }
+  QStringList logs;
+  for (const QJsonValue &value : state.value("logs").toArray()) logs.append(value.toString());
+  if (!logs.isEmpty()) details.append("Installer output:\n" + logs.join('\n'));
+  QPlainTextEdit *log = m_browserLogs.value(engine);
+  log->setPlainText(details.join("\n\n"));
+  m_browserDetailsButtons.value(engine)->setEnabled(!details.isEmpty());
+
+  QPushButton *install = m_browserInstallButtons.value(engine);
+  install->setEnabled(!active);
+  install->setText(downloaded ? (ready ? "Repair" : "Reinstall") : "Install");
+  m_browserVerifyButtons.value(engine)->setEnabled(downloaded && !active);
+  QPushButton *cancel = m_browserCancelButtons.value(engine);
+  cancel->setVisible(active);
+  cancel->setEnabled(stateName != "cancelling");
+
+  const QHash<QString, QCheckBox *> captureBoxes{{"chromium", m_chromium},
+                                                 {"firefox", m_firefox},
+                                                 {"webkit", m_webkit}};
+  if (QCheckBox *box = captureBoxes.value(engine)) {
+    box->setEnabled(ready);
+    const QString base = "Capture using the " +
+        (engine == "webkit" ? QStringLiteral("WebKit") : engine.at(0).toUpper() + engine.mid(1)) +
+        " browser engine.";
+    explain(box, ready ? base : base + " Open Settings → Capture runtime to install or diagnose it.");
+  }
+  updateCapturePlan();
+}
+
+void MainWindow::requestBrowserInstall(const QString &engine, bool force) {
+  QJsonObject preparing{{"engine", engine}, {"operation", "install"},
+                        {"state", "preparing"}, {"phase", "preparing"},
+                        {"ready", false},
+                        {"message", "Preparing browser installation…"}};
+  applyBrowserState(engine, preparing);
+  rpcCall("browser.install", {{"engine", engine}, {"force", force}},
+          [this, engine](const QJsonObject &result) {
+    QJsonObject accepted = result;
+    accepted.insert("engine", engine);
+    accepted.insert("operation", "install");
+    if (!accepted.contains("message")) {
+      accepted.insert("message", accepted.value("state").toString() == "queued"
+                                     ? QStringLiteral("Waiting for the current browser operation to finish…")
+                                     : QStringLiteral("Browser installation started…"));
+    }
+    applyBrowserState(engine, accepted);
+    statusBar()->showMessage("Browser installation is running. Progress is shown in Settings.", 5000);
+  });
+}
+
+void MainWindow::requestBrowserVerification(const QString &engine) {
+  m_browserVerificationRequested.insert(engine);
+  QJsonObject checking{{"engine", engine}, {"operation", "verify"},
+                       {"state", "verifying"}, {"phase", "verifying"},
+                       {"ready", false},
+                       {"message", "Checking whether the browser can launch…"}};
+  applyBrowserState(engine, checking);
+  rpcCall("browser.verify", {{"engine", engine}}, [this, engine](const QJsonObject &result) {
+    QJsonObject accepted = result;
+    accepted.insert("engine", engine);
+    accepted.insert("operation", "verify");
+    if (!accepted.contains("message")) accepted.insert("message", "Browser check queued…");
+    applyBrowserState(engine, accepted);
+  });
+}
+
+bool MainWindow::browserOperationsPending() const {
+  const QStringList activeStates{QStringLiteral("queued"), QStringLiteral("preparing"),
+                                 QStringLiteral("installing"), QStringLiteral("downloading"),
+                                 QStringLiteral("extracting"), QStringLiteral("verifying"),
+                                 QStringLiteral("cancelling")};
+  for (const QJsonObject &state : m_browserStates) {
+    if (activeStates.contains(state.value("state").toString())) return true;
+  }
+  return false;
 }
 
 QJsonObject MainWindow::captureProfile() const {
@@ -2305,8 +2619,16 @@ void MainWindow::updateCapturePlan() {
   }
   if (formats.contains("pdf") && !engines.contains("chromium")) errors.append("PDF requires Chromium");
   for (const QString &engine : engines) {
-    if (!m_installedBrowsers.isEmpty() && !m_installedBrowsers.contains(engine)) {
-      errors.append(engine + " is not installed");
+    if (!m_browserStates.isEmpty() && !m_installedBrowsers.contains(engine)) {
+      const QString state = m_browserStates.value(engine).value("state").toString();
+      if (state == "downloaded_unavailable") {
+        errors.append(engine + " is downloaded but cannot launch; check Settings");
+      } else if (QStringList{"queued", "preparing", "installing", "downloading", "extracting",
+                             "verifying", "cancelling"}.contains(state)) {
+        errors.append(engine + " is not ready yet; check Settings for progress");
+      } else {
+        errors.append(engine + " is not installed and ready");
+      }
     }
   }
   qint64 formatsAcrossEngines = 0;

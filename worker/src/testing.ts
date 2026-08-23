@@ -8,3 +8,7 @@ export { assertPublicUrl, resolveAllowedHost, startFilteringProxy } from './netw
 export { decideRoute } from './capture.js';
 export { defaultPresentation, normalizePresentation, planPresentation, renderPresentation } from './presentation.js';
 export { windowsBinaryIsX64 } from './windows.js';
+export {
+  parseBrowserLaunchError, parseInstallOutputLine, resolvePlaywrightCli, stripAnsi,
+  type InstallProgressContext,
+} from './browser-install.js';

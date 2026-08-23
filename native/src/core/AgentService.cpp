@@ -11,10 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QMetaObject>
-#include <QProcess>
-#include <QProcessEnvironment>
 #include <QRandomGenerator>
 #include <QSaveFile>
 #include <QSet>
@@ -143,6 +140,7 @@ bool setLaunchAtLogin(bool enabled, QString *error) {
 AgentService::AgentService(QObject *parent)
     : QObject(parent),
       m_settings("CyberBrand", "CyberSnapper"),
+      m_browsers(this),
       m_jobs(this),
       m_scheduler(&m_jobs, [this] { return stores(); },
                   [this](ProjectStore *store, JobRequest request, QString *error) {
@@ -181,6 +179,10 @@ AgentService::AgentService(QObject *parent)
                                 {{"subscriptionId", subscriptionId}, {"ok", ok},
                                  {"message", message}});
           });
+  connect(&m_browsers, &BrowserManager::progressPublished, this,
+          [this](const QJsonObject &data) { emit eventPublished("browser.install.progress", data); });
+  connect(&m_browsers, &BrowserManager::finishedPublished, this,
+          [this](const QJsonObject &data) { emit eventPublished("browser.install.finished", data); });
 }
 
 AgentService::~AgentService() { shutdown(); }
@@ -234,6 +236,7 @@ void AgentService::shutdown() {
   m_scheduler.stop();
   m_subscriptions.stop();
   m_rest.stop();
+  m_browsers.shutdown();
   m_jobs.shutdown();
   m_projects.clear();
   m_started = false;
@@ -461,11 +464,15 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
             {"activeProjectId", m_activeProjectId},
             {"queuedJobs", m_jobs.queuedCount()},
             {"activeJobs", m_jobs.activeCount()},
+            {"browserOperations", m_browsers.hasPendingOperations()},
+            {"queuedBrowserOperations", m_browsers.queuedCount()},
             {"api", QJsonObject{{"enabled", m_rest.isRunning()}, {"port", int(m_rest.port())}}}};
   }
   if (method == "agent.stop") {
-    if (m_jobs.hasActiveJobs() && !params.value("force").toBool(false)) {
-      return failure("jobs_active", "Jobs are active. Pass force=true to stop the agent.", 409);
+    if ((m_jobs.hasActiveJobs() || m_browsers.hasPendingOperations()) &&
+        !params.value("force").toBool(false)) {
+      return failure("operations_active",
+                     "Capture jobs or browser installations are active. Pass force=true to stop the agent.", 409);
     }
     QMetaObject::invokeMethod(this, [this] { emit quitRequested(); }, Qt::QueuedConnection);
     return {{"stopping", true}};
@@ -1005,50 +1012,19 @@ QJsonObject AgentService::handle(const QString &method, const QJsonObject &param
     return {{"enabled", launchAtLoginEnabled()}};
   }
   if (method == "browser.status") {
-    const QString worker = Paths::workerEntry();
-    if (worker.isEmpty()) return failure("worker_missing", "Capture worker is not built", 503);
-    QProcess process;
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    const QString cache = Paths::browserCacheDir();
-    environment.insert("CYBERSNAPPER_BROWSER_CACHE", cache);
-    environment.insert("PLAYWRIGHT_BROWSERS_PATH", cache);
-    process.setProcessEnvironment(environment);
-    process.start(Paths::nodeExecutable(), {worker, "--browsers"});
-    if (!process.waitForStarted(5000) || !process.waitForFinished(10000)) {
-      return failure("browser_status_failed", process.errorString(), 503);
-    }
-    const QJsonObject result = QJsonDocument::fromJson(process.readAllStandardOutput()).object();
-    if (process.exitCode() != 0 || result.isEmpty()) {
-      return failure("browser_status_failed", QString::fromUtf8(process.readAllStandardError()).trimmed(), 503);
-    }
-    return result;
+    return m_browsers.status();
   }
   if (method == "browser.install") {
-    const QString engine = params.value("engine").toString();
-    if (!QStringList{"chromium", "firefox", "webkit"}.contains(engine)) {
-      return failure("invalid_browser", "Browser must be chromium, firefox, or webkit");
-    }
-    const QString worker = Paths::workerEntry();
-    if (worker.isEmpty()) return failure("worker_missing", "Capture worker is not built", 503);
-    auto *process = new QProcess(this);
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    const QString cache = Paths::browserCacheDir();
-    environment.insert("CYBERSNAPPER_BROWSER_CACHE", cache);
-    environment.insert("PLAYWRIGHT_BROWSERS_PATH", cache);
-    process->setProcessEnvironment(environment);
-    process->setProcessChannelMode(QProcess::MergedChannels);
-    connect(process, &QProcess::readyRead, this, [this, process, engine] {
-      emit eventPublished("browser.install.progress", {{"engine", engine},
-                           {"message", QString::fromUtf8(process->readAll()).trimmed()}});
-    });
-    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this, process, engine](int code, QProcess::ExitStatus status) {
-      emit eventPublished("browser.install.finished", {{"engine", engine},
-                           {"ok", status == QProcess::NormalExit && code == 0}, {"exitCode", code}});
-      process->deleteLater();
-    });
-    process->start(Paths::nodeExecutable(), {worker, "--install", engine});
-    return {{"accepted", true}, {"engine", engine}};
+    return m_browsers.install(params.value("engine").toString(),
+                              params.value("force").toBool(false));
+  }
+  if (method == "browser.verify") return m_browsers.verify(params.value("engine").toString());
+  if (method == "browser.install.cancel") {
+    return m_browsers.cancel(params.value("installId").toString());
+  }
+  if (method == "browser.install.cancelAll") return m_browsers.cancelAll();
+  if (method == "browser.install.get") {
+    return m_browsers.task(params.value("installId").toString());
   }
   return failure("method_not_found", "Unknown agent method: " + method, 404);
 }

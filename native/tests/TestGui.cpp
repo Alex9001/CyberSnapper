@@ -2,7 +2,10 @@
 
 #include <QAction>
 #include <QComboBox>
+#include <QLabel>
 #include <QPushButton>
+#include <QProgressBar>
+#include <QPlainTextEdit>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTabWidget>
@@ -64,6 +67,16 @@ void TestGui::primaryNavigationAndWorkspaces() {
   QVERIFY(presentation);
   QCOMPARE(presentation->currentData().toString(), QString("off"));
   QVERIFY(presentation->findData("aurora") >= 0);
+
+  for (const QString &engine : {QStringLiteral("chromium"), QStringLiteral("firefox"),
+                                QStringLiteral("webkit")}) {
+    QVERIFY(window.findChild<QLabel *>("browserStatus_" + engine));
+    QVERIFY(window.findChild<QPushButton *>("browserInstall_" + engine));
+    QVERIFY(window.findChild<QPushButton *>("browserVerify_" + engine));
+    QVERIFY(window.findChild<QPushButton *>("browserCancel_" + engine));
+    QVERIFY(window.findChild<QProgressBar *>("browserProgress_" + engine));
+    QVERIFY(window.findChild<QPlainTextEdit *>("browserLog_" + engine));
+  }
 }
 
 #include "gui/ContentBlockingDialog.h"

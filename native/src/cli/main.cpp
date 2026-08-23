@@ -39,7 +39,13 @@ bool ensureAgent(QString *error) {
     if (error) *error = probeError;
     return false;
   }
-  if (!QProcess::startDetached(Paths::agentExecutable(), {"--headless"})) {
+  QProcess agent;
+  agent.setProgram(Paths::agentExecutable());
+  agent.setArguments({"--headless"});
+  agent.setStandardInputFile(QProcess::nullDevice());
+  agent.setStandardOutputFile(QProcess::nullDevice());
+  agent.setStandardErrorFile(QProcess::nullDevice());
+  if (!agent.startDetached()) {
     if (error) *error = "Could not launch " + Paths::agentExecutable();
     return false;
   }
@@ -54,6 +60,41 @@ bool ensureAgent(QString *error) {
 
 QJsonObject invoke(const QString &method, const QJsonObject &params, QString *error) {
   return blockingRpcCall(Paths::agentServerName(), method, params, 10000, error);
+}
+
+bool terminalBrowserState(const QString &state) {
+  return QStringList{QStringLiteral("ready"), QStringLiteral("not_downloaded"),
+                     QStringLiteral("downloaded_unavailable"), QStringLiteral("failed"),
+                     QStringLiteral("cancelled")}.contains(state);
+}
+
+QJsonObject waitForBrowserOperation(const QString &installId, bool json, QString *error) {
+  std::signal(SIGINT, interruptHandler);
+  QString previousLine;
+  bool cancelSent = false;
+  while (error->isEmpty()) {
+    const QJsonObject response = invoke("browser.install.get", {{"installId", installId}}, error);
+    const QJsonObject install = response.value("install").toObject();
+    const QString state = install.value("state").toString();
+    const QString phase = install.value("phase").toString();
+    const int percent = install.value("percent").toInt(-1);
+    const QString line = QStringLiteral("%1%2 — %3")
+                             .arg(phase.isEmpty() ? state : phase,
+                                  percent >= 0 ? QStringLiteral(" %1%").arg(percent) : QString{},
+                                  install.value("message").toString());
+    if (!json && line != previousLine) {
+      QTextStream(stdout) << line << '\n';
+      previousLine = line;
+    }
+    if (terminalBrowserState(state)) return response;
+    if (interrupted && !cancelSent) {
+      QString cancelError;
+      invoke("browser.install.cancel", {{"installId", installId}}, &cancelError);
+      cancelSent = true;
+    }
+    QThread::msleep(250);
+  }
+  return {};
 }
 
 QStringList fileLines(const QString &path, QString *error) {
@@ -105,7 +146,7 @@ int main(int argc, char **argv) {
   parser.setApplicationDescription("Native CyberSnapper capture automation CLI");
   parser.addHelpOption();
   parser.addVersionOption();
-  parser.addPositionalArgument("command", "capture, jobs, job, projects, targets, review, schedules, api, or agent");
+  parser.addPositionalArgument("command", "capture, jobs, job, projects, targets, review, schedules, browsers, api, or agent");
   parser.addPositionalArgument("arguments", "Command arguments", "[arguments…]");
   QCommandLineOption jsonOption("json", "Print machine-readable JSON.");
   QCommandLineOption projectOption({"p", "project"}, "Project ID.", "id");
@@ -117,10 +158,11 @@ int main(int argc, char **argv) {
   QCommandLineOption modeOption("mode", "Capture mode: fullPage, viewport, or element.", "mode");
   QCommandLineOption selectorOption("selector", "CSS selector for element capture.", "selector");
   QCommandLineOption noWaitOption("no-wait", "Queue a capture without waiting for completion.");
-  QCommandLineOption forceOption("force", "Force an agent stop while jobs are active.");
+  QCommandLineOption forceOption("force", "Force the requested repair or agent stop.");
+  QCommandLineOption waitOption("wait", "Wait for a browser install or verification to finish.");
   QCommandLineOption limitOption("limit", "Maximum jobs to list.", "count", "50");
   parser.addOptions({jsonOption, projectOption, fileOption, profileOption, targetSetOption, engineOption, formatOption,
-                     modeOption, selectorOption, noWaitOption, forceOption, limitOption});
+                     modeOption, selectorOption, noWaitOption, forceOption, waitOption, limitOption});
   parser.process(application);
 
   const QStringList positionals = parser.positionalArguments();
@@ -223,6 +265,25 @@ int main(int argc, char **argv) {
     } else if (arguments.first() == "run" && arguments.size() >= 2) {
       result = invoke("schedule.runNow", {{"projectId", parser.value(projectOption)}, {"scheduleId", arguments.at(1)}}, &error);
     } else { QTextStream(stderr) << "Usage: cybersnapper-cli schedules [list|run <schedule-id>]\n"; return 2; }
+  } else if (command == "browsers") {
+    const QString action = arguments.value(0, "status").toLower();
+    if (action == "status") {
+      result = invoke("browser.status", {}, &error);
+    } else if ((action == "install" || action == "verify") && arguments.size() >= 2) {
+      const QString method = action == "install" ? "browser.install" : "browser.verify";
+      QJsonObject params{{"engine", arguments.at(1)}};
+      if (action == "install") params.insert("force", parser.isSet(forceOption));
+      result = invoke(method, params, &error);
+      const bool shouldWait = action == "verify" || parser.isSet(waitOption);
+      if (error.isEmpty() && shouldWait) {
+        result = waitForBrowserOperation(result.value("installId").toString(), json, &error);
+      }
+    } else if (action == "cancel" && arguments.size() >= 2) {
+      result = invoke("browser.install.cancel", {{"installId", arguments.at(1)}}, &error);
+    } else {
+      QTextStream(stderr) << "Usage: cybersnapper-cli browsers [status|install <engine> [--force] [--wait]|verify <engine>|cancel <install-id>]\n";
+      return 2;
+    }
   } else if (command == "api") {
     const QString action = arguments.value(0, "status");
     if (action == "status") result = invoke("api.status", {}, &error);
@@ -254,6 +315,10 @@ int main(int argc, char **argv) {
   if (command == "capture") {
     const QString status = result.value("job").toObject().value("status").toString(result.value("status").toString());
     return QStringList{"failed", "partial", "cancelled", "interrupted"}.contains(status) ? 1 : 0;
+  }
+  if (command == "browsers") {
+    const QString state = result.value("install").toObject().value("state").toString();
+    if (!state.isEmpty() && state != "ready") return 1;
   }
   return 0;
 }

@@ -1,9 +1,7 @@
 import { createInterface } from 'node:readline';
-import { access } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
-import { chromium, firefox, webkit, type BrowserType } from 'playwright';
 import { runCaptureJob, type JobRuntime } from './capture.js';
-import type { BrowserEngine, CaptureJob, WorkerEvent } from './protocol.js';
+import { browserStatus, installBrowser, verifyBrowserCommand } from './browser-install.js';
+import type { CaptureJob, WorkerEvent } from './protocol.js';
 
 let sequence = 0;
 let currentJobId = '';
@@ -45,35 +43,19 @@ async function stdioMode(): Promise<void> {
   }
 }
 
-const types: Record<BrowserEngine, BrowserType> = { chromium, firefox, webkit };
-
-async function browserStatus(): Promise<void> {
-  const status: Record<string, { executablePath: string; installed: boolean }> = {};
-  for (const [name, type] of Object.entries(types)) {
-    const executablePath = type.executablePath();
-    status[name] = { executablePath, installed: await access(executablePath).then(() => true).catch(() => false) };
-  }
-  process.stdout.write(`${JSON.stringify({ browsers: status })}\n`);
-}
-
-async function installBrowser(engine: string): Promise<number> {
-  if (!(engine in types)) throw new Error(`Unsupported browser engine: ${engine}`);
-  const cli = require.resolve('playwright/cli');
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, 'install', engine], { stdio: 'inherit',
-      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: process.env.CYBERSNAPPER_BROWSER_CACHE || process.env.PLAYWRIGHT_BROWSERS_PATH || '' } });
-    child.on('error', reject);
-    child.on('close', (code) => resolve(code ?? 1));
-  });
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes('--stdio')) return stdioMode();
   if (args.includes('--browsers')) return browserStatus();
   const installIndex = args.indexOf('--install');
-  if (installIndex >= 0) process.exitCode = await installBrowser(args[installIndex + 1] ?? 'chromium');
-  else throw new Error('Use --stdio, --browsers, or --install <engine>');
+  const verifyIndex = args.indexOf('--verify');
+  if (installIndex >= 0) {
+    process.exitCode = await installBrowser(args[installIndex + 1] ?? 'chromium', args.includes('--force'));
+  } else if (verifyIndex >= 0) {
+    process.exitCode = await verifyBrowserCommand(args[verifyIndex + 1] ?? 'chromium');
+  } else {
+    throw new Error('Use --stdio, --browsers, --verify <engine>, or --install <engine>');
+  }
 }
 
 process.on('SIGINT', () => { void cancel(); });

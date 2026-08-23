@@ -6,6 +6,7 @@ set(CYBERSNAPPER_CORE_SOURCES
   src/core/SubscriptionRefresher.cpp
   src/core/Rpc.cpp
   src/core/JobManager.cpp
+  src/core/BrowserManager.cpp
   src/core/Scheduler.cpp
   src/core/RestServer.cpp
   src/core/AgentService.cpp

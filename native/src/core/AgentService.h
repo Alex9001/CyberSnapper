@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/BrowserManager.h"
 #include "core/JobManager.h"
 #include "core/RestServer.h"
 #include "core/Scheduler.h"
@@ -35,6 +36,7 @@ private:
   QSettings m_settings;
   QHash<QString, std::shared_ptr<ProjectStore>> m_projects;
   QString m_activeProjectId;
+  BrowserManager m_browsers;
   JobManager m_jobs;
   Scheduler m_scheduler;
   SubscriptionRefresher m_subscriptions;

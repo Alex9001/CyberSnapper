@@ -105,6 +105,18 @@ async function collectPngs(directory) {
 
 try {
   await packagedCli(['--json', 'projects', 'open', projectRoot]);
+
+  // Exercise the public installer path even though Chromium is already in the
+  // package. This catches broken Playwright CLI resolution inside a bundled
+  // worker (the packaged capture path itself does not invoke that CLI).
+  const browserInstall = JSON.parse(await packagedCli([
+    '--json', '--wait', 'browsers', 'install', 'chromium',
+  ]));
+  const browserState = browserInstall.install?.state;
+  if (browserState !== 'ready') {
+    throw new Error(`Packaged browser installer ended with state ${browserState ?? 'unknown'}`);
+  }
+
   const output = await packagedCli([
     '--json', '--project', 'package-smoke', '--engine', 'chromium',
     '--format', 'png', '--mode', 'viewport', 'capture',
@@ -135,8 +147,8 @@ try {
 
   const captures = await collectPngs(path.join(projectRoot, 'captures'));
   if (captures.length < 3) throw new Error(`Expected three responsive PNG captures, found ${captures.length}`);
-  console.log(`Packaged Chromium capture succeeded with ${captures.length} PNG files; ` +
-              'cookie banner handled and provenance recorded.');
+  console.log(`Packaged browser install/verification and Chromium capture succeeded with ` +
+              `${captures.length} PNG files; cookie banner handled and provenance recorded.`);
 } finally {
   await packagedCli(['--force', 'agent', 'stop'], 30_000).catch(() => {});
   await new Promise((resolve) => server.close(resolve));

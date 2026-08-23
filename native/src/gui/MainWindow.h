@@ -13,6 +13,8 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QPlainTextEdit;
+class QProgressBar;
 class QSpinBox;
 class QDoubleSpinBox;
 class QTableWidget;
@@ -22,8 +24,10 @@ class QPushButton;
 class QSplitter;
 class QTabWidget;
 class QToolBar;
+class QToolButton;
 class QAction;
 class QMenu;
+class QCloseEvent;
 
 namespace CyberSnapper {
 
@@ -38,6 +42,9 @@ public:
   ~MainWindow() override;
   void connectToAgent();
   bool prepareScreenshotScene(const QString &scene);
+
+protected:
+  void closeEvent(QCloseEvent *event) override;
 
 private:
   RpcClient m_rpc;
@@ -120,6 +127,17 @@ private:
   QLabel *m_apiStatus = nullptr;
   QLabel *m_workerStatus = nullptr;
   QHash<QString, QLabel *> m_browserStatuses;
+  QHash<QString, QLabel *> m_browserMessages;
+  QHash<QString, QProgressBar *> m_browserProgress;
+  QHash<QString, QPushButton *> m_browserInstallButtons;
+  QHash<QString, QPushButton *> m_browserVerifyButtons;
+  QHash<QString, QPushButton *> m_browserCancelButtons;
+  QHash<QString, QToolButton *> m_browserDetailsButtons;
+  QHash<QString, QPlainTextEdit *> m_browserLogs;
+  QHash<QString, QJsonObject> m_browserStates;
+  QSet<QString> m_browserVerificationRequested;
+  bool m_closeAfterBrowserCancel = false;
+  bool m_browserCloseApproved = false;
   QSpinBox *m_maximumJobs = nullptr;
   QTabWidget *m_tabs = nullptr;
   QSplitter *m_captureVertical = nullptr;
@@ -163,6 +181,10 @@ private:
   void refreshJobs();
   void refreshSchedules();
   void refreshSettings();
+  void applyBrowserState(const QString &engine, const QJsonObject &state);
+  void requestBrowserInstall(const QString &engine, bool force = false);
+  void requestBrowserVerification(const QString &engine);
+  bool browserOperationsPending() const;
   void refreshComparisons();
   void refreshBaselines();
   void scheduleRefresh();

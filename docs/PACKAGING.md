@@ -149,9 +149,13 @@ together, not just the build tree:
 2. It starts a local HTTP server serving a styled test page.
 3. It runs `cybersnapper-cli --json projects open <dir>`, which cold-starts the
    packaged agent over the packaged IPC socket.
-4. It runs a real `capture` with the Chromium engine and requires the job to
+4. It runs `browsers install chromium --wait` against the packaged worker and
+   bundled browser cache. This is a no-network install when the package is
+   correct, but still exercises Playwright CLI discovery, progress plumbing,
+   and post-install launch verification.
+5. It runs a real `capture` with the Chromium engine and requires the job to
    reach `succeeded` and produce three responsive PNGs.
-5. It stops the agent and tears down the server.
+6. It stops the agent and tears down the server.
 
 The worker, Node, and browser locations are injected through
 `CYBERSNAPPER_AGENT`, `CYBERSNAPPER_WORKER_ENTRY`, `CYBERSNAPPER_NODE`, and

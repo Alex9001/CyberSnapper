@@ -1,4 +1,5 @@
 #include "core/Models.h"
+#include "core/BrowserManager.h"
 #include "core/ProjectStore.h"
 #include "core/ContentRulesets.h"
 #include "core/SubscriptionRefresher.h"
@@ -12,6 +13,8 @@
 #include <QCryptographicHash>
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTest>
@@ -34,7 +37,57 @@ private slots:
   void contentRulesetCrud();
   void rulesSnapshotBuilderAndJobContract();
   void rulesSnapshotUsesCachedSubscriptions();
+  void browserManagerQueuesVerifiesAndCancels();
 };
+
+void TestCore::browserManagerQueuesVerifiesAndCancels() {
+  const QByteArray oldWorker = qgetenv("CYBERSNAPPER_WORKER_ENTRY");
+  const QByteArray oldNode = qgetenv("CYBERSNAPPER_NODE");
+  const QByteArray oldCache = qgetenv("CYBERSNAPPER_BROWSER_CACHE");
+  const QString node = QStandardPaths::findExecutable("node");
+  QVERIFY2(!node.isEmpty(), "Node is required for the browser-manager fixture");
+  const QString fixture = QStringLiteral(CYBERSNAPPER_SOURCE_ROOT
+                                          "/native/tests/fixtures/browser-worker.cjs");
+  QVERIFY(QFileInfo::exists(fixture));
+  QTemporaryDir cache;
+  QVERIFY(cache.isValid());
+  qputenv("CYBERSNAPPER_WORKER_ENTRY", fixture.toUtf8());
+  qputenv("CYBERSNAPPER_NODE", node.toUtf8());
+  qputenv("CYBERSNAPPER_BROWSER_CACHE", cache.path().toUtf8());
+
+  BrowserManager manager;
+  QSignalSpy progress(&manager, &BrowserManager::progressPublished);
+  QSignalSpy finished(&manager, &BrowserManager::finishedPublished);
+  const QJsonObject chromium = manager.install("chromium");
+  const QJsonObject duplicate = manager.install("chromium");
+  QCOMPARE(duplicate.value("duplicate").toBool(), true);
+  QCOMPARE(duplicate.value("installId"), chromium.value("installId"));
+  const QJsonObject firefox = manager.install("firefox");
+  QCOMPARE(manager.queuedCount(), 2);
+  QCOMPARE(manager.cancel(firefox.value("installId").toString()).value("cancelled").toBool(), true);
+  QCOMPARE(manager.task(firefox.value("installId").toString()).value("install").toObject()
+               .value("state").toString(), QString("cancelled"));
+  QTRY_VERIFY_WITH_TIMEOUT(finished.size() >= 2, 3000);
+  QCOMPARE(manager.task(chromium.value("installId").toString()).value("install").toObject()
+               .value("state").toString(), QString("ready"));
+  QVERIFY(!progress.isEmpty());
+
+  const QJsonObject webkit = manager.verify("webkit");
+  const QString webkitId = webkit.value("installId").toString();
+  QTRY_VERIFY_WITH_TIMEOUT(manager.task(webkitId).value("install").toObject()
+                               .value("state").toString() == "verifying", 1000);
+  QCOMPARE(manager.cancel(webkitId).value("cancelling").toBool(), true);
+  QTRY_COMPARE_WITH_TIMEOUT(manager.task(webkitId).value("install").toObject()
+                                .value("state").toString(), QString("cancelled"), 3000);
+  QVERIFY(!manager.hasPendingOperations());
+
+  if (oldWorker.isNull()) qunsetenv("CYBERSNAPPER_WORKER_ENTRY");
+  else qputenv("CYBERSNAPPER_WORKER_ENTRY", oldWorker);
+  if (oldNode.isNull()) qunsetenv("CYBERSNAPPER_NODE");
+  else qputenv("CYBERSNAPPER_NODE", oldNode);
+  if (oldCache.isNull()) qunsetenv("CYBERSNAPPER_BROWSER_CACHE");
+  else qputenv("CYBERSNAPPER_BROWSER_CACHE", oldCache);
+}
 
 void TestCore::profileNormalization() {
   const CaptureProfile profile = profileFromJson({{"id", "custom"}, {"name", "Custom"},
