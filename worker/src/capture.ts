@@ -309,11 +309,13 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
 
 async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Browser,
                              outputDirectory: string, allocator: OutputPathAllocator, runtime: JobRuntime,
-                             outputEmit: Emit): Promise<{ completed: number; failed: number }> {
+                             outputEmit: Emit, lightImageHash?: string): Promise<{ completed: number; failed: number; imageHash?: string }> {
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let completed = 0;
   let failed = 0;
+  let imageHash: string | undefined;
+  let reusedExistingOutput = false;
   const { engine, viewport, formats, colorScheme } = target;
   const { url } = target.target;
   const emit: Emit = (event) => outputEmit({ ...event,
@@ -358,6 +360,13 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     setStage('Loading page');
     const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
     if (response && response.status() >= 400) throw new Error(`Navigation returned HTTP ${response.status()}`);
+    // Full-page screenshots hide scrollbars, but CSS scrollbar-gutter: stable
+    // can leave an empty strip. Reflow at the requested viewport width before
+    // preparation instead of cropping pixels or resizing the final image.
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty('scrollbar-gutter', 'auto', 'important');
+      document.documentElement.style.setProperty('scrollbar-width', 'none', 'important');
+    });
     // Preparation order per the content-blocking design: load the rules
     // snapshot before navigation (done above), keep the security policy as the
     // highest-priority rule (routing), inject static cosmetic filters into the
@@ -391,6 +400,22 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     setStage('Taking screenshot');
     let png = formats.some((format) => format !== 'pdf') ? await screenshotPng(page, job, viewport) : undefined;
     if (png && job.profile.stripWhitespace && job.profile.captureMode === 'fullPage') png = await stripTopWhitespace(png);
+    if (png && job.profile.colorScheme === 'both' && !formats.includes('pdf')) {
+      setStage('Checking for identical light and dark output');
+      imageHash = sha256(png);
+      const hasDarkBaseline = job.profile.comparisonEnabled && formats.some(format =>
+        job.baselines?.[`${url}|${engine}|${viewport.id}|${job.profile.captureMode}|${format}|dark`]);
+      // Exact bytes are deliberately conservative: dynamic content, a failed
+      // light capture, existing skipped files, and PDF jobs retain both themes.
+      // Keep established dark baselines under review even if themes converge.
+      if (colorScheme === 'dark' && lightImageHash === imageHash && !hasDarkBaseline && !runtime.cancelled) {
+        const omittedArtifacts = formats.length * (presentation.enabled ? 2 : 1);
+        emit({ type: 'target_theme_redundant', url, engine, viewportName: viewport.name, colorScheme,
+          position: target.position, omittedArtifacts,
+          message: 'Dark output is identical to light; duplicate files and portfolio rendering omitted.' });
+        return { completed, failed };
+      }
+    }
     const name = captureName(job, url, viewport, engine, target.index, colorScheme);
     const targetDirectory = path.join(outputDirectory, ...name.directories);
     if (!inside(path.resolve(job.projectRoot), targetDirectory)) throw new Error('Capture name escapes project root');
@@ -405,6 +430,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
         // Existing baselines were captured with Playwright's light default.
         const comparisonKey = `${url}|${engine}|${viewport.id}|${job.profile.captureMode}|${format}${colorScheme === 'dark' ? '|dark' : ''}`;
         if (selection.skipped) {
+          reusedExistingOutput = true;
           const artifact: Artifact = { id: artifactId, jobId: job.id, url, engine, viewportId: viewport.id,
             viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath,
             targetId: target.target.id, targetName: target.target.name,
@@ -535,7 +561,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     emit({ type: 'target_finished', position: target.position, totalTargets: target.totalTargets,
       url, engine, viewportName: viewport.name, colorScheme });
   }
-  return { completed, failed };
+  return { completed, failed, imageHash: failed === 0 && completed > 0 && !reusedExistingOutput ? imageHash : undefined };
 }
 
 export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: Emit): Promise<void> {
@@ -568,7 +594,7 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     }
   }
   const presentationEnabled = normalizePresentation(job.profile.presentation).enabled;
-  const totalArtifacts = targets.reduce((sum, target) => sum + target.formats.reduce(
+  let totalArtifacts = targets.reduce((sum, target) => sum + target.formats.reduce(
     (count, format) => count + (presentationEnabled && format !== 'pdf' ? 2 : 1), 0), 0);
   if (totalArtifacts === 0) throw new Error('The job has no enabled capture targets');
   if (totalArtifacts > maximumArtifacts) throw new Error(`A job may create at most ${maximumArtifacts.toLocaleString()} artifacts`);
@@ -588,8 +614,15 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     let cursor = 0;
     let completed = 0;
     let failed = 0;
+    let omittedArtifacts = 0;
     const reportArtifact: Emit = (event) => {
       emit(event);
+      if (event.type === 'target_theme_redundant') {
+        const omitted = Number(event.omittedArtifacts);
+        omittedArtifacts += omitted;
+        totalArtifacts -= omitted;
+        emit({ type: 'job_progress', completed, failed, totalArtifacts, omittedArtifacts });
+      }
       if (event.type === 'artifact_completed' || event.type === 'artifact_failed') {
         if (event.type === 'artifact_completed') completed += 1; else failed += 1;
         emit({ type: 'job_progress', completed, failed, totalArtifacts });
@@ -597,12 +630,20 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     };
     const worker = async (): Promise<void> => {
       while (!runtime.cancelled) {
-        const index = cursor++;
+        // Keep each light/dark pair on one worker so the dark render can be
+        // checked against its successful light counterpart without retaining
+        // full-page image buffers or sharing results across different targets.
+        const pairSize = job.profile.colorScheme === 'both' ? 2 : 1;
+        const index = cursor;
+        cursor += pairSize;
         if (index >= targets.length) return;
         const target = targets[index];
         const browser = browsers.get(target.engine);
         if (!browser) return;
-        await captureTarget(job, target, browser, outputDirectory, allocator, runtime, reportArtifact);
+        const light = await captureTarget(job, target, browser, outputDirectory, allocator, runtime, reportArtifact);
+        if (pairSize === 2 && !runtime.cancelled) {
+          await captureTarget(job, targets[index + 1], browser, outputDirectory, allocator, runtime, reportArtifact, light.imageHash);
+        }
       }
     };
     const estimatedTargetPixels = job.profile.captureMode === 'viewport'
@@ -616,7 +657,8 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     }
     await Promise.all(Array.from({ length: effectiveConcurrency }, worker));
     if (runtime.cancelled) emit({ type: 'job_cancelled', status: 'cancelled', completed, failed });
-    else if (failed === 0) emit({ type: 'job_succeeded', status: 'succeeded', completed, failed });
+    else if (failed === 0) emit({ type: 'job_succeeded', status: 'succeeded', completed, failed,
+      ...(omittedArtifacts ? { message: `Capture complete; ${omittedArtifacts} identical dark output files omitted.`, omittedArtifacts } : {}) });
     else if (completed > 0) emit({ type: 'job_partial', status: 'partial', completed, failed, message: `${failed} artifacts failed` });
     else emit({ type: 'job_failed', status: 'failed', completed, failed, message: 'Every capture failed' });
   } finally {

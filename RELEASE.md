@@ -55,6 +55,14 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.4.1
+
+- **Compact Capture workspace**: Smaller buttons, tighter spacing, contextual comparison settings, and scrollable options with capture actions and progress always reachable.
+- **Clean screenshot edges**: Remove reserved root scrollbar gutters before capture, without cropping or resizing the output.
+- **No redundant theme files**: Both checks exact rendered PNG bytes and omits identical dark files and portfolio copies. Each theme still loads separately; PDF jobs and existing dark comparison baselines retain both outputs.
+- **Accurate progress**: Adjust planned output counts when duplicate theme files are omitted and report omissions on completion.
+- **Regression coverage**: Short-window GUI layout, gutter-free full-page images, theme deduplication, concurrent target isolation, dark-only captures, and baseline preservation.
+
 ## v2.4.0
 
 - **Website themes**: Capture Light, Dark, or Both using the browser's preferred color scheme before navigation; paired captures retain separate files and comparison baselines.

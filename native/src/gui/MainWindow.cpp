@@ -783,9 +783,10 @@ QWidget *MainWindow::buildTargetsPage() {
 
 QWidget *MainWindow::buildCapturePage() {
   auto *page = new QWidget;
+  page->setObjectName(QStringLiteral("capturePage"));
   auto *pageLayout = new QVBoxLayout(page);
   pageLayout->setContentsMargins(12, 12, 12, 12);
-  pageLayout->setSpacing(10);
+  pageLayout->setSpacing(6);
   auto *captureHeader = new QHBoxLayout;
   auto *captureTitle = new QLabel(QStringLiteral("Capture"));
   captureTitle->setObjectName(QStringLiteral("pageTitle"));
@@ -793,7 +794,7 @@ QWidget *MainWindow::buildCapturePage() {
   captureHeader->addStretch();
   m_openOutput = new QPushButton(QStringLiteral("Open Output Folder"));
   m_openOutput->setObjectName(QStringLiteral("openCaptureOutput"));
-  m_openOutput->setMinimumHeight(38);
+  m_openOutput->setMinimumHeight(30);
   m_openOutput->setEnabled(false);
   explain(m_openOutput, QStringLiteral("Open the active project's captures folder."));
   captureHeader->addWidget(m_openOutput);
@@ -822,7 +823,7 @@ QWidget *MainWindow::buildCapturePage() {
   auto *leftColumn = new QWidget;
   auto *leftLayout = new QVBoxLayout(leftColumn);
   leftLayout->setContentsMargins(0, 0, 6, 0);
-  leftLayout->setSpacing(10);
+  leftLayout->setSpacing(6);
   auto *targetGroup = new QGroupBox("Targets");
   auto *targetLayout = new QGridLayout(targetGroup);
   targetLayout->setColumnStretch(1, 1);
@@ -854,7 +855,7 @@ QWidget *MainWindow::buildCapturePage() {
   m_urls = new QTextEdit;
   m_urls->setPlaceholderText("example.com\nhttps://example.org/about");
   m_urls->setAcceptRichText(false);
-  m_urls->setMinimumHeight(90);
+  m_urls->setMinimumHeight(70);
   explain(m_urls, "Enter one address per line; a missing scheme defaults to https. Each URL is captured with every enabled viewport, browser, and format.");
   auto *urlsLabel = new QLabel("URLs");
   urlsLabel->setBuddy(m_urls);
@@ -904,7 +905,6 @@ QWidget *MainWindow::buildCapturePage() {
   }
   m_viewports->verticalHeader()->setVisible(false);
   viewportLayout->addWidget(m_viewports);
-  viewportLayout->addWidget(helperText("Width and height are CSS pixels. Pixel ratio controls output density—at 2×, a viewport capture of a 375 × 812 layout is 750 × 1624 pixels. Mobile mode enables mobile viewport behavior and touch input."));
   auto *viewportActions = new QHBoxLayout;
   auto *addViewport = new QPushButton("Add Viewport…");
   auto *removeViewport = new QPushButton("Remove Selected");
@@ -919,7 +919,7 @@ QWidget *MainWindow::buildCapturePage() {
   auto *rightColumn = new QWidget;
   auto *rightLayout = new QVBoxLayout(rightColumn);
   rightLayout->setContentsMargins(6, 0, 0, 0);
-  rightLayout->setSpacing(10);
+  rightLayout->setSpacing(6);
   auto *outputGroup = new QGroupBox("Output");
   auto *outputLayout = new QGridLayout(outputGroup);
   m_chromium = new QCheckBox("Chromium"); m_chromium->setChecked(true);
@@ -965,7 +965,7 @@ QWidget *MainWindow::buildCapturePage() {
   m_colorScheme->addItem(QStringLiteral("Light"), QStringLiteral("light"));
   m_colorScheme->addItem(QStringLiteral("Dark"), QStringLiteral("dark"));
   m_colorScheme->addItem(QStringLiteral("Both — light and dark"), QStringLiteral("both"));
-  explain(m_colorScheme, QStringLiteral("Send the browser's preferred color scheme before loading each page. Both creates separate light and dark captures. Sites must support this preference."));
+  explain(m_colorScheme, QStringLiteral("Send the browser's preferred color scheme before loading each page. Both checks the rendered images and omits identical dark files and portfolio copies. Each theme still loads separately. PDF jobs and existing dark comparison baselines retain both outputs."));
   outputLayout->addWidget(new QLabel(QStringLiteral("Website theme")), 3, 0);
   outputLayout->addWidget(m_colorScheme, 3, 1, 1, 4);
   outputLayout->setColumnStretch(5, 1);
@@ -991,7 +991,7 @@ QWidget *MainWindow::buildCapturePage() {
   connect(m_configureBlocking, &QPushButton::clicked, this, [this] { openContentBlockingDialog(); });
   explain(m_waitSelector, "Optional CSS selector that must become visible before page preparation continues.");
   explain(m_hideSelectors, "Comma-separated CSS selectors to hide before capture, such as .timestamp, .ad, #chat-widget.");
-  timing->addWidget(helperText("Order: load → settle → optional full-page scroll → settle → hide elements → settle → capture."), 0, 0, 1, 6);
+  explain(timingGroup, QStringLiteral("Order: load → settle → optional full-page scroll → settle → hide elements → settle → capture."));
   timing->addWidget(new QLabel("After load"), 1, 0);
   timing->addWidget(m_initialDelay, 1, 1);
   timing->addWidget(new QLabel("After scroll"), 1, 2);
@@ -1023,6 +1023,12 @@ QWidget *MainWindow::buildCapturePage() {
   explain(m_mismatchThreshold, "Maximum percentage of changed pixels allowed before the comparison is marked as different.");
   explain(m_comparisonIgnoreSelectors, "When comparison is enabled, these elements are hidden before capture to stabilize dynamic regions such as timestamps or rotating content.");
   comparisonLayout->addWidget(m_comparisonEnabled, 0, 0, 1, 4);
+  auto *comparisonDetails = new QWidget;
+  comparisonDetails->setObjectName(QStringLiteral("captureComparisonDetails"));
+  auto *comparisonDetailsLayout = new QGridLayout(comparisonDetails);
+  comparisonDetailsLayout->setContentsMargins(0, 0, 0, 0);
+  comparisonLayout->addWidget(comparisonDetails, 1, 0, 1, 4);
+  comparisonLayout = comparisonDetailsLayout;
   comparisonLayout->addWidget(new QLabel("Pixel sensitivity"), 1, 0);
   comparisonLayout->addWidget(m_pixelThreshold, 1, 1);
   comparisonLayout->addWidget(new QLabel("Allowed difference"), 1, 2);
@@ -1039,7 +1045,7 @@ QWidget *MainWindow::buildCapturePage() {
   m_startCapture = new QPushButton("Start Capture");
   m_startCapture->setDefault(true);
   m_startCapture->setObjectName("primaryAction");
-  m_startCapture->setMinimumHeight(38);
+  m_startCapture->setMinimumHeight(32);
   m_saveProfile = new QPushButton("Save Profile");
   m_revertProfile = new QPushButton("Revert");
   auto *saveAsProfile = new QPushButton("Save As…");
@@ -1052,7 +1058,6 @@ QWidget *MainWindow::buildCapturePage() {
   actions->addWidget(m_revertProfile);
   actions->addWidget(saveAsProfile);
   actions->addStretch();
-  rightLayout->addLayout(actions);
   rightLayout->addStretch();
 
   m_captureColumns->addWidget(leftColumn);
@@ -1080,12 +1085,17 @@ QWidget *MainWindow::buildCapturePage() {
   jobActions->addStretch();
   jobsLayout->addLayout(jobActions);
 
-  m_captureVertical->addWidget(m_captureColumns);
+  auto *captureSettings = scrollable(m_captureColumns);
+  captureSettings->setObjectName(QStringLiteral("captureSettingsScroll"));
+  captureSettings->setBackgroundRole(QPalette::Window);
+  m_captureColumns->setAutoFillBackground(false);
+  m_captureVertical->addWidget(captureSettings);
   m_captureVertical->addWidget(jobsGroup);
   m_captureVertical->setStretchFactor(0, 4);
   m_captureVertical->setStretchFactor(1, 2);
   m_captureVertical->setSizes({430, 190});
   pageLayout->addWidget(m_captureVertical);
+  pageLayout->addLayout(actions);
   m_captureStatus = helperText(QStringLiteral("Ready to capture"));
   m_captureStatus->setObjectName(QStringLiteral("captureStatus"));
   m_captureStatus->setTextFormat(Qt::PlainText);
@@ -1113,8 +1123,9 @@ QWidget *MainWindow::buildCapturePage() {
     m_tabs->setCurrentIndex(4);
     for (int row = 0; row < m_targetSetList->count(); ++row) if (m_targetSetList->item(row)->data(Qt::UserRole).toString() == id) { m_targetSetList->setCurrentRow(row); break; }
   });
-  const auto updateComparisonControls = [this] {
+  const auto updateComparisonControls = [this, comparisonDetails] {
     const bool enabled = m_comparisonEnabled->isChecked();
+    comparisonDetails->setVisible(enabled);
     m_pixelThreshold->setEnabled(enabled);
     m_mismatchThreshold->setEnabled(enabled);
     m_comparisonIgnoreSelectors->setEnabled(enabled);
@@ -2847,7 +2858,7 @@ void MainWindow::updateCapturePlan() {
       .arg(targetCount).arg(targetCount == 1 ? "" : "s")
       .arg(enabledViewports).arg(enabledViewports == 1 ? "" : "s")
       .arg(engines.size()).arg(engines.size() == 1 ? "" : "s")
-      .arg(files).arg(files == 1 ? "" : "s");
+      .arg(schemeCount == 2 ? QStringLiteral("up to %1").arg(files) : QString::number(files)).arg(files == 1 ? "" : "s");
   summary += schemeCount == 2 ? QStringLiteral(" · Light + dark")
                             : QStringLiteral(" · %1 theme").arg(m_colorScheme->currentText());
   if (presentationEnabled) {
@@ -2889,6 +2900,7 @@ void MainWindow::openProfileManager() {
   colorScheme->addItem(QStringLiteral("Light"), QStringLiteral("light"));
   colorScheme->addItem(QStringLiteral("Dark"), QStringLiteral("dark"));
   colorScheme->addItem(QStringLiteral("Both — light and dark"), QStringLiteral("both"));
+  explain(colorScheme, m_colorScheme->toolTip());
   colorScheme->setCurrentIndex(qMax(0, colorScheme->findData(source.value("colorScheme").toString(QStringLiteral("light")))));
   generalForm->addRow(QStringLiteral("Website theme"), colorScheme);
   generalForm->addRow("Element selector", element);

@@ -27,7 +27,7 @@ The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder
 
 ## Download
 
-CyberSnapper 2.4.0 adds light, dark, or paired website captures, page paths in output filenames, detailed live capture progress, and a prominent Open Output Folder button. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings with visible progress and launch verification. See the [2.4.0 release notes](docs/releases/v2.4.0.md) and [latest published release](https://github.com/Alex9001/CyberSnapper/releases/latest) for downloads.
+CyberSnapper 2.4.1 makes Capture more comfortable on shorter screens, removes scrollbar-gutter white strips, and omits identical dark output files when capturing both themes. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings with visible progress and launch verification. See the [2.4.1 release notes](docs/releases/v2.4.1.md) and [latest published release](https://github.com/Alex9001/CyberSnapper/releases/latest) for downloads.
 
 | Platform | Recommended | Portable archive |
 | --- | --- | --- |

@@ -141,6 +141,13 @@ int main(int argc, char **argv) {
       color: palette(mid);
       border-color: palette(mid);
     }
+    QWidget#capturePage QPushButton {
+      padding: 3px 10px;
+      min-height: 20px;
+    }
+    QWidget#capturePage QPushButton:hover, QWidget#capturePage QPushButton:focus {
+      padding: 2px 9px;
+    }
     QPushButton#destructiveAction {
       border-color: #c63c4f;
       color: #c63c4f;

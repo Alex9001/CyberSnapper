@@ -2,6 +2,8 @@
 
 #include <QAction>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QScrollArea>
 #include <QLabel>
 #include <QPushButton>
 #include <QProgressBar>
@@ -21,8 +23,41 @@ private slots:
   void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
   void primaryNavigationAndWorkspaces();
   void captureThemeAndProgress();
+  void compactCaptureLayout();
   void contentBlockingDialog();
 };
+
+void TestGui::compactCaptureLayout() {
+  MainWindow window;
+  window.resize(1024, 600);
+  window.show();
+  auto *page = window.findChild<QWidget *>(QStringLiteral("capturePage"));
+  auto *scroll = window.findChild<QScrollArea *>(QStringLiteral("captureSettingsScroll"));
+  auto *details = window.findChild<QWidget *>(QStringLiteral("captureComparisonDetails"));
+  QVERIFY(page);
+  window.findChild<QTabWidget *>(QStringLiteral("mainTabs"))->setCurrentWidget(page);
+  auto *start = page->findChild<QPushButton *>(QStringLiteral("primaryAction"));
+  auto *folder = window.findChild<QPushButton *>(QStringLiteral("openCaptureOutput"));
+  auto *progress = window.findChild<QProgressBar *>(QStringLiteral("captureProgress"));
+  QVERIFY(page && scroll && details && start && folder && progress);
+  QVERIFY(details->isHidden());
+  QCheckBox *comparison = nullptr;
+  for (auto *box : page->findChildren<QCheckBox *>()) {
+    if (box->text() == QStringLiteral("Compare future captures with a saved baseline")) comparison = box;
+  }
+  QVERIFY(comparison);
+  comparison->setChecked(true);
+  QVERIFY(!details->isHidden());
+  QCoreApplication::processEvents();
+  QCOMPARE(window.height(), 600);
+  for (auto *control : {static_cast<QWidget *>(start), static_cast<QWidget *>(folder), static_cast<QWidget *>(progress)}) {
+    QVERIFY(control->isVisible());
+    QVERIFY(page->rect().contains(QRect(control->mapTo(page, QPoint()), control->size())));
+    QVERIFY(!scroll->isAncestorOf(control));
+  }
+  comparison->setChecked(false);
+  QVERIFY(details->isHidden());
+}
 
 void TestGui::captureThemeAndProgress() {
   MainWindow window;
@@ -64,6 +99,13 @@ void TestGui::captureThemeAndProgress() {
   send({{"type", "job_cancelled"}, {"message", "Cancelled before start"}, {"sequence", 6}});
   QVERIFY(status->text().contains(QStringLiteral("cancelled")));
   QVERIFY(status->text().contains(QStringLiteral("Cancelled before start")));
+  send({{"type", "job_started"}, {"totalArtifacts", 4}, {"completed", 0}, {"failed", 0}, {"sequence", 7}});
+  send({{"type", "job_progress"}, {"totalArtifacts", 2}, {"completed", 2}, {"failed", 0}, {"omittedArtifacts", 2}, {"sequence", 8}});
+  QCOMPARE(progress->maximum(), 2);
+  QCOMPARE(progress->value(), 2);
+  send({{"type", "job_succeeded"}, {"completed", 2}, {"failed", 0},
+        {"message", "Capture complete; 2 identical dark output files omitted."}, {"sequence", 9}});
+  QVERIFY(status->text().contains(QStringLiteral("2 identical dark output files omitted")));
 }
 
 void TestGui::primaryNavigationAndWorkspaces() {
