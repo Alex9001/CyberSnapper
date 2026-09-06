@@ -9,7 +9,10 @@ const { chromium } = require('playwright');
 const sharp = require('sharp');
 const { runCaptureJob } = require('../dist/testing.cjs');
 
-test('captures browser light/dark preferences, filenames, progress, skips and failures', { timeout: 60000 }, async (t) => {
+// This fixture starts a browser for each of four capture jobs. Windows arm64
+// also probes system Chrome/Edge before falling back to emulated Chromium.
+const fixtureTimeout = process.platform === 'win32' && process.arch === 'arm64' ? 300000 : 60000;
+test('captures browser light/dark preferences, filenames, progress, skips and failures', { timeout: fixtureTimeout }, async (t) => {
   try { const browser = await chromium.launch(); await browser.close(); }
   catch (error) {
     if ((process.env.CYBERSNAPPER_REQUIRED_BROWSERS || '').includes('chromium')) throw error;
@@ -43,6 +46,7 @@ test('captures browser light/dark preferences, filenames, progress, skips and fa
     return events;
   };
   try {
+    t.diagnostic('Capturing paired originals and portfolio copies');
     const events = await run();
     assert.equal(events[0].totalArtifacts, 4);
     assert.equal(events[0].totalTargets, 2);
@@ -67,16 +71,19 @@ test('captures browser light/dark preferences, filenames, progress, skips and fa
     }
     // Same output paths and skip policy must preserve both themes and finish the plan.
     job.profile.collisionPolicy = 'skip';
+    t.diagnostic('Checking skipped paired outputs');
     const skipped = await run();
     assert.equal(skipped.filter(e => e.artifact?.status === 'skipped').length, 4);
     assert.equal(skipped.at(-1).completed, 4);
     job.urls = [url.replace('/sample', '/fail')];
+    t.diagnostic('Checking paired failure counts');
     const failed = await run();
     assert.equal(failed.at(-1).type, 'job_failed');
     assert.equal(failed.at(-1).failed, 4);
     assert.deepEqual(failed.filter(e => e.type === 'job_progress').map(e => e.failed), [1, 2, 3, 4]);
     // Cancellation does not claim completion for the remaining theme or files.
     job.urls = [url]; job.profile.concurrency = 1;
+    t.diagnostic('Checking cancellation before remaining theme');
     const cancelled = await run((event, runtime) => { if (event.type === 'artifact_completed') runtime.cancelled = true; });
     assert.equal(cancelled.at(-1).type, 'job_cancelled');
     assert.ok(cancelled.at(-1).completed < 4);
