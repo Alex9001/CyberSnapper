@@ -55,6 +55,14 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
 
+## v2.4.0
+
+- **Website themes**: Capture Light, Dark, or Both using the browser's preferred color scheme before navigation; paired captures retain separate files and comparison baselines.
+- **Descriptive filenames**: The default includes the hostname, page path, and viewport, such as `example.com-sample-Desktop.png`; paired themes receive distinct suffixes.
+- **Live capture progress**: Follow capture position, URL, viewport, browser, theme, preparation stage, elapsed time, and processed-file counts, including parallel tasks.
+- **Output access**: Open the active project's captures directory directly from a prominent button on Capture.
+- **Regression coverage**: Real browser theme rendering, custom filename collisions, progress, skipped outputs, failures, cancellation, profile normalization, and theme-aware job limits.
+
 ## v2.3.3
 
 - **Chromium stability**: Abruptly closed HTTPS proxy tunnels no longer raise an unhandled `EPIPE` that terminates the capture worker.

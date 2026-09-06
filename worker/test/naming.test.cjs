@@ -29,6 +29,32 @@ test('captureBaseName expands the configured template', () => {
                'example.com-Mobile-Phone-chromium-375');
 });
 
+test('default names include the host and page slug', () => {
+  const job = { id: '12345678-rest', profile: {} };
+  const viewport = { name: 'Desktop', width: 1440, height: 900 };
+  assert.equal(captureBaseName(job, 'https://example.com/sample', viewport, 'chromium'), 'example.com-sample-Desktop');
+  assert.equal(captureBaseName(job, 'https://example.com/docs/start/', viewport, 'chromium'), 'example.com-docs-start-Desktop');
+  assert.equal(captureBaseName(job, 'https://example.com/', viewport, 'chromium'), 'example.com-Desktop');
+});
+
+test('theme filenames remain distinct even with overwrite or custom folders', () => {
+  const job = { id: '12345678-rest', profile: { colorScheme: 'both', namingTemplate: '{url}-{preset}' } };
+  const viewport = { name: 'Desktop', width: 1440, height: 900 };
+  assert.equal(captureName(job, 'https://example.com/sample', viewport, 'chromium', 0, 'light').base, 'example.com-sample-Desktop-light');
+  assert.equal(captureName(job, 'https://example.com/sample', viewport, 'chromium', 0, 'dark').base, 'example.com-sample-Desktop-dark');
+  job.profile.namingTemplate = '{colorScheme}/{url}-{preset}';
+  const name = captureName(job, 'https://example.com/sample', viewport, 'chromium', 0, 'dark');
+  assert.deepEqual(name, { directories: ['dark'], base: 'example.com-sample-Desktop' });
+  job.profile.namingTemplate = '{url}-{colorScheme}';
+  const longUrl = `https://example.com/${'x'.repeat(200)}`;
+  const light = captureName(job, longUrl, viewport, 'chromium', 0, 'light');
+  const dark = captureName(job, longUrl, viewport, 'chromium', 0, 'dark');
+  assert.notEqual(light.base, dark.base);
+  job.profile.colorScheme = 'dark';
+  job.profile.namingTemplate = '';
+  assert.equal(captureBaseName(job, 'https://example.com/sample', viewport, 'chromium'), 'example.com-sample-Desktop-dark');
+});
+
 test('network guard rejects local and private targets without navigation', async () => {
   await assert.rejects(assertPublicUrl('http://localhost:3000'), /Private or local/);
   await assert.rejects(assertPublicUrl('http://127.0.0.1'), /Private network/);

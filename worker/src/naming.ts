@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { access } from 'node:fs/promises';
-import type { BrowserEngine, CaptureJob, OutputFormat, Viewport } from './protocol.js';
+import type { BrowserEngine, CaptureJob, ColorScheme, OutputFormat, Viewport } from './protocol.js';
 
 export function safeSegment(input: string, fallback = 'capture'): string {
   const value = input
@@ -17,7 +17,8 @@ export function safeSegment(input: string, fallback = 'capture'): string {
 }
 
 export function captureName(job: CaptureJob, urlText: string, viewport: Viewport,
-                            engine: BrowserEngine, index = 0): { directories: string[]; base: string } {
+                            engine: BrowserEngine, index = 0,
+                            colorScheme: ColorScheme = job.profile.colorScheme === 'dark' ? 'dark' : 'light'): { directories: string[]; base: string } {
   const url = new URL(urlText);
   const now = new Date();
   const replacements: Record<string, string> = {
@@ -30,15 +31,21 @@ export function captureName(job: CaptureJob, urlText: string, viewport: Viewport
     width: String(viewport.width),
     height: String(viewport.height),
     engine,
+    colorScheme,
     date: now.toISOString().slice(0, 10),
     time: now.toISOString().slice(11, 19).replaceAll(':', '-'),
     job: job.id.slice(0, 8),
     index: String(index + 1).padStart(2, '0'),
   };
-  let rendered = job.profile.namingTemplate || '{hostname}-{preset}';
-  rendered = rendered.replace(/\{([a-z]+)\}/gi, (token, key: string) => replacements[key] ?? token);
-  const segments = rendered.split('/').map((segment) => safeSegment(segment)).filter(Boolean);
-  const base = segments.pop() ?? 'capture';
+  const template = job.profile.namingTemplate || '{url}-{preset}';
+  const render = (scheme: ColorScheme) => template.replace(/\{([a-z]+)\}/gi, (token, key: string) =>
+    key === 'colorScheme' ? scheme : replacements[key] ?? token)
+    .split('/').map((segment) => safeSegment(segment)).filter(Boolean);
+  const segments = render(colorScheme);
+  // A theme token at the end of a long segment can be truncated away.
+  const hasDistinctTheme = segments.join('/') !== render(colorScheme === 'dark' ? 'light' : 'dark').join('/');
+  let base = segments.pop() ?? 'capture';
+  if (!hasDistinctTheme && (job.profile.colorScheme === 'both' || colorScheme === 'dark')) base += `-${colorScheme}`;
   return { directories: segments, base };
 }
 

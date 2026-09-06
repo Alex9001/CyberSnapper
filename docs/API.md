@@ -167,6 +167,10 @@ Accepting atomically advances the baseline to an immutable snapshot of the curre
 
 `GET /api/v1/jobs/{id}/events` returns `text/event-stream`. Each event has an integer `id` matching its persisted `sequence`, and a compact JSON `data` object. Send `Last-Event-ID` when reconnecting; the server replays later persisted events and continues live streaming until a terminal job event.
 
+Capture profiles accept `colorScheme` (`light`, `dark`, or `both`; default `light`). Both produces separate captures per theme, including separate portfolio copies and visual-comparison baselines. The browser preference is set before navigation; the website must support it.
+
+`job_started` includes `totalTargets` and `totalArtifacts`. `job_stage` describes browser startup. `target_progress` includes the one-based `position`, `totalTargets`, `url`, `engine`, `viewportId`, `viewportName`, `colorScheme`, human-readable `stage`, and `elapsedSeconds` in that stage. Updates are emitted at stage transitions and every two seconds during an active task. Concurrent targets can report interleaved positions; position identifies the task, not the number finished. `target_finished` removes that task from the active list. `job_progress` reports cumulative `completed` (including skipped outputs), `failed`, and `totalArtifacts` after each artifact. Failure and cancellation can leave a plan unfinished; percentages count processed files rather than estimated time remaining.
+
 Terminal event types are `job_succeeded`, `job_partial`, `job_failed`, `job_cancelled`, and `job_interrupted`.
 
 ## Token lifecycle

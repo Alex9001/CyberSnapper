@@ -72,7 +72,8 @@ QString JobManager::validate(const JobRequest &request) {
       }
     }
   }
-  const qint64 totalArtifacts = request.urls.size() * enabledViewports * formatsAcrossEngines;
+  const qint64 totalArtifacts = request.urls.size() * enabledViewports * formatsAcrossEngines *
+      (request.profile.colorScheme == QStringLiteral("both") ? 2 : 1);
   if (totalArtifacts > 10000) return "A job may create at most 10,000 artifacts";
   return {};
 }

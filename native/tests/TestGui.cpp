@@ -20,8 +20,51 @@ class TestGui final : public QObject {
 private slots:
   void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
   void primaryNavigationAndWorkspaces();
+  void captureThemeAndProgress();
   void contentBlockingDialog();
 };
+
+void TestGui::captureThemeAndProgress() {
+  MainWindow window;
+  auto *theme = window.findChild<QComboBox *>(QStringLiteral("captureColorScheme"));
+  auto *folder = window.findChild<QPushButton *>(QStringLiteral("openCaptureOutput"));
+  auto *progress = window.findChild<QProgressBar *>(QStringLiteral("captureProgress"));
+  auto *status = window.findChild<QLabel *>(QStringLiteral("captureStatus"));
+  QVERIFY(theme && folder && progress && status);
+  QCOMPARE(theme->currentData().toString(), QStringLiteral("light"));
+  QCOMPARE(theme->count(), 3);
+  theme->setCurrentIndex(theme->findData(QStringLiteral("both")));
+  QCOMPARE(theme->currentData().toString(), QStringLiteral("both"));
+  auto *rpc = window.findChild<RpcClient *>();
+  QVERIFY(rpc);
+  const auto send = [rpc](QJsonObject event) {
+    event.insert("jobId", QStringLiteral("test-job"));
+    emit rpc->eventReceived(QStringLiteral("job.event"), event);
+  };
+  send({{"type", "job_started"}, {"status", "running"}, {"totalArtifacts", 4}, {"sequence", 1}});
+  send({{"type", "target_progress"}, {"position", 1}, {"totalTargets", 2}, {"url", "https://example.com/sample"},
+        {"viewportName", "Desktop"}, {"engine", "chromium"}, {"colorScheme", "light"},
+        {"stage", "Loading page"}, {"elapsedSeconds", 2}, {"sequence", 2}});
+  send({{"type", "target_progress"}, {"position", 2}, {"totalTargets", 2}, {"url", "https://example.com/sample"},
+        {"viewportName", "Desktop"}, {"engine", "chromium"}, {"colorScheme", "dark"},
+        {"stage", "Taking screenshot"}, {"elapsedSeconds", 0}, {"sequence", 3}});
+  QVERIFY(status->text().contains(QStringLiteral("1/2")));
+  QVERIFY(status->toolTip().contains(QStringLiteral("2/2")));
+  QVERIFY(status->text().contains(QStringLiteral("Loading page (2 s)")));
+  QVERIFY(status->toolTip().contains(QStringLiteral("dark")));
+  send({{"type", "job_progress"}, {"completed", 2}, {"failed", 1}, {"totalArtifacts", 4}, {"sequence", 4}});
+  QCOMPARE(progress->maximum(), 4);
+  QCOMPARE(progress->value(), 3);
+  send({{"type", "job_progress"}, {"completed", 0}, {"sequence", 2}});
+  QCOMPARE(progress->value(), 3); // Replayed older events cannot regress the UI.
+  send({{"type", "job_partial"}, {"status", "partial"}, {"completed", 3}, {"failed", 1}, {"sequence", 5}});
+  QCOMPARE(progress->value(), 4);
+  QVERIFY(status->text().contains(QStringLiteral("partial")));
+  QVERIFY(!status->text().contains(QStringLiteral("Loading page")));
+  send({{"type", "job_cancelled"}, {"message", "Cancelled before start"}, {"sequence", 6}});
+  QVERIFY(status->text().contains(QStringLiteral("cancelled")));
+  QVERIFY(status->text().contains(QStringLiteral("Cancelled before start")));
+}
 
 void TestGui::primaryNavigationAndWorkspaces() {
   MainWindow window;

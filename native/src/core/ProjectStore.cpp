@@ -364,7 +364,7 @@ CaptureProfile ProjectStore::profile(const QString &id) const {
 QJsonArray ProjectStore::profiles() const {
   QJsonArray out;
   QSqlQuery query("SELECT json FROM profiles ORDER BY name COLLATE NOCASE", m_db);
-  while (query.next()) out.append(QJsonDocument::fromJson(query.value(0).toByteArray()).object());
+  while (query.next()) out.append(toJson(profileFromJson(QJsonDocument::fromJson(query.value(0).toByteArray()).object())));
   return out;
 }
 

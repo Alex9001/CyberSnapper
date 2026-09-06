@@ -70,6 +70,11 @@ private:
   QComboBox *m_captureTargetSet = nullptr;
   QTextEdit *m_urls = nullptr;
   QComboBox *m_captureMode = nullptr;
+  QComboBox *m_colorScheme = nullptr;
+  QPushButton *m_openOutput = nullptr;
+  QLabel *m_captureStatus = nullptr;
+  QProgressBar *m_captureProgress = nullptr;
+  QHash<QString, QJsonObject> m_captureEvents;
   QLineEdit *m_elementSelector = nullptr;
   QCheckBox *m_chromium = nullptr;
   QCheckBox *m_firefox = nullptr;
@@ -179,6 +184,7 @@ private:
   void refreshDashboard();
   void refreshTargetSets();
   void refreshJobs();
+  void applyCaptureEvent(const QJsonObject &event);
   void refreshSchedules();
   void refreshSettings();
   void applyBrowserState(const QString &engine, const QJsonObject &state);

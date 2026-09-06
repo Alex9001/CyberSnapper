@@ -331,6 +331,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), m_rpc(this) {
   });
   connect(&m_rpc, &RpcClient::eventReceived, this,
           [this](const QString &event, const QJsonObject &data) {
+    if (event == QStringLiteral("job.event")) {
+      applyCaptureEvent(data);
+      if (QStringList{QStringLiteral("target_progress"), QStringLiteral("job_progress"),
+                      QStringLiteral("job_stage"), QStringLiteral("heartbeat")}.contains(data.value("type").toString())) return;
+    }
     if (event == "job.event" || event == "queue.changed" || event == "schedule.changed" ||
         event == "schedule.event") scheduleRefresh();
     if (event == "project.changed") refreshProjects();
@@ -573,6 +578,11 @@ void MainWindow::buildUi() {
     m_loadedProfileId.clear();
     rpcCall("project.setActive", {{"projectId", id}}, [this, id](const QJsonObject &) {
       m_projectId = id;
+      m_captureStatus->setText(QStringLiteral("Ready to capture"));
+      m_captureProgress->setRange(0, 1);
+      m_captureProgress->setValue(0);
+      m_captureProgress->setFormat(QStringLiteral("No capture running"));
+      m_captureEvents.clear();
       refreshProfiles(); refreshTargetSets(); refreshJobs(); refreshSchedules();
       refreshComparisons(); refreshBaselines(); refreshDashboard();
     });
@@ -776,6 +786,31 @@ QWidget *MainWindow::buildCapturePage() {
   auto *pageLayout = new QVBoxLayout(page);
   pageLayout->setContentsMargins(12, 12, 12, 12);
   pageLayout->setSpacing(10);
+  auto *captureHeader = new QHBoxLayout;
+  auto *captureTitle = new QLabel(QStringLiteral("Capture"));
+  captureTitle->setObjectName(QStringLiteral("pageTitle"));
+  captureHeader->addWidget(captureTitle);
+  captureHeader->addStretch();
+  m_openOutput = new QPushButton(QStringLiteral("Open Output Folder"));
+  m_openOutput->setObjectName(QStringLiteral("openCaptureOutput"));
+  m_openOutput->setMinimumHeight(38);
+  m_openOutput->setEnabled(false);
+  explain(m_openOutput, QStringLiteral("Open the active project's captures folder."));
+  captureHeader->addWidget(m_openOutput);
+  pageLayout->addLayout(captureHeader);
+  connect(m_openOutput, &QPushButton::clicked, this, [this] {
+    for (const auto &value : m_projects) {
+      const auto project = value.toObject();
+      if (project.value("id").toString() != m_projectId) continue;
+      const QString root = project.value("root").toString();
+      if (root.isEmpty()) return;
+      const QString folder = QDir(root).filePath(QStringLiteral("captures"));
+      if (!QDir().mkpath(folder) || !QDesktopServices::openUrl(QUrl::fromLocalFile(folder))) {
+        QMessageBox::warning(this, QStringLiteral("Cannot open output folder"), folder);
+      }
+      return;
+    }
+  });
 
   m_captureVertical = new QSplitter(Qt::Vertical);
   m_captureVertical->setObjectName("captureVertical");
@@ -925,6 +960,14 @@ QWidget *MainWindow::buildCapturePage() {
   outputLayout->addWidget(new QLabel("Portfolio style"), 2, 0);
   outputLayout->addWidget(m_presentationScene, 2, 1, 1, 3);
   outputLayout->addWidget(customizePresentation, 2, 4);
+  m_colorScheme = new QComboBox;
+  m_colorScheme->setObjectName(QStringLiteral("captureColorScheme"));
+  m_colorScheme->addItem(QStringLiteral("Light"), QStringLiteral("light"));
+  m_colorScheme->addItem(QStringLiteral("Dark"), QStringLiteral("dark"));
+  m_colorScheme->addItem(QStringLiteral("Both — light and dark"), QStringLiteral("both"));
+  explain(m_colorScheme, QStringLiteral("Send the browser's preferred color scheme before loading each page. Both creates separate light and dark captures. Sites must support this preference."));
+  outputLayout->addWidget(new QLabel(QStringLiteral("Website theme")), 3, 0);
+  outputLayout->addWidget(m_colorScheme, 3, 1, 1, 4);
   outputLayout->setColumnStretch(5, 1);
   rightLayout->addWidget(outputGroup);
 
@@ -1022,10 +1065,11 @@ QWidget *MainWindow::buildCapturePage() {
   m_activeJobsGroup = jobsGroup;
   auto *jobsLayout = new QVBoxLayout(jobsGroup);
   m_activeJobs = new QTreeWidget;
-  m_activeJobs->setHeaderLabels({"Job", "Status", "Completed", "Failed", "Started"});
+  m_activeJobs->setHeaderLabels({"Job", "Status", "Files processed", "Failed", "Started", "Current tasks"});
   m_activeJobs->setRootIsDecorated(false);
   m_activeJobs->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_activeJobs->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+  m_activeJobs->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  m_activeJobs->header()->setSectionResizeMode(5, QHeaderView::Stretch);
   for (int column = 1; column < 5; ++column) m_activeJobs->header()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
   jobsLayout->addWidget(m_activeJobs);
   auto *jobActions = new QHBoxLayout;
@@ -1042,6 +1086,17 @@ QWidget *MainWindow::buildCapturePage() {
   m_captureVertical->setStretchFactor(1, 2);
   m_captureVertical->setSizes({430, 190});
   pageLayout->addWidget(m_captureVertical);
+  m_captureStatus = helperText(QStringLiteral("Ready to capture"));
+  m_captureStatus->setObjectName(QStringLiteral("captureStatus"));
+  m_captureStatus->setTextFormat(Qt::PlainText);
+  m_captureStatus->setMaximumHeight(64);
+  pageLayout->addWidget(m_captureStatus);
+  m_captureProgress = new QProgressBar;
+  m_captureProgress->setObjectName(QStringLiteral("captureProgress"));
+  m_captureProgress->setRange(0, 1);
+  m_captureProgress->setValue(0);
+  m_captureProgress->setFormat(QStringLiteral("No capture running"));
+  pageLayout->addWidget(m_captureProgress);
 
   connect(m_captureMode, &QComboBox::currentIndexChanged, this,
           [this] { m_elementSelector->setEnabled(m_captureMode->currentData().toString() == "element"); });
@@ -1118,6 +1173,7 @@ QWidget *MainWindow::buildCapturePage() {
   }
   connect(m_concurrency, &QSpinBox::valueChanged, this, changed);
   connect(m_captureMode, &QComboBox::currentIndexChanged, this, changed);
+  connect(m_colorScheme, &QComboBox::currentIndexChanged, this, changed);
   connect(m_presentationScene, &QComboBox::currentIndexChanged, this, changed);
   connect(m_viewports, &QTableWidget::itemChanged, this, changed);
   connect(m_urls, &QTextEdit::textChanged, this, &MainWindow::updateCapturePlan);
@@ -1851,6 +1907,11 @@ void MainWindow::refreshProjects() {
     if (!m_projectId.isEmpty() && m_projectId != activeProject) {
       m_profileDirty = false;
       m_loadedProfileId.clear();
+      m_captureEvents.clear();
+      m_captureStatus->setText(QStringLiteral("Ready to capture"));
+      m_captureProgress->setRange(0, 1);
+      m_captureProgress->setValue(0);
+      m_captureProgress->setFormat(QStringLiteral("No capture running"));
     }
     m_projectId = activeProject;
     m_projectCombo->blockSignals(true);
@@ -1864,6 +1925,7 @@ void MainWindow::refreshProjects() {
       if (project.value("id").toString() == m_projectId) selected = row;
     }
     m_projectCombo->setCurrentIndex(selected);
+    m_openOutput->setEnabled(selected >= 0);
     m_projectCombo->blockSignals(false);
     refreshProfiles();
     refreshTargetSets();
@@ -1990,9 +2052,75 @@ void MainWindow::refreshProfiles() {
   });
 }
 
+void MainWindow::applyCaptureEvent(const QJsonObject &event) {
+  if (event.value("projectId").toString() != m_projectId) return;
+  const QString id = event.value("jobId").toString();
+  const QString type = event.value("type").toString();
+  if (id.isEmpty() || type == QStringLiteral("heartbeat")) return;
+  QJsonObject state = m_captureEvents.value(id);
+  const qint64 sequence = event.value("sequence").toVariant().toLongLong();
+  if (sequence && sequence <= state.value("sequence").toVariant().toLongLong()) return;
+  if (sequence) state.insert("sequence", sequence);
+  for (const QString &key : {QStringLiteral("totalArtifacts"), QStringLiteral("completed"), QStringLiteral("failed")}) {
+    if (event.contains(key)) state.insert(key, event.value(key));
+  }
+  QJsonObject tasks = state.value("tasks").toObject();
+  if (type == QStringLiteral("target_progress")) {
+    const QString detail = QStringLiteral("%1/%2 · %3 · %4 · %5 · %6 — %7 (%8 s)")
+        .arg(event.value("position").toInt()).arg(event.value("totalTargets").toInt())
+        .arg(event.value("url").toString(), event.value("viewportName").toString(),
+             event.value("engine").toString(), event.value("colorScheme").toString(),
+             event.value("stage").toString()).arg(event.value("elapsedSeconds").toInt());
+    tasks.insert(QString::number(event.value("position").toInt()), detail);
+    if (state.value("status").toString() != QStringLiteral("cancelling")) state.insert("status", QStringLiteral("running"));
+  } else if (type == QStringLiteral("target_finished")) {
+    tasks.remove(QString::number(event.value("position").toInt()));
+    state.insert("stage", QStringLiteral("Finishing capture"));
+  } else if (type == QStringLiteral("job_stage")) {
+    state.insert("stage", event.value("stage"));
+  } else if (QStringList{QStringLiteral("job_queued"), QStringLiteral("job_preparing"),
+                         QStringLiteral("job_started"), QStringLiteral("job_cancelling"),
+                         QStringLiteral("job_succeeded"), QStringLiteral("job_partial"),
+                         QStringLiteral("job_failed"), QStringLiteral("job_cancelled"),
+                         QStringLiteral("job_interrupted")}.contains(type)) {
+    const QString status = type == QStringLiteral("job_started") ? QStringLiteral("running") : type.mid(4);
+    state.insert("status", status);
+    state.insert("stage", event.value("message").toString(status));
+  }
+  const QString status = state.value("status").toString();
+  const bool terminal = QStringList{QStringLiteral("succeeded"), QStringLiteral("partial"),
+      QStringLiteral("failed"), QStringLiteral("cancelled"), QStringLiteral("interrupted")}.contains(status);
+  if (terminal) tasks = {};
+  state.insert("tasks", tasks);
+  QStringList details;
+  for (auto it = tasks.begin(); it != tasks.end(); ++it) details.append(it.value().toString());
+  const QString detail = details.isEmpty() ? state.value("stage").toString(status) : details.join('\n');
+  state.insert("detail", detail);
+  m_captureEvents.insert(id, state);
+  const int total = state.value("totalArtifacts").toInt();
+  const int completed = state.value("completed").toInt();
+  const int failed = state.value("failed").toInt();
+  const QString count = QStringLiteral("%1 / %2").arg(completed + failed).arg(total);
+  for (int row = 0; row < m_activeJobs->topLevelItemCount(); ++row) {
+    auto *entry = m_activeJobs->topLevelItem(row);
+    if (entry->data(0, Qt::UserRole).toString() != id) continue;
+    entry->setText(2, count);
+    entry->setText(3, QString::number(failed));
+    entry->setText(5, detail);
+    entry->setToolTip(5, detail);
+  }
+  m_captureStatus->setText(QStringLiteral("Job %1 · %2\n%3").arg(id.left(8), status, details.isEmpty() ? detail : details.first()));
+  m_captureStatus->setToolTip(detail);
+  m_captureProgress->setRange(0, total > 0 ? total : terminal ? 1 : 0);
+  m_captureProgress->setValue(completed + failed);
+  m_captureProgress->setFormat(QStringLiteral("%1 files processed · %2 failed").arg(count).arg(failed));
+}
+
 void MainWindow::refreshJobs() {
   if (m_projectId.isEmpty()) return;
   rpcCall("job.list", {{"projectId", m_projectId}, {"limit", 500}}, [this](const QJsonObject &result) {
+    QString selected;
+    if (!m_activeJobs->selectedItems().isEmpty()) selected = m_activeJobs->selectedItems().first()->data(0, Qt::UserRole).toString();
     m_jobsCache = result.value("jobs").toArray();
     m_activeJobs->clear();
     for (const auto &value : m_jobsCache) {
@@ -2005,6 +2133,24 @@ void MainWindow::refreshJobs() {
                                             displayTime(job.value("startedAt").toString())});
         active->setData(0, Qt::UserRole, id);
         m_activeJobs->addTopLevelItem(active);
+        active->setSelected(id == selected);
+        const auto state = m_captureEvents.value(id);
+        if (!state.isEmpty()) {
+          active->setText(2, QStringLiteral("%1 / %2")
+              .arg(job.value("completedArtifacts").toInt() + job.value("failedArtifacts").toInt())
+              .arg(state.value("totalArtifacts").toInt()));
+          active->setText(5, state.value("detail").toString());
+          active->setToolTip(5, state.value("detail").toString());
+        }
+        // Replay persisted events on reconnect, then follow live events by sequence.
+        rpcCall(QStringLiteral("job.events"), {{"jobId", id}, {"afterSequence", state.value("sequence").toInteger()}},
+                [this, projectId = m_projectId](const QJsonObject &events) {
+          for (const auto &value : events.value("events").toArray()) {
+            QJsonObject event = value.toObject();
+            event.insert("projectId", projectId);
+            applyCaptureEvent(event);
+          }
+        });
       }
     }
     if (m_activeJobsGroup) m_activeJobsGroup->setVisible(m_activeJobs->topLevelItemCount() > 0);
@@ -2472,6 +2618,7 @@ QJsonObject MainWindow::captureProfile() const {
   }
   if (profile.isEmpty()) profile = toJson(defaultProfile());
   profile.insert("captureMode", m_captureMode->currentData().toString());
+  profile.insert("colorScheme", m_colorScheme->currentData().toString());
   profile.insert("elementSelector", m_elementSelector->text().trimmed());
   profile.insert("engines", stringArray(checkedValues({{m_chromium, "chromium"}, {m_firefox, "firefox"}, {m_webkit, "webkit"}})));
   profile.insert("formats", stringArray(checkedValues({{m_png, "png"}, {m_webp, "webp"}, {m_avif, "avif"}, {m_pdf, "pdf"}})));
@@ -2546,6 +2693,7 @@ void MainWindow::loadSelectedProfile() {
   checkValues("formats", {{m_png, "png"}, {m_webp, "webp"}, {m_avif, "avif"}, {m_pdf, "pdf"}});
   const int modeIndex = m_captureMode->findData(profile.value("captureMode").toString("fullPage"));
   if (modeIndex >= 0) m_captureMode->setCurrentIndex(modeIndex);
+  m_colorScheme->setCurrentIndex(qMax(0, m_colorScheme->findData(profile.value("colorScheme").toString(QStringLiteral("light")))));
   m_elementSelector->setText(profile.value("elementSelector").toString());
   m_initialDelay->setValue(profile.value("initialDelay").toDouble(1.5));
   m_scrollDelay->setValue(profile.value("scrollDelay").toDouble(1.8));
@@ -2687,10 +2835,11 @@ void MainWindow::updateCapturePlan() {
       if (format != "pdf") ++rasterFormatsAcrossEngines;
     }
   }
-  const qint64 originals = targetCount * enabledViewports * formatsAcrossEngines;
+  const int schemeCount = m_colorScheme->currentData().toString() == QStringLiteral("both") ? 2 : 1;
+  const qint64 originals = targetCount * enabledViewports * formatsAcrossEngines * schemeCount;
   const bool presentationEnabled = m_presentationScene->currentData().toString() != "off";
   const qint64 portfolioCopies = presentationEnabled
-      ? targetCount * enabledViewports * rasterFormatsAcrossEngines : 0;
+      ? targetCount * enabledViewports * rasterFormatsAcrossEngines * schemeCount : 0;
   const qint64 files = originals + portfolioCopies;
   if (files > 10000) errors.append("The 10,000-file job limit is exceeded");
   errors.removeDuplicates();
@@ -2699,6 +2848,8 @@ void MainWindow::updateCapturePlan() {
       .arg(enabledViewports).arg(enabledViewports == 1 ? "" : "s")
       .arg(engines.size()).arg(engines.size() == 1 ? "" : "s")
       .arg(files).arg(files == 1 ? "" : "s");
+  summary += schemeCount == 2 ? QStringLiteral(" · Light + dark")
+                            : QStringLiteral(" · %1 theme").arg(m_colorScheme->currentText());
   if (presentationEnabled) {
     summary += QStringLiteral(" (%1 original%2 + %3 portfolio cop%4)")
         .arg(originals).arg(originals == 1 ? "" : "s")
@@ -2734,6 +2885,12 @@ void MainWindow::openProfileManager() {
   auto *concurrency = new QSpinBox; concurrency->setRange(1, 10); concurrency->setValue(source.value("concurrency").toInt(1));
   generalForm->addRow("Profile name", name);
   generalForm->addRow("Capture mode", mode);
+  auto *colorScheme = new QComboBox;
+  colorScheme->addItem(QStringLiteral("Light"), QStringLiteral("light"));
+  colorScheme->addItem(QStringLiteral("Dark"), QStringLiteral("dark"));
+  colorScheme->addItem(QStringLiteral("Both — light and dark"), QStringLiteral("both"));
+  colorScheme->setCurrentIndex(qMax(0, colorScheme->findData(source.value("colorScheme").toString(QStringLiteral("light")))));
+  generalForm->addRow(QStringLiteral("Website theme"), colorScheme);
   generalForm->addRow("Element selector", element);
   generalForm->addRow("Parallel pages", concurrency);
   generalForm->addRow(helperText("Full page scrolls and captures the document; Viewport captures the visible rectangle; Element captures the first matching CSS element."));
@@ -2779,7 +2936,7 @@ void MainWindow::openProfileManager() {
   chromium->setChecked(selectedEngines.contains("chromium")); firefox->setChecked(selectedEngines.contains("firefox")); webkit->setChecked(selectedEngines.contains("webkit"));
   QStringList selectedFormats; for (const auto &value : source.value("formats").toArray()) selectedFormats.append(value.toString());
   png->setChecked(selectedFormats.contains("png")); webp->setChecked(selectedFormats.contains("webp")); avif->setChecked(selectedFormats.contains("avif")); pdf->setChecked(selectedFormats.contains("pdf"));
-  auto *naming = new QLineEdit(source.value("namingTemplate").toString("{hostname}-{preset}"));
+  auto *naming = new QLineEdit(source.value("namingTemplate").toString(QStringLiteral("{url}-{preset}")));
   auto *collision = new QComboBox; collision->addItem("Create a version", "version"); collision->addItem("Overwrite", "overwrite"); collision->addItem("Skip", "skip");
   collision->setCurrentIndex(qMax(0, collision->findData(source.value("collisionPolicy").toString("version"))));
   auto *webpQuality = new QSpinBox; webpQuality->setRange(1, 100); webpQuality->setValue(source.value("webpQuality").toInt(80));
@@ -2791,7 +2948,7 @@ void MainWindow::openProfileManager() {
   outputForm->addRow("Filename template", naming); outputForm->addRow("Existing file", collision);
   outputForm->addRow("WebP quality", webpQuality); outputForm->addRow("AVIF quality", avifQuality);
   outputForm->addRow("PDF paper format", pdfFormat); outputForm->addRow(QString(), pdfLandscape); outputForm->addRow("PDF margin", pdfMargin);
-  outputForm->addRow(helperText("Template tokens include {hostname}, {path}, {preset}, {width}, {height}, {engine}, {date}, {time}, {job}, and {index}. Use / to create subfolders."));
+  outputForm->addRow(helperText("Default: {url}-{preset}, e.g. example.com-sample-Desktop.png. Tokens include {url} (host + path), {hostname}, {path}, {preset}, {colorScheme}, {width}, {height}, {engine}, {date}, {time}, {job}, and {index}. Use / to create subfolders. Both themes automatically get -light / -dark suffixes unless {colorScheme} is included."));
   tabs->addTab(output, "Browsers & Output");
 
   auto *presentationPage = new QWidget;
@@ -2942,6 +3099,7 @@ void MainWindow::openProfileManager() {
   auto buildProfile = [&]() {
     QJsonObject profile = source;
     profile.insert("name", name->text().trimmed()); profile.insert("captureMode", mode->currentData().toString());
+    profile.insert("colorScheme", colorScheme->currentData().toString());
     profile.insert("elementSelector", element->text().trimmed()); profile.insert("concurrency", concurrency->value());
     profile.insert("engines", stringArray(checkedValues({{chromium, "chromium"}, {firefox, "firefox"}, {webkit, "webkit"}})));
     profile.insert("formats", stringArray(checkedValues({{png, "png"}, {webp, "webp"}, {avif, "avif"}, {pdf, "pdf"}})));
@@ -3124,7 +3282,8 @@ void MainWindow::showJobDetails() {
       const auto artifact = artifacts.at(row).toObject();
       const QString id = artifact.value("id").toString();
       m_artifacts->setItem(row, 0, item(artifact.value("viewportName").toString(), id));
-      m_artifacts->setItem(row, 1, item(artifact.value("engine").toString()));
+      m_artifacts->setItem(row, 1, item(artifact.value("engine").toString() + QStringLiteral(" · ") +
+                                      artifact.value("colorScheme").toString(QStringLiteral("light"))));
       const QString format = artifact.value("format").toString();
       const QString variant = artifact.value("variant").toString("original");
       const QHash<QString, QString> formatLabels{{"png", "PNG"}, {"webp", "WebP"}, {"avif", "AVIF"}, {"pdf", "PDF"}};

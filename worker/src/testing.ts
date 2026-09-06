@@ -5,7 +5,7 @@ export {
   type NormalizedRules, type RulesetSnapshot,
 } from './blocking.js';
 export { assertPublicUrl, resolveAllowedHost, startFilteringProxy } from './network.js';
-export { decideRoute } from './capture.js';
+export { decideRoute, runCaptureJob } from './capture.js';
 export { defaultPresentation, normalizePresentation, planPresentation, renderPresentation } from './presentation.js';
 export { windowsBinaryIsX64 } from './windows.js';
 export {

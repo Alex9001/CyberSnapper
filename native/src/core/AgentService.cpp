@@ -53,12 +53,14 @@ QString normalizeCaptureUrl(const QString &input) {
 QString comparisonKey(const QJsonObject &artifact) {
   return artifact.value("url").toString() + "|" + artifact.value("engine").toString() + "|" +
          artifact.value("viewportId").toString() + "|" + artifact.value("captureMode").toString() +
-         "|" + artifact.value("format").toString();
+         "|" + artifact.value("format").toString() +
+         (artifact.value("colorScheme").toString() == QStringLiteral("dark") ? QStringLiteral("|dark") : QString{});
 }
 
 QString comparisonKey(const QString &url, const QString &engine, const Viewport &viewport,
-                      const CaptureProfile &profile, const QString &format) {
-  return url + "|" + engine + "|" + viewport.id + "|" + profile.captureMode + "|" + format;
+                      const CaptureProfile &profile, const QString &format, const QString &colorScheme) {
+  return url + "|" + engine + "|" + viewport.id + "|" + profile.captureMode + "|" + format +
+      (colorScheme == QStringLiteral("dark") ? QStringLiteral("|dark") : QString{});
 }
 
 bool pathInside(const QString &root, const QString &candidate) {
@@ -351,9 +353,13 @@ QString AgentService::submitJob(ProjectStore *store, JobRequest request, QString
           if (!viewport.enabled) continue;
           for (const auto &format : request.profile.formats) {
             if (format == "pdf") continue;
-            const QString key = comparisonKey(url, engine, viewport, request.profile, format);
-            const QJsonObject baseline = store->baseline(key);
-            if (!baseline.isEmpty()) request.baselines.insert(key, baseline);
+            const QStringList schemes = request.profile.colorScheme == QStringLiteral("both")
+                ? QStringList{QStringLiteral("light"), QStringLiteral("dark")} : QStringList{request.profile.colorScheme};
+            for (const QString &scheme : schemes) {
+              const QString key = comparisonKey(url, engine, viewport, request.profile, format, scheme);
+              const QJsonObject baseline = store->baseline(key);
+              if (!baseline.isEmpty()) request.baselines.insert(key, baseline);
+            }
           }
         }
       }

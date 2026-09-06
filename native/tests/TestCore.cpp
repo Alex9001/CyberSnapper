@@ -1,4 +1,5 @@
 #include "core/Models.h"
+#include "core/JobManager.h"
 #include "core/BrowserManager.h"
 #include "core/ProjectStore.h"
 #include "core/ContentRulesets.h"
@@ -25,6 +26,7 @@ class TestCore final : public QObject {
   Q_OBJECT
 private slots:
   void profileNormalization();
+  void themeArtifactLimit();
   void projectPersistence();
   void strictProjectLifecycle();
   void transactionalWorkerEvents();
@@ -39,6 +41,36 @@ private slots:
   void rulesSnapshotUsesCachedSubscriptions();
   void browserManagerQueuesVerifiesAndCancels();
 };
+
+void TestCore::themeArtifactLimit() {
+  QTemporaryDir temporary;
+  ProjectStore store;
+  QString error;
+  QVERIFY(store.create(temporary.path(), QStringLiteral("Theme limit"), &error));
+  JobManager manager;
+  JobRequest request;
+  request.profile = defaultProfile();
+  const Viewport viewport = request.profile.viewports.first();
+  request.profile.viewports.clear();
+  for (int i = 0; i < 6; ++i) {
+    Viewport copy = viewport;
+    copy.id = QString::number(i);
+    copy.enabled = true;
+    request.profile.viewports.append(copy);
+  }
+  request.profile.formats = {QStringLiteral("png")};
+  request.profile.engines = {QStringLiteral("chromium")};
+  request.profile.colorScheme = QStringLiteral("both");
+  request.urls = QStringList(1000, QStringLiteral("https://example.com/sample"));
+  QVERIFY(manager.submit(&store, request, &error).isEmpty());
+  QVERIFY(error.contains(QStringLiteral("10,000")));
+  QCOMPARE(store.jobs().size(), 0);
+  request.profile.colorScheme = QStringLiteral("light");
+  error.clear();
+  const QString jobId = manager.submit(&store, request, &error);
+  QVERIFY2(!jobId.isEmpty(), qPrintable(error));
+  QVERIFY(manager.cancel(jobId, &error)); // Validate the plan without starting a worker.
+}
 
 void TestCore::browserManagerQueuesVerifiesAndCancels() {
   const QByteArray oldWorker = qgetenv("CYBERSNAPPER_WORKER_ENTRY");
@@ -106,6 +138,15 @@ void TestCore::browserManagerQueuesVerifiesAndCancels() {
 }
 
 void TestCore::profileNormalization() {
+  QCOMPARE(defaultProfile().colorScheme, QStringLiteral("light"));
+  QCOMPARE(defaultProfile().namingTemplate, QStringLiteral("{url}-{preset}"));
+  for (const QString &scheme : {QStringLiteral("light"), QStringLiteral("dark"), QStringLiteral("both")}) {
+    const auto themed = profileFromJson({{"colorScheme", scheme}});
+    QCOMPARE(toJson(themed).value("colorScheme").toString(), scheme);
+  }
+  QCOMPARE(profileFromJson({{"colorScheme", "invalid"}}).colorScheme, QStringLiteral("light"));
+  QCOMPARE(profileFromJson({{"namingTemplate", "{hostname}-{preset}"}}).namingTemplate, QStringLiteral("{url}-{preset}"));
+  QCOMPARE(profileFromJson({{"namingTemplate", "{date}/{hostname}/{preset}"}}).namingTemplate, QStringLiteral("{date}/{hostname}/{preset}"));
   const CaptureProfile profile = profileFromJson({{"id", "custom"}, {"name", "Custom"},
       {"concurrency", 999}, {"captureMode", "invalid"}, {"formats", QJsonArray{"png", "webp"}},
       {"presentation", QJsonObject{{"enabled", true}, {"scene", "unknown"}, {"frame", "laptop"},

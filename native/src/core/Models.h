@@ -44,6 +44,7 @@ struct CaptureProfile {
   QStringList engines{"chromium"};
   QStringList formats{"png"};
   QString captureMode{"fullPage"};
+  QString colorScheme{QStringLiteral("light")};
   QString elementSelector;
   double initialDelay = 1.5;
   double scrollDelay = 1.8;
@@ -57,7 +58,7 @@ struct CaptureProfile {
   QStringList blocklist;
   QStringList hideSelectors;
   QString waitForSelector;
-  QString namingTemplate{"{hostname}-{preset}"};
+  QString namingTemplate{QStringLiteral("{url}-{preset}")};
   QString collisionPolicy{"version"};
   int webpQuality = 80;
   int avifQuality = 50;

@@ -165,6 +165,7 @@ QJsonObject toJson(const CaptureProfile &profile) {
           {"engines", jsonList(profile.engines)},
           {"formats", jsonList(profile.formats)},
           {"captureMode", profile.captureMode},
+          {"colorScheme", profile.colorScheme},
           {"elementSelector", profile.elementSelector},
           {"initialDelay", profile.initialDelay},
           {"scrollDelay", profile.scrollDelay},
@@ -210,6 +211,10 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   const auto formats = stringList(object.value("formats"));
   if (!formats.isEmpty()) { profile.formats = formats; profile.formats.removeDuplicates(); }
   profile.captureMode = object.value("captureMode").toString(profile.captureMode);
+  profile.colorScheme = object.value("colorScheme").toString(QStringLiteral("light"));
+  if (!QStringList{QStringLiteral("light"), QStringLiteral("dark"), QStringLiteral("both")}.contains(profile.colorScheme)) {
+    profile.colorScheme = QStringLiteral("light");
+  }
   if (!QStringList{"fullPage", "viewport", "element"}.contains(profile.captureMode)) profile.captureMode = "fullPage";
   profile.elementSelector = object.value("elementSelector").toString().trimmed().left(4096);
   profile.initialDelay = boundedDouble(object, "initialDelay", profile.initialDelay, 0.0, 300.0);
@@ -225,7 +230,9 @@ CaptureProfile profileFromJson(const QJsonObject &object) {
   profile.hideSelectors = stringList(object.value("hideSelectors"));
   profile.waitForSelector = object.value("waitForSelector").toString().trimmed().left(4096);
   profile.namingTemplate = object.value("namingTemplate").toString(profile.namingTemplate).trimmed().left(512);
-  if (profile.namingTemplate.isEmpty()) profile.namingTemplate = "{hostname}-{preset}";
+  if (profile.namingTemplate.isEmpty() || profile.namingTemplate == QStringLiteral("{hostname}-{preset}")) {
+    profile.namingTemplate = QStringLiteral("{url}-{preset}");
+  }
   profile.collisionPolicy = object.value("collisionPolicy").toString(profile.collisionPolicy);
   if (!QStringList{"version", "overwrite", "skip"}.contains(profile.collisionPolicy)) profile.collisionPolicy = "version";
   profile.webpQuality = boundedInt(object, "webpQuality", 80, 1, 100);

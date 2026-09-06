@@ -7,7 +7,7 @@ import { assertPublicUrl, startFilteringProxy, type NetworkPolicy } from './netw
 import { ContentBlocker } from './blocking.js';
 import { captureName, OutputPathAllocator, safeSegment } from './naming.js';
 import { normalizePresentation, renderPresentation } from './presentation.js';
-import type { Artifact, BrowserEngine, CaptureJob, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
+import type { Artifact, BrowserEngine, CaptureJob, ColorScheme, OutputFormat, TargetSnapshot, Viewport, WorkerEvent } from './protocol.js';
 import { windowsBinaryIsX64 } from './windows.js';
 
 export interface JobRuntime {
@@ -17,7 +17,7 @@ export interface JobRuntime {
 
 type Emit = (event: Omit<WorkerEvent, 'protocolVersion' | 'sequence' | 'timestamp' | 'jobId'>) => void;
 
-interface CaptureTarget { index: number; target: TargetSnapshot; engine: BrowserEngine; viewport: Viewport; formats: OutputFormat[]; }
+interface CaptureTarget { index: number; position: number; totalTargets: number; colorScheme: ColorScheme; target: TargetSnapshot; engine: BrowserEngine; viewport: Viewport; formats: OutputFormat[]; }
 
 const browserTypes: Record<BrowserEngine, BrowserType> = { chromium, firefox, webkit };
 
@@ -309,13 +309,24 @@ async function compareArtifact(job: CaptureJob, artifact: Artifact, output: Buff
 
 async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Browser,
                              outputDirectory: string, allocator: OutputPathAllocator, runtime: JobRuntime,
-                             emit: Emit): Promise<{ completed: number; failed: number }> {
+                             outputEmit: Emit): Promise<{ completed: number; failed: number }> {
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let completed = 0;
   let failed = 0;
-  const { engine, viewport, formats } = target;
+  const { engine, viewport, formats, colorScheme } = target;
   const { url } = target.target;
+  const emit: Emit = (event) => outputEmit({ ...event,
+    ...(event.artifact ? { artifact: { ...(event.artifact as Artifact), colorScheme } } : {}),
+    ...(event.comparison ? { comparison: { ...(event.comparison as Record<string, unknown>), colorScheme } } : {}),
+  });
+  let stage = 'Preparing browser context';
+  let stageStarted = Date.now();
+  const report = () => emit({ type: 'target_progress', url, engine, viewportId: viewport.id,
+    viewportName: viewport.name, colorScheme, position: target.position, totalTargets: target.totalTargets,
+    stage, elapsedSeconds: Math.floor((Date.now() - stageStarted) / 1000) });
+  const setStage = (message: string) => { stage = message; stageStarted = Date.now(); report(); };
+  const progressTimer = setInterval(report, 2000);
   const presentation = normalizePresentation(job.profile.presentation);
   let blocker: ContentBlocker | undefined;
   const blockingMetrics = () => blocker?.enabled
@@ -324,6 +335,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     : undefined;
   try {
     if (runtime.cancelled) return { completed, failed };
+    report();
     blocker = await ContentBlocker.load(job);
     const networkPolicy = { allowLocalhost: job.allowLocalhost === true };
     await assertPublicUrl(url, networkPolicy);
@@ -333,6 +345,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       isMobile: engine === 'firefox' ? false : viewport.mobile,
       hasTouch: viewport.mobile,
       ignoreHTTPSErrors: false,
+      colorScheme,
     });
     await installRouting(context, job.profile.blocklist, networkPolicy, blocker);
     page = await context.newPage();
@@ -342,6 +355,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     for (const warning of blocker.metrics.warnings) {
       emit({ type: 'job_warning', message: `Content blocking: ${warning}` });
     }
+    setStage('Loading page');
     const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
     if (response && response.status() >= 400) throw new Error(`Navigation returned HTTP ${response.status()}`);
     // Preparation order per the content-blocking design: load the rules
@@ -351,23 +365,33 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
     // full-page scrolling, and immediately before capture, then apply the
     // user's hide selectors. Scroll locking is only restored by the consent
     // passes themselves and only when a recognized overlay was removed.
+    setStage(`Waiting after load (${job.profile.initialDelay} s)`);
     await sleep(job.profile.initialDelay);
+    setStage('Applying content filters and handling cookie banners');
     await blocker.applyCosmeticFilters(page);
     await blocker.runConsentPass(page);
-    if (job.profile.waitForSelector) await page.locator(job.profile.waitForSelector).first().waitFor({ state: 'visible' });
+    if (job.profile.waitForSelector) {
+      setStage(`Waiting for selector: ${job.profile.waitForSelector}`);
+      await page.locator(job.profile.waitForSelector).first().waitFor({ state: 'visible' });
+    }
     if (job.profile.captureMode === 'fullPage') {
+      setStage('Scrolling page to load lazy content');
       await autoScroll(page, job.profile.maxScrollSeconds);
+      setStage(`Waiting after scroll (${job.profile.scrollDelay} s)`);
       await sleep(job.profile.scrollDelay);
       await blocker.applyCosmeticFilters(page);
       await blocker.runConsentPass(page);
     }
+    setStage('Hiding requested elements and handling remaining banners');
     await hideElements(page, [...job.profile.hideSelectors,
       ...(job.profile.comparisonEnabled ? job.profile.comparisonIgnoreSelectors : [])]);
     await blocker.runConsentPass(page);
+    setStage(`Waiting before capture (${job.profile.finalDelay} s)`);
     await sleep(job.profile.finalDelay);
+    setStage('Taking screenshot');
     let png = formats.some((format) => format !== 'pdf') ? await screenshotPng(page, job, viewport) : undefined;
     if (png && job.profile.stripWhitespace && job.profile.captureMode === 'fullPage') png = await stripTopWhitespace(png);
-    const name = captureName(job, url, viewport, engine, target.index);
+    const name = captureName(job, url, viewport, engine, target.index, colorScheme);
     const targetDirectory = path.join(outputDirectory, ...name.directories);
     if (!inside(path.resolve(job.projectRoot), targetDirectory)) throw new Error('Capture name escapes project root');
     await mkdir(targetDirectory, { recursive: true });
@@ -375,9 +399,11 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       if (runtime.cancelled) break;
       const artifactId = id();
       try {
+        setStage(`Writing ${format.toUpperCase()} original`);
         const selection = await allocator.choose(targetDirectory, name.base, format, job.profile.collisionPolicy);
         const relativePath = path.relative(job.projectRoot, selection.absolute);
-        const comparisonKey = `${url}|${engine}|${viewport.id}|${job.profile.captureMode}|${format}`;
+        // Existing baselines were captured with Playwright's light default.
+        const comparisonKey = `${url}|${engine}|${viewport.id}|${job.profile.captureMode}|${format}${colorScheme === 'dark' ? '|dark' : ''}`;
         if (selection.skipped) {
           const artifact: Artifact = { id: artifactId, jobId: job.id, url, engine, viewportId: viewport.id,
             viewportName: viewport.name, captureMode: job.profile.captureMode, format, relativePath,
@@ -408,6 +434,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
             sha256: sha256(bytes), status: 'succeeded', createdAt: new Date().toISOString() };
           emit({ type: 'artifact_completed', artifact }); completed += 1;
           if (job.profile.comparisonEnabled && format !== 'pdf') {
+            setStage(`Comparing ${format.toUpperCase()} with baseline`);
             try { await compareArtifact(job, artifact, bytes, comparisonKey, emit); }
             catch (comparisonError) {
               emit({ type: 'comparison_completed', comparison: {
@@ -424,6 +451,7 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
           }
         }
         if (presentation.enabled && format !== 'pdf') {
+          setStage(`Rendering ${format.toUpperCase()} portfolio copy`);
           const portfolioId = id();
           try {
             const portfolioSelection = await allocator.choose(targetDirectory, `${name.base}-portfolio`, format,
@@ -501,8 +529,11 @@ async function captureTarget(job: CaptureJob, target: CaptureTarget, browser: Br
       }
     }
   } finally {
+    clearInterval(progressTimer);
     await page?.close().catch(() => undefined);
     await context?.close().catch(() => undefined);
+    emit({ type: 'target_finished', position: target.position, totalTargets: target.totalTargets,
+      url, engine, viewportName: viewport.name, colorScheme });
   }
   return { completed, failed };
 }
@@ -528,7 +559,12 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
   for (const engine of job.profile.engines) {
     for (const viewport of job.profile.viewports.filter((candidate) => candidate.enabled)) {
       const formats = job.profile.formats.filter((format) => format !== 'pdf' || engine === 'chromium');
-      for (const [index, target] of snapshots.entries()) targets.push({ index, target, engine, viewport, formats });
+      const schemes: ColorScheme[] = job.profile.colorScheme === 'both' ? ['light', 'dark']
+        : [job.profile.colorScheme === 'dark' ? 'dark' : 'light'];
+      for (const [index, target] of snapshots.entries()) {
+        for (const colorScheme of schemes) targets.push({ index, position: targets.length + 1,
+          totalTargets: 0, colorScheme, target, engine, viewport, formats });
+      }
     }
   }
   const presentationEnabled = normalizePresentation(job.profile.presentation).enabled;
@@ -536,12 +572,14 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     (count, format) => count + (presentationEnabled && format !== 'pdf' ? 2 : 1), 0), 0);
   if (totalArtifacts === 0) throw new Error('The job has no enabled capture targets');
   if (totalArtifacts > maximumArtifacts) throw new Error(`A job may create at most ${maximumArtifacts.toLocaleString()} artifacts`);
-  emit({ type: 'job_started', status: 'running', totalArtifacts });
+  for (const target of targets) target.totalTargets = targets.length;
+  emit({ type: 'job_started', status: 'running', totalArtifacts, totalTargets: targets.length });
   const browsers = new Map<BrowserEngine, Browser>();
   const proxy = await startFilteringProxy({ allowLocalhost: job.allowLocalhost === true });
   try {
     for (const engine of new Set(targets.map((target) => target.engine))) {
       if (runtime.cancelled) break;
+      emit({ type: 'job_stage', stage: `Launching ${engine}`, totalArtifacts });
       const browser = await launchEngine(engine, proxy.url);
       browsers.set(engine, browser);
       runtime.browsers.add(browser);
@@ -550,6 +588,13 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
     let cursor = 0;
     let completed = 0;
     let failed = 0;
+    const reportArtifact: Emit = (event) => {
+      emit(event);
+      if (event.type === 'artifact_completed' || event.type === 'artifact_failed') {
+        if (event.type === 'artifact_completed') completed += 1; else failed += 1;
+        emit({ type: 'job_progress', completed, failed, totalArtifacts });
+      }
+    };
     const worker = async (): Promise<void> => {
       while (!runtime.cancelled) {
         const index = cursor++;
@@ -557,10 +602,7 @@ export async function runCaptureJob(job: CaptureJob, runtime: JobRuntime, emit: 
         const target = targets[index];
         const browser = browsers.get(target.engine);
         if (!browser) return;
-        const result = await captureTarget(job, target, browser, outputDirectory, allocator, runtime, emit);
-        completed += result.completed;
-        failed += result.failed;
-        emit({ type: 'job_progress', completed, failed, totalArtifacts });
+        await captureTarget(job, target, browser, outputDirectory, allocator, runtime, reportArtifact);
       }
     };
     const estimatedTargetPixels = job.profile.captureMode === 'viewport'

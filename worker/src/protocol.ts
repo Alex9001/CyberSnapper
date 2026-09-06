@@ -1,6 +1,7 @@
 export type BrowserEngine = 'chromium' | 'firefox' | 'webkit';
 export type OutputFormat = 'png' | 'webp' | 'avif' | 'pdf';
 export type CaptureMode = 'fullPage' | 'viewport' | 'element';
+export type ColorScheme = 'light' | 'dark';
 export type PresentationScene = 'clean' | 'aurora' | 'sunset' | 'midnight' | 'graphite' | 'customSolid';
 export type PresentationFrame = 'auto' | 'none' | 'roundedCard' | 'lightBrowser' | 'darkBrowser' |
   'lightTablet' | 'darkTablet' | 'lightPhone' | 'darkPhone';
@@ -35,6 +36,7 @@ export interface CaptureProfile {
   engines: BrowserEngine[];
   formats: OutputFormat[];
   captureMode: CaptureMode;
+  colorScheme?: ColorScheme | 'both';
   elementSelector: string;
   initialDelay: number;
   scrollDelay: number;
@@ -137,6 +139,7 @@ export interface CaptureJob {
 }
 
 export interface Artifact {
+  colorScheme?: ColorScheme;
   id: string;
   jobId: string;
   url: string;
