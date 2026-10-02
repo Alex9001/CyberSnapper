@@ -270,7 +270,10 @@ jobs:
 
       - name: Install application
         shell: pwsh
-        run: cmake --install build/native --prefix stage --config Release
+        run: |
+          cmake --install build/native --prefix stage --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/prune-worker-dependencies.mjs stage/bin/worker/node_modules
 
       - name: Deploy Qt
         shell: pwsh
@@ -411,7 +414,9 @@ jobs:
 
       - name: Install application
         shell: bash
-        run: cmake --install build/native --prefix stage --config Release
+        run: |
+          cmake --install build/native --prefix stage --config Release
+          node scripts/prune-worker-dependencies.mjs stage/CyberSnapper.app/Contents/Resources/worker/node_modules
 
       - name: Deploy Qt and sign
         shell: bash

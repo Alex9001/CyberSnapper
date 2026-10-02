@@ -78,6 +78,7 @@ jobs:
             bash -n "$script"
           done
           python3 -m unittest discover -s scripts -p 'test_*.py' -v
+          node --test scripts/test_*.mjs
       - name: Validate Linux application metadata
         run: |
           desktop-file-validate native/packaging/net.cyberbrand.CyberSnapper.desktop

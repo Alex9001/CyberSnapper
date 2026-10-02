@@ -70,6 +70,8 @@ Every platform job starts with the same sequence:
 7. **Production dependencies** — `npm prune --omit=dev` trims the worker
    `node_modules` before install.
 
+After CMake copies dependencies into the release install tree, `scripts/prune-worker-dependencies.mjs` retains only its matching native Sharp/libvips variants (Windows bundles libvips in Sharp), preserves the optional WASM fallback, and verifies that the native module itself loads. PNG and AVIF round-trips must succeed from the staged tree, without resolving modules from the source checkout. This prevents npm optional dependencies for another architecture or libc from entering a release.
+
 The CMake install rules then lay out the application, agent, CLI, worker
 bundle, worker dependencies, Node runtime, and browser cache. Two rules carry
 `USE_SOURCE_PERMISSIONS` — the `.runtime/` Node binary and the

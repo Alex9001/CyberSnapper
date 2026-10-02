@@ -24,7 +24,7 @@ case "$release_arch" in
   *) echo "unsupported Linux release architecture: $release_arch" >&2; exit 2 ;;
 esac
 
-for executable in cmake file desktop-file-validate appstreamcli python3 zsync zsyncmake timeout; do
+for executable in cmake file desktop-file-validate appstreamcli node python3 zsync zsyncmake timeout; do
   command -v "$executable" >/dev/null 2>&1 || {
     echo "$executable is required" >&2
     exit 1
@@ -47,6 +47,8 @@ app_dir="$build_dir/AppDir"
 
 cmake -E remove_directory "$app_dir"
 DESTDIR="$app_dir" cmake --install "$build_dir" --prefix /usr --config Release
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+node "$script_dir/prune-worker-dependencies.mjs" "$app_dir/usr/share/cybersnapper/worker/node_modules"
 
 desktop_file="$app_dir/usr/share/applications/net.cyberbrand.CyberSnapper.desktop"
 icon_file="$app_dir/usr/share/pixmaps/net.cyberbrand.CyberSnapper.png"
@@ -68,7 +70,6 @@ rm -f "$release_plugins"/sqldrivers/libqsqlmysql.so \
       "$release_plugins"/sqldrivers/libqsqlodbc.so \
       "$release_plugins"/sqldrivers/libqsqlpsql.so
 
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 qmake="$script_dir/release-qmake-wrapper.sh"
 export CYBERSNAPPER_REAL_QMAKE="$real_qmake"
 export CYBERSNAPPER_RELEASE_PLUGINS="$release_plugins"
