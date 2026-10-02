@@ -2,16 +2,18 @@
 
 ## Local developer build
 
-Install Qt 6.8+, CMake 3.24+, a C++20 compiler, Node.js 20+, and npm. Then:
+Install Qt 6.8+, CMake 3.24+, a C++20 compiler, Node.js 20.9.0+, and npm. Then:
 
 ```bash
-npm install
+npm ci --engine-strict
 npm run typecheck:worker
 npm run build:worker
 npm run test:worker
 cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --parallel
 ctest --test-dir build/native --output-on-failure
+node scripts/check-release-version.mjs
+python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
 `cpp-httplib` may be installed system-wide. If it is absent, CMake fetches the pinned v0.52.0 source.
@@ -72,6 +74,23 @@ Platform deployment tools must run before creating these self-contained packages
 - Windows: run `windeployqt` for the GUI and agent.
 - macOS: run `macdeployqt`, then ad-hoc sign the complete app bundle. A future Developer ID release would also require Apple notarization.
 
-The release workflow in `.github/workflows/release.yml` performs native builds for Linux x64 and arm64, Windows x64 and arm64, and macOS x64 and arm64. It publishes SHA-256 checksums and GitHub/Sigstore build-provenance attestations for all twelve packages. macOS application bundles use ad-hoc signing but are not notarized; Windows installers and Linux packages remain unsigned because the project does not require paid signing credentials.
+The release workflow in `.github/workflows/release.yml` performs native builds for Linux x64 and arm64, Windows x64 and arm64, and macOS x64 and arm64. It publishes SHA-256 checksums and GitHub/Sigstore build-provenance attestations for all twelve packages and both AppImage zsync sidecars. macOS application bundles use ad-hoc signing but are not notarized; Windows installers and Linux packages remain unsigned because the project does not require paid signing credentials.
 
 GitHub documents the Sigstore-backed attestation model at <https://docs.github.com/en/actions/concepts/security/artifact-attestations>. Apple ties Developer ID distribution/notarization to its paid developer program (<https://developer.apple.com/support/developer-id/>). If CyberSnapper later adopts MSIX/Store distribution, Microsoft documents Store-managed signing as a no-certificate-cost path at <https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options>.
+
+## Dependency update checks
+
+Dependabot checks the root npm lockfile and GitHub Actions monthly. Security
+updates and production/development patch/minor updates have separate groups;
+major updates remain individual for review. No automatic merge is configured.
+
+PR CI runs with read-only permissions and no repository secrets: strict npm
+engine/lockfile installation, worker typechecking and tests, all three browser
+engines on Linux, native Linux/Windows/macOS tests, packaging regression and
+metadata checks, deterministic docs screenshots, and a worker check on the
+minimum Node.js 20.9.0 runtime. Release packaging uses Node.js 22.
+
+Install `zsync`, `desktop-file-utils`, and `appstream` to run all local packaging
+checks. Browser-dependent tests require Playwright browser downloads and host
+libraries; set `CYBERSNAPPER_REQUIRED_BROWSERS=chromium,firefox,webkit` when
+verifying a release so unavailable engines fail instead of skipping.

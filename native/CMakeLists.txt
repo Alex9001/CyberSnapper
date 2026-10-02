@@ -93,8 +93,10 @@ else()
     set(CYBERSNAPPER_NODE_DESTINATION lib/cybersnapper/runtime)
     install(FILES packaging/net.cyberbrand.CyberSnapper.desktop
       DESTINATION share/applications)
+    # The catalog worker recognizes the legacy appdata.xml filename.
     install(FILES packaging/net.cyberbrand.CyberSnapper.metainfo.xml
-      DESTINATION share/metainfo)
+      DESTINATION share/metainfo
+      RENAME net.cyberbrand.CyberSnapper.appdata.xml)
     install(FILES ${CMAKE_SOURCE_DIR}/assets/cybersnapper-512.png
       DESTINATION share/pixmaps
       RENAME net.cyberbrand.CyberSnapper.png)

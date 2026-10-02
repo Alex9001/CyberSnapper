@@ -17,9 +17,13 @@ jobs:
   browser-matrix:
     name: Browser matrix (Linux)
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -32,7 +36,7 @@ jobs:
         env:
           CYBERSNAPPER_REQUIRED_BROWSERS: chromium,firefox,webkit
         run: |
-          npm ci
+          npm ci --engine-strict
           npx playwright install --with-deps chromium firefox webkit
           npm run typecheck:worker
           npm run build:worker
@@ -66,12 +70,14 @@ jobs:
             appimagetool_sha256: f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
             runtime_sha256: 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           architecture: ${{ matrix.node_arch }}
@@ -83,7 +89,7 @@ jobs:
           CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
         run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
 
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: '6.8.3'
           host: ${{ matrix.qt_host }}
@@ -93,12 +99,12 @@ jobs:
       - name: Install Linux build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 file desktop-file-utils
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 file desktop-file-utils appstream zsync
 
       - name: Worker checks
         shell: bash
         run: |
-          npm ci
+          npm ci --engine-strict
           npx playwright install chromium
           if [ "${{ runner.os }}" = "Linux" ]; then
             npx playwright install firefox webkit
@@ -179,7 +185,7 @@ jobs:
             build/native/AppDir/usr/share/cybersnapper/browsers \
             build/native/smoke-state
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CyberSnapper-linux-${{ matrix.arch }}
           path: release-assets/*
@@ -202,12 +208,14 @@ jobs:
             qt_arch: win64_msvc2022_arm64
             msvc_arch: amd64_arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           architecture: ${{ matrix.node_arch }}
@@ -223,7 +231,7 @@ jobs:
         with:
           arch: ${{ matrix.msvc_arch }}
 
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
@@ -232,7 +240,7 @@ jobs:
       - name: Worker checks
         shell: bash
         run: |
-          npm ci
+          npm ci --engine-strict
           npx playwright install chromium
           npm run typecheck:worker
           npm run build:worker
@@ -303,7 +311,7 @@ jobs:
             stage\bin\browsers `
             build\native\smoke-state
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CyberSnapper-windows-${{ matrix.arch }}
           path: release-assets/*
@@ -324,12 +332,14 @@ jobs:
             node_arch: arm64
             cmake_arch: arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           architecture: ${{ matrix.node_arch }}
@@ -341,7 +351,7 @@ jobs:
           CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
         run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
 
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: '6.8.3'
           cache: true
@@ -349,7 +359,7 @@ jobs:
       - name: Worker checks
         shell: bash
         run: |
-          npm ci
+          npm ci --engine-strict
           npx playwright install chromium
           if [ "${{ runner.os }}" = "Linux" ]; then
             npx playwright install firefox webkit
@@ -443,37 +453,162 @@ jobs:
             stage/CyberSnapper.app/Contents/Resources/browsers \
             build/native/smoke-state
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CyberSnapper-macos-${{ matrix.arch }}
           path: release-assets/*
           if-no-files-found: error
 
+  appimage-compatibility:
+    name: Verify AppImage runtime (${{ matrix.os }})
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: CyberSnapper-linux-x64
+          path: candidates
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install runtime tools without a Qt SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libfuse2 libxcb-cursor0 libxkbcommon-x11-0 libgl1 libegl1 libopengl0 zsync binutils libc-bin xdotool imagemagick
+      - name: Install Chromium host dependencies
+        run: |
+          npm ci --engine-strict
+          npx playwright install-deps chromium
+      - name: Validate exact AppImage and update sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          image="candidates/CyberSnapper-linux-x64.AppImage"
+          chmod +x "$image"
+          channel=latest
+          case "$version" in *-*) channel="v$version" ;; esac
+          python3 scripts/check-appimage-update.py "$image" --expected-channel \
+            "gh-releases-zsync|Alex9001|CyberSnapper|$channel|CyberSnapper-linux-x64.AppImage.zsync"
+          xvfb-run -a python3 scripts/check-linux-appimage.py "$image" \
+            --evidence build/linux-evidence
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appimage-runtime-evidence-${{ matrix.os }}
+          path: build/linux-evidence/
+
+
+  appimage-catalog:
+    name: Verify upstream AppImage catalog compatibility
+    needs: linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      DISPLAY: ':99'
+      IS_PULLREQUEST: 'true'
+      STRICT: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: CyberSnapper-linux-x64
+          path: candidates
+      - name: Record candidate identity
+        run: sha256sum candidates/*.AppImage > candidate-sha256.txt
+      - name: Check out pinned upstream catalog worker
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: AppImage/appimage.github.io
+          ref: f1249e9e1ff840dd53a6218aec3451ebd6bf476d
+          path: catalog
+      - name: Install upstream worker dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sudo imagemagick libasound2-dev pulseaudio-utils alsa-utils alsa-oss libjack0 desktop-file-utils xmlstarlet xsel xterm xvfb icewm x11-utils x11-apps netpbm xdotool libgl1-mesa-dri libgl1-mesa-dev mesa-utils libosmesa6 libsdl1.2-dev libsdl2-2.0-0 fonts-wqy-microhei libfile-mimeinfo-perl tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim tesseract-ocr-ara tesseract-ocr-rus tesseract-ocr-ell libfuse2 stalonetray libxcb-cursor0 libxkbcommon-x11-0 libopengl0
+          cd catalog
+          bash code/fetch-deps.sh
+          cp -a deps/. .
+          sudo bash code/prep-dummy-soundcard.sh
+          sudo gem install dupervisor -v 1.0.5
+          sudo npm install -g asar
+      - name: Run unmodified catalog worker against candidate bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory candidates > server.log 2>&1 &
+          Xvfb :99 -screen 0 800x600x24 > xvfb.log 2>&1 &
+          mkdir -p "$HOME/.icewm"
+          echo 'ShowTaskBar = 0' > "$HOME/.icewm/preferences"
+          sleep 2
+          cd catalog
+          echo "http://127.0.0.1:8765/CyberSnapper-linux-x64.AppImage" > data/CyberSnapper
+          timeout --kill-after=30 600 bash -e code/worker.sh "$PWD/data/CyberSnapper" 2>&1 | tee ../catalog.log
+          cmp BeingTested.AppImage "../candidates/CyberSnapper-linux-x64.AppImage"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appimage-catalog-evidence
+          path: |
+            catalog.log
+            candidate-sha256.txt
+            catalog/database/CyberSnapper/
+            catalog/failure-screens/
+            server.log
+            xvfb.log
+
   publish:
-    name: Assemble and publish
-    needs: [linux, windows, macos]
-    if: github.event_name == 'release' || inputs.release_tag != ''
+    name: Assemble, verify, and optionally publish
+    needs: [linux, windows, macos, appimage-compatibility, appimage-catalog]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
+          pattern: CyberSnapper-*
           merge-multiple: true
 
-      - name: Create SHA-256 checksums
-        shell: bash
-        run: (cd artifacts && sha256sum -- * > SHA256SUMS.txt)
+      - name: Verify complete package set and create SHA-256 checksums
+        run: python3 scripts/check-release-assets.py artifacts
+
+      - name: Preserve verified release rehearsal
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag == ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: CyberSnapper-release-rehearsal
+          path: artifacts/*
+          if-no-files-found: error
 
       - name: Attest package provenance
-        uses: actions/attest-build-provenance@v2
+        if: github.event_name == 'release' || inputs.release_tag != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: artifacts/*
 
       - name: Publish packages to release
+        if: github.event_name == 'release' || inputs.release_tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,7 @@
 version: 2
 
+# Dependabot opens reviewable pull requests; it does not auto-merge them.
+# Keep major upgrades (including major security fixes) outside these groups.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -7,11 +9,31 @@ updates:
       interval: "monthly"
       time: "05:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     groups:
-      npm-dependencies:
+      npm-security:
+        applies-to: security-updates
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-runtime:
+        applies-to: version-updates
+        dependency-type: production
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-development:
+        applies-to: version-updates
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -19,8 +41,19 @@ updates:
       interval: "monthly"
       time: "05:30"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 5
     groups:
-      github-actions:
+      github-actions-security:
+        applies-to: security-updates
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      github-actions-compatible:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

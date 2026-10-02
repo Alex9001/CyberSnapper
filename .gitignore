@@ -7,3 +7,4 @@ build/
 .opencode/
 .cybersnapper.pid
 .cybersnapper.url
+__pycache__/
