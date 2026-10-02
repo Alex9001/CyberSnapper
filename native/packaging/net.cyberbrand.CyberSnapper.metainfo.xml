@@ -16,12 +16,9 @@
     </p>
   </description>
   <launchable type="desktop-id">net.cyberbrand.CyberSnapper.desktop</launchable>
-  <developer id="net.cyberbrand">
-    <name>CYBER BRAND</name>
-  </developer>
+  <developer_name>CYBER BRAND</developer_name>
   <url type="homepage">https://alex9001.github.io/CyberSnapper/</url>
   <url type="bugtracker">https://github.com/Alex9001/CyberSnapper/issues</url>
-  <url type="vcs-browser">https://github.com/Alex9001/CyberSnapper</url>
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/Alex9001/CyberSnapper/master/docs/images/app-capture.png</image>
@@ -32,5 +29,16 @@
       <caption>Portfolio presentation scene and frame editor</caption>
     </screenshot>
   </screenshots>
+  <releases>
+    <release version="2.4.2" date="2026-10-02"/>
+  </releases>
+  <provides>
+    <binary>CyberSnapper</binary>
+    <binary>cybersnapper-cli</binary>
+  </provides>
+  <categories>
+    <category>Graphics</category>
+    <category>Development</category>
+  </categories>
   <content_rating type="oars-1.1"/>
 </component>

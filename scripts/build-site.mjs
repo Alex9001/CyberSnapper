@@ -1,7 +1,11 @@
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import sharp from 'sharp';
+// Sharp's ESM entry uses import attributes newer than our Node.js minimum.
+// Use its supported CommonJS export, as the bundled worker does.
+const require = createRequire(import.meta.url);
+const sharp = require('sharp');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = path.join(root, 'site');

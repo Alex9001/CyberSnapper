@@ -27,12 +27,14 @@ Asset names follow `CyberSnapper-<platform>-<arch>.<ext>`, for example
 
 ## Workflow shape
 
-The workflow has three platform jobs plus a publish job:
+The workflow has native package jobs and independent validation gates:
 
 - `linux` — matrix over x64 and arm64.
 - `windows` — matrix over x64 and arm64.
 - `macos` — matrix over x64 and arm64.
-- `publish` — `needs` all three jobs; runs only when a release tag is involved.
+- `appimage-compatibility` — audits the exact x64 AppImage and opens its GUI on Ubuntu 22.04 and 24.04 without a Qt SDK.
+- `appimage-catalog` — runs the pinned upstream AppImageHub worker on the exact x64 candidate.
+- `publish` — waits for every package and compatibility gate, validates the complete asset set, then preserves a rehearsal bundle or publishes an authorized release.
 
 Triggers:
 
@@ -52,7 +54,7 @@ dispatched branch, while the built source comes from the selected ref.
 Every platform job starts with the same sequence:
 
 1. **Version gate** — `scripts/check-release-version.mjs` asserts that
-   `package.json` and `CMakeLists.txt` declare the same version, and that any
+   `package.json`, `package-lock.json`, `CMakeLists.txt`, desktop metadata, AppStream, and the website declare the same version, and that any
    requested tag equals `v<version>`. A tag/source mismatch fails the job
    before anything is built.
 2. **Qt 6.8.3** — installed via `jurplel/install-qt-action`.
@@ -67,6 +69,8 @@ Every platform job starts with the same sequence:
 6. **Build and test** — CMake configure/build plus `ctest`.
 7. **Production dependencies** — `npm prune --omit=dev` trims the worker
    `node_modules` before install.
+
+After CMake copies dependencies into the release install tree, `scripts/prune-worker-dependencies.mjs` retains only its matching native Sharp/libvips variants (Windows bundles libvips in Sharp), preserves the optional WASM fallback, and verifies that the native module itself loads. PNG and AVIF round-trips must succeed from the staged tree, without resolving modules from the source checkout. This prevents npm optional dependencies for another architecture or libc from entering a release.
 
 The CMake install rules then lay out the application, agent, CLI, worker
 bundle, worker dependencies, Node runtime, and browser cache. Two rules carry
@@ -90,7 +94,7 @@ package:
 4. `linuxdeploy` with `linuxdeploy-plugin-qt` bundles non-Qt and Qt
    dependencies into `AppDir/`. A stale Qt 6 hook is removed after deployment.
 5. `appimagetool` with a pinned type-2 runtime turns `AppDir/` into the
-   `.AppImage`.
+   `.AppImage` with architecture-specific update information and a matching `.zsync` file. Header, content hash, block table, and full offline zsync reconstruction must validate.
 6. The portable archive is `tar -czf` of `AppDir/usr/`.
 
 The script also guards the result: required files must exist, every binary must
@@ -171,7 +175,7 @@ launch Chromium never reaches the release.
 When all platform jobs succeed and a release tag is in play, the `publish` job:
 
 1. Downloads all uploaded artifacts (merged into one directory).
-2. Writes `SHA256SUMS.txt` from every asset.
+2. Requires exactly twelve nonempty native packages plus two matching AppImage zsync sidecars, then writes `SHA256SUMS.txt` from all fourteen assets.
 3. Records a GitHub/Sigstore build-provenance attestation over the artifacts.
 4. Uploads everything to the release with
    `gh release upload "$tag" artifacts/* --clobber`. The job has no checkout,
@@ -192,3 +196,20 @@ workflow with the same nonblank `release_tag`; the build jobs check out that
 tag and the publish job re-attaches with `--clobber`. Do not move a published
 `v*` tag — ship a new patch version if tagged source needs a code change. See
 the Recovery section of [RELEASE.md](../RELEASE.md) for the full policy.
+
+## AppImage updates and catalog submission
+
+Each AppImage embeds `gh-releases-zsync|Alex9001|CyberSnapper|latest|CyberSnapper-linux-<arch>.AppImage.zsync`, where `<arch>` is `x64` or `arm64`. The exact architecture-specific filename keeps external updaters from switching architectures. Prerelease packaging uses its exact version tag instead of the stable `latest` channel. The adjacent sidecar names the AppImage by basename, so both files can move together between staging and GitHub Releases. Checksums and provenance include the sidecars.
+
+Use an AppImageUpdate-compatible external tool with CyberSnapper closed. The application does not silently update itself. Images older than 2.4.2 lack update information and need a one-time manual upgrade.
+
+The catalog-facing desktop entry has `Name=CyberSnapper`, its installed icon, and `X-AppImage-Version`. The AppStream source is installed as `net.cyberbrand.CyberSnapper.appdata.xml`, a filename understood by the upstream worker; the schema remains compatible with Ubuntu 22.04.
+
+The release rehearsal downloads the just-built x64 artifact and serves those exact bytes to the unmodified, pinned catalog worker. It preserves startup/catalog screenshots, logs, and candidate hashes separately from release assets. This test does not submit or imply acceptance into the catalog.
+
+After the public release and downloaded update sidecars pass verification, submit one file to [AppImage/appimage.github.io](https://github.com/AppImage/appimage.github.io):
+
+- Path: `data/CyberSnapper`
+- Sole line: `https://github.com/Alex9001/CyberSnapper`
+
+Confirm no entry or open duplicate submission exists first. The upstream PR must pass its own checks and maintainer review before calling CyberSnapper listed.
