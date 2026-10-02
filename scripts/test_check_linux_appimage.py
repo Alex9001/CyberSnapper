@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import shutil
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -27,10 +29,13 @@ class ElfAuditTest(unittest.TestCase):
         self.symbols = ('0000 *UND* (GLIBC_2.35) libc_entry\n'
                         '0000 *UND* (GLIBCXX_3.4.30) std_entry\n'
                         '0000 *UND* (CXXABI_1.3.13) abi_entry')
+        self.headers = '  Type: DYN (Position-Independent Executable)\n  INTERP 0x00000040'
         self.libraries = 'libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0)'
 
     def command_output(self, *args, **kwargs):
-        return {'readelf': self.dynamic, 'objdump': self.symbols, 'ldd': self.libraries}[args[0]]
+        if args[0] == 'readelf':
+            return self.dynamic if '-d' in args else self.headers
+        return {'objdump': self.symbols, 'ldd': self.libraries}[args[0]]
 
     def audit(self):
         with patch.object(checker, 'output', side_effect=self.command_output):
@@ -90,6 +95,44 @@ class ElfAuditTest(unittest.TestCase):
         self.libraries = f'libQt6Core.so.6 => {library} (0x0)'
         self.assertEqual(self.audit(), 11)
 
+    def test_apprun_symlink_uses_canonical_origin_and_ldd_path(self):
+        target = self.executables / '0'
+        alias = self.root / 'AppRun.wrapped'
+        alias.symlink_to('usr/bin/0')
+        with patch.object(checker, 'output', side_effect=self.command_output) as command:
+            self.assertEqual(checker.inspect_elf(self.root, self.report), 12)
+        inspected = [call.args[-1] for call in command.call_args_list if call.args[0] == 'ldd']
+        self.assertNotIn(str(alias), inspected)
+        self.assertEqual(inspected.count(str(target.resolve())), 2)
+        self.assertIn('AppRun.wrapped', self.report.read_text())
+
+    def test_symlink_cannot_hide_escape_from_real_elf_location(self):
+        target = self.root / 'root-executable'
+        target.write_bytes(b'\x7fELFfixture')
+        (self.executables / 'alias').symlink_to('../../root-executable')
+        # At usr/bin this path looks valid, but the real ELF is at AppDir root.
+        with self.assertRaisesRegex(ValueError, 'escapes AppDir'):
+            self.audit()
+
+    def test_library_soname_takes_precedence_over_interpreter(self):
+        self.dynamic += '\n (SONAME) Library soname: [libexample.so]'
+        with patch.object(checker, 'output', side_effect=self.command_output):
+            self.assertFalse(checker.is_main_executable(self.executables / '0', self.dynamic))
+
+    def test_dso_alias_preserves_load_path_origin(self):
+        self.headers = '  Type: DYN (Shared object file)'
+        target = self.executables / '0'
+        alias = self.root / 'libalias.so'
+        alias.symlink_to('usr/bin/0')
+        # Canonical usr/bin/../lib is inside, but DSO alias/../lib is outside.
+        with self.assertRaisesRegex(ValueError, 'escapes AppDir'):
+            self.audit()
+        self.dynamic = 'Dynamic section at offset 0x10\n (NEEDED) [libc.so.6]\n (RUNPATH) [$ORIGIN/child]'
+        with patch.object(checker, 'output', side_effect=self.command_output) as command:
+            self.assertEqual(checker.inspect_elf(self.root, self.report), 12)
+        ldd_paths = [call.args[-1] for call in command.call_args_list if call.args[0] == 'ldd']
+        self.assertIn(str(alias), ldd_paths)
+
     def test_elf_symlink_escape_rejected(self):
         external = Path(self.temp.name) / 'external'
         external.write_bytes(b'\x7fELFexternal')
@@ -102,6 +145,46 @@ class ElfAuditTest(unittest.TestCase):
             (self.executables / str(number)).unlink()
         with self.assertRaisesRegex(ValueError, 'Unexpectedly few'):
             self.audit()
+
+
+@unittest.skipUnless(shutil.which('cc') and shutil.which('readelf') and shutil.which('ldd'),
+                     'C compiler and ELF tools are required for real loader fixtures')
+class RealLoaderOriginTest(unittest.TestCase):
+    def test_executable_and_dso_symlinks_have_different_origin_rules(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for directory in ('usr/bin', 'usr/lib', 'real/child', 'alias/child'):
+                (root / directory).mkdir(parents=True)
+            leaf = root / 'leaf.c'
+            leaf.write_text('int answer(void) { return ANSWER; }\n')
+            outer = root / 'outer.c'
+            outer.write_text('extern int answer(void); int outer(void) { return answer(); }\n')
+            main = root / 'main.c'
+            main.write_text('#include <stdio.h>\nextern int answer(void);\nint main(void) { printf("%d", answer()); }\n')
+            loader = root / 'loader.c'
+            loader.write_text('#include <dlfcn.h>\n#include <stdio.h>\nint main(int c,char**v) { '
+                              'void*h=dlopen(v[1],RTLD_NOW); if(!h) return 1; '
+                              'int(*f)(void)=dlsym(h,"outer"); printf("%d",f()); }\n')
+            def compile(*args):
+                subprocess.run(['cc', *map(str, args)], check=True, capture_output=True, timeout=30)
+            for destination, answer in (('usr/lib', '42'), ('real/child', '42'), ('alias/child', '99')):
+                compile('-shared', '-fPIC', '-DANSWER=' + answer, leaf, '-o', root / destination / 'libleaf.so')
+            executable = root / 'usr/bin/app'
+            compile(main, '-L' + str(root / 'usr/lib'), '-lleaf', '-Wl,-rpath,$ORIGIN/../lib', '-o', executable)
+            app_alias = root / 'AppRun.wrapped'
+            app_alias.symlink_to('usr/bin/app')
+            self.assertEqual(subprocess.check_output([str(app_alias)], text=True), '42')
+            dynamic = checker.output('readelf', '-d', str(executable))
+            self.assertTrue(checker.is_main_executable(executable, dynamic))
+            dso = root / 'real/libouter.so'
+            compile('-shared', '-fPIC', outer, '-L' + str(root / 'real/child'), '-lleaf',
+                    '-Wl,-rpath,$ORIGIN/child', '-o', dso)
+            compile(loader, '-ldl', '-o', root / 'loader')
+            dso_alias = root / 'alias/libouter.so'
+            dso_alias.symlink_to('../real/libouter.so')
+            self.assertEqual(subprocess.check_output([str(root / 'loader'), str(dso)], text=True), '42')
+            self.assertEqual(subprocess.check_output([str(root / 'loader'), str(dso_alias)], text=True), '99')
+            self.assertFalse(checker.is_main_executable(dso, checker.output('readelf', '-d', str(dso))))
 
 
 if __name__ == '__main__':

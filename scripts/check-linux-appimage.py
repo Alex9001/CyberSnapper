@@ -40,6 +40,16 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def is_main_executable(file, dynamic):
+    # Some shared libraries (for example libc) can also carry an interpreter.
+    if '(SONAME)' in dynamic:
+        return False
+    headers = output('readelf', '--file-header', '--program-headers', str(file))
+    return bool(re.search(r'^\s*Type:\s+EXEC\b', headers, re.MULTILINE) or
+                re.search(r'^\s*INTERP\s', headers, re.MULTILINE) or
+                re.search(r'\(FLAGS_1\).*\bPIE\b', dynamic))
+
+
 def inspect_elf(root, report):
     inspected = []
     environment = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib')}
@@ -49,13 +59,22 @@ def inspect_elf(root, report):
         with file.open('rb') as stream:
             if stream.read(4) != b'\x7fELF':
                 continue
-        require(file.resolve().is_relative_to(root.resolve()), f'ELF symlink escapes AppDir: {file}')
-        dynamic = output('readelf', '-d', str(file))
-        record = {'path': str(file.relative_to(root)), 'dynamic': '(NEEDED)' in dynamic}
+        resolved_file = file.resolve()
+        require(resolved_file.is_relative_to(root.resolve()), f'ELF symlink escapes AppDir: {file}')
+        dynamic = output('readelf', '-d', str(resolved_file))
+        executable = is_main_executable(resolved_file, dynamic)
+        # The kernel resolves executable symlinks (including AppRun.wrapped)
+        # before the loader expands $ORIGIN. Shared libraries instead retain
+        # their load pathname, so a DSO alias must be audited from its own
+        # directory. ldd must use that same origin to avoid false resolutions.
+        load_file = resolved_file if executable else file
+        record = {'path': str(file.relative_to(root)),
+                  'target': str(resolved_file.relative_to(root.resolve())),
+                  'main_executable': executable, 'dynamic': '(NEEDED)' in dynamic}
         # Static Go executables have no dynamic symbol table; their absence is
         # valid, while every dynamically linked executable/library is audited.
         if '(NEEDED)' in dynamic or 'Dynamic section at offset' in dynamic:
-            symbols = output('objdump', '-T', str(file))
+            symbols = output('objdump', '-T', str(resolved_file))
             for line in symbols.splitlines():
                 if '*UND*' not in line:
                     continue
@@ -71,10 +90,10 @@ def inspect_elf(root, report):
                             entry == '${ORIGIN}' or entry.startswith('${ORIGIN}/'),
                             f'Non-relocatable or empty runtime path in {file}: {line}')
                     relative = entry.replace('${ORIGIN}', '.', 1).replace('$ORIGIN', '.', 1)
-                    require((file.parent / relative).resolve().is_relative_to(root.resolve()),
+                    require((load_file.parent / relative).resolve().is_relative_to(root.resolve()),
                             f'Runtime path escapes AppDir in {file}: {line}')
         if record['dynamic']:
-            libraries = output('ldd', str(file), env=environment)
+            libraries = output('ldd', str(load_file), env=environment)
             require('not found' not in libraries, f'Unresolved dependency in {file}:\n{libraries}')
             record['dependencies'] = libraries
             for path in re.findall(r'=> (/\S+)', libraries):
