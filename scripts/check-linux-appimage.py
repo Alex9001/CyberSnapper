@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 import re
 import signal
+import select
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -128,6 +131,201 @@ def visible_window(process, environment):
     return None
 
 
+class OwnedProcess:
+    """Pin one process identity so a recycled PID can never be signalled."""
+    def __init__(self, pid):
+        self.pid = pid
+        self.fd = os.pidfd_open(pid)
+        try:
+            fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+            self.start_ticks = int(fields[19])
+        except Exception:
+            os.close(self.fd)
+            raise
+
+    def wait(self, timeout):
+        poller = select.poll()
+        poller.register(self.fd, select.POLLIN)
+        return bool(poller.poll(max(0, int(timeout * 1000))))
+
+    def send(self, sig):
+        if not self.wait(0):
+            try:
+                signal.pidfd_send_signal(self.fd, sig)
+            except ProcessLookupError:
+                pass
+
+    def close(self):
+        os.close(self.fd)
+
+
+def descendants(process):
+    """Pin children while their known parent is still alive."""
+    result = []
+    if process.wait(0):
+        return result
+    try:
+        children = Path(f'/proc/{process.pid}/task/{process.pid}/children').read_text().split()
+    except FileNotFoundError:
+        return result
+    for pid in children:
+        child = None
+        try:
+            child = OwnedProcess(int(pid))
+            status = Path(f'/proc/{pid}/status').read_text()
+            if not re.search(rf'^PPid:\s+{process.pid}$', status, re.MULTILINE):
+                child.close()
+                continue
+            result.append(child)
+            result.extend(descendants(child))
+        except ProcessLookupError:
+            continue
+        except FileNotFoundError:
+            if child is not None:
+                child.close()
+    return result
+
+
+class AgentRpc:
+    def __init__(self, server, owned):
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            self.socket.settimeout(2)
+            self.socket.connect(str(server))
+            pid, uid, _ = struct.unpack('3i', self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            require(uid == os.getuid(), 'Isolated socket belongs to another user')
+            require(Path(os.readlink(f'/proc/{pid}/exe')).name == 'cybersnapper-agent',
+                    'Isolated socket is not served by the packaged agent')
+            # Pin the peer before waiting for initialization or an RPC reply.
+            if pid not in owned:
+                owned[pid] = OwnedProcess(pid)
+            self.process = owned[pid]
+            self.sequence = 0
+        except Exception:
+            self.socket.close()
+            raise
+
+    def read_exact(self, length):
+        data = bytearray()
+        while len(data) < length:
+            chunk = self.socket.recv(length - len(data))
+            require(bool(chunk), 'Agent closed its RPC connection')
+            data.extend(chunk)
+        return data
+
+    def call(self, method, params=None, timeout=30):
+        self.socket.settimeout(timeout)
+        self.sequence += 1
+        request_id = f'runtime-check-{self.sequence}'
+        body = json.dumps({'v': 1, 'id': request_id, 'method': method, 'params': params or {}}).encode()
+        self.socket.sendall(struct.pack('>I', len(body)) + body)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.socket.settimeout(max(0.01, deadline - time.monotonic()))
+            length = struct.unpack('>I', self.read_exact(4))[0]
+            require(0 < length <= 16 * 1024 * 1024, 'Invalid agent RPC frame length')
+            response = json.loads(self.read_exact(length))
+            if response.get('id') != request_id:
+                continue
+            require(response.get('v') == 1 and 'error' not in response, f'Agent RPC failed: {response}')
+            require(isinstance(response.get('result'), dict), 'Agent RPC result is missing')
+            return response['result']
+        raise TimeoutError(f'Agent RPC timed out: {method}')
+
+    def close(self):
+        self.socket.close()
+
+
+def idle_status(status):
+    return bool(status.get('activeProjectId')) and not any(status.get(key) for key in
+        ('activeJobs', 'queuedJobs', 'browserOperations', 'queuedBrowserOperations'))
+
+
+def stop_owned(process, graceful_timeout=10):
+    """Wait for graceful exit, then clean up strictly and report escalation."""
+    if process.wait(graceful_timeout):
+        return False
+    process.send(signal.SIGTERM)
+    if not process.wait(5):
+        process.send(signal.SIGKILL)
+        require(process.wait(5), f'Owned process did not exit: {process.pid}')
+    return True
+
+
+def teardown(process, gui, rpc, agents, evidence):
+    children = []
+    report = {'passed': False, 'agents': [], 'escalated': [], 'errors': []}
+
+    def failed(stage, error):
+        report['errors'].append(f'{stage}: {error}')
+
+    try:
+        for agent in agents.values():
+            report['agents'].append({'pid': agent.pid, 'start_ticks': agent.start_ticks})
+            try:
+                children.extend(descendants(agent))
+            except Exception as error:
+                failed(f'Inspect descendants of {agent.pid}', error)
+        if rpc is not None:
+            try:
+                if not rpc.process.wait(0):
+                    rpc.call('agent.stop', {'force': True}, timeout=15)
+            except (OSError, ValueError) as error:
+                # Exit may precede response flush; the exact pidfd must still
+                # confirm exit below, otherwise cleanup fails the gate.
+                report['stop_response_error'] = str(error)
+        for handle in [*agents.values(), *children]:
+            try:
+                if stop_owned(handle, 15 if handle in agents.values() else 2):
+                    report['escalated'].append(handle.pid)
+            except Exception as error:
+                # One broken process must not skip the remaining identities.
+                failed(f'Stop owned process {handle.pid}', error)
+    finally:
+        # Keep the extraction tree alive until agent cleanup has been tried,
+        # then always attempt GUI cleanup, evidence writing and every fd close.
+        try:
+            if process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+                report['escalated'].append(process.pid)
+        except Exception as error:
+            failed('Stop AppImage process group', error)
+        if gui is not None:
+            try:
+                if stop_owned(gui, 5):
+                    report['escalated'].append(gui.pid)
+            except Exception as error:
+                failed(f'Stop GUI process {gui.pid}', error)
+        handles = [*children, *agents.values(), *([gui] if gui is not None else [])]
+        for handle in handles:
+            try:
+                if not handle.wait(0):
+                    failed(f'Owned process {handle.pid}', 'still alive after teardown')
+            except Exception as error:
+                failed(f'Check owned process {handle.pid}', error)
+        if rpc is not None:
+            try:
+                rpc.close()
+            except Exception as error:
+                failed('Close agent RPC', error)
+        for handle in handles:
+            try:
+                handle.close()
+            except Exception as error:
+                failed(f'Close process handle {handle.pid}', error)
+        report['passed'] = not report['escalated'] and not report['errors']
+        (evidence / 'teardown.json').write_text(json.dumps(report, indent=2) + '\n')
+    require(report['passed'], f'Runtime teardown did not exit cleanly: {report}')
+
+
 def launch(appimage, state, evidence, appdir):
     require(bool(os.environ.get('DISPLAY')), 'DISPLAY is required; run with xvfb-run -a')
     environment = {**os.environ, 'QT_QPA_PLATFORM': 'xcb', 'APPIMAGE_EXTRACT_AND_RUN': '1',
@@ -137,49 +335,64 @@ def launch(appimage, state, evidence, appdir):
                    'CYBERSNAPPER_DEFAULT_PROJECT': str(state / 'project'),
                    'CYBERSNAPPER_AGENT_SERVER': str(state / 'agent.sock')}
     (state / 'runtime').mkdir(mode=0o700)
-    for key in ('QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH', 'QML2_IMPORT_PATH', 'LD_LIBRARY_PATH', 'LD_PRELOAD'):
+    settings = state / 'config/CyberBrand/CyberSnapper.conf'
+    settings.parent.mkdir(parents=True)
+    settings.write_text('[onboarding]\ncompleted=true\n')
+    (evidence / 'fixture.json').write_text(json.dumps({
+        'onboarding_completed': True, 'scope': 'isolated test home only',
+        'reason': 'Keep the main window unobscured by the separate first-run wizard',
+        'cold_appimage_launch': True, 'project_created_by_packaged_agent': True}, indent=2) + '\n')
+    for key in ('QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH', 'QML2_IMPORT_PATH', 'LD_LIBRARY_PATH', 'LD_PRELOAD',
+                'CYBERSNAPPER_AGENT', 'CYBERSNAPPER_WORKER_ENTRY', 'CYBERSNAPPER_NODE',
+                'CYBERSNAPPER_BROWSER_CACHE', 'CYBERSNAPPER_UI_SCREENSHOT',
+                'CYBERSNAPPER_UI_SCENE', 'CYBERSNAPPER_UI_SCREENSHOT_DELAY'):
         environment.pop(key, None)
+    agents = {}
+    rpc = None
+    gui = None
     with (evidence / 'startup.log').open('w') as log:
         process = subprocess.Popen([str(appimage)], env=environment, stdout=log, stderr=log,
                                    start_new_session=True)
         try:
-            deadline = time.monotonic() + 60
+            deadline = time.monotonic() + 120
+            stable = 0
+            last_error = ''
             while time.monotonic() < deadline:
                 require(process.poll() is None, f'AppImage exited with {process.returncode}; see startup.log')
                 window = visible_window(process, environment)
-                if window:
-                    # Avoid accepting a transient splash or a window that
-                    # immediately crashes: require continued visibility.
-                    time.sleep(2)
-                    require(process.poll() is None, 'AppImage exited after showing its window')
-                    window = visible_window(process, environment)
-                    require(window is not None, 'CyberSnapper main window disappeared')
-                    subprocess.run(['import', '-window', window['window_id'],
-                                    str(evidence / 'main-window.png')],
-                                   check=True, env=environment, timeout=20)
-                    subprocess.run(['import', '-window', 'root', str(evidence / 'desktop.png')],
-                                   check=True, env=environment, timeout=20)
-                    (evidence / 'window.json').write_text(json.dumps(window, indent=2) + '\n')
-                    return
-                time.sleep(0.1)
-            raise ValueError('No visible CyberSnapper main window appeared within 60 seconds')
+                if window and gui is None:
+                    gui = OwnedProcess(window['pid'])
+                try:
+                    if rpc is None:
+                        rpc = AgentRpc(state / 'agent.sock', agents)
+                    # This also waits for initial bundled-browser copying and
+                    # GUI-requested verification, without ever autostarting.
+                    browsers = rpc.call('browser.status', timeout=30)
+                    status = rpc.call('agent.status', timeout=30)
+                    stable = stable + 1 if window and idle_status(status) else 0
+                    if stable >= 2:
+                        time.sleep(2)  # Allow completed RPC updates to paint.
+                        require(process.poll() is None and not rpc.process.wait(0), 'Application exited after readiness')
+                        window = visible_window(process, environment)
+                        require(window is not None, 'CyberSnapper main window disappeared')
+                        (evidence / 'readiness.json').write_text(json.dumps({
+                            'agent_pid': rpc.process.pid, 'agent_start_ticks': rpc.process.start_ticks,
+                            'status': status, 'browsers': browsers, 'idle_observations': stable}, indent=2) + '\n')
+                        for target, filename in ((window['window_id'], 'main-window.png'), ('root', 'desktop.png')):
+                            subprocess.run(['import', '-window', target, str(evidence / filename)],
+                                           check=True, env=environment, timeout=20)
+                        (evidence / 'window.json').write_text(json.dumps(window, indent=2) + '\n')
+                        return
+                except (OSError, ValueError) as error:
+                    last_error = str(error)
+                    stable = 0
+                    if rpc is not None:
+                        rpc.close()
+                        rpc = None
+                time.sleep(1)
+            raise ValueError(f'Packaged GUI and isolated agent did not become ready: {last_error}')
         finally:
-            # The agent detaches from the GUI process group. Stop only this
-            # isolated test agent before removing its private state directory.
-            try:
-                subprocess.run([str(appdir / 'usr/bin/cybersnapper-cli'), '--force', 'agent', 'stop'],
-                               env=environment, stdout=log, stderr=log, timeout=30, check=False)
-            except (OSError, subprocess.SubprocessError) as error:
-                log.write(f'Agent cleanup warning: {error}\n')
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=5)
+            teardown(process, gui, rpc, agents, evidence)
 
 
 def verify(appimage, evidence):
@@ -199,8 +412,9 @@ def verify(appimage, evidence):
             state = stage / 'isolated-home'
             state.mkdir()
             launch(appimage, state, evidence, stage / 'squashfs-root')
-            report['passed'] = True
+        report['passed'] = True
     except Exception as error:
+        report['passed'] = False
         report['error'] = str(error)
         raise
     finally:
