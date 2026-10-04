@@ -26,15 +26,40 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 3. Create an annotated tag on that commit, for example `git tag -a v2.2.2 -m "CyberSnapper 2.2.2"`, and push the tag.
 4. Treat a pushed release tag as immutable. Never move or replace a published `v*` tag; ship a new patch version if tagged source needs a code change.
 
-## 4. Publish
+## 4. Stage verified packages, then publish
 
-1. Create a draft GitHub release for the existing tag and use the matching `docs/releases/` file as its release notes.
-2. Publish the release. The `release: published` event starts **Native Release**, which builds from the release tag and attaches all packages, checksums, and attestations.
-3. Do not use a nonblank manual `release_tag` for the normal publication path; it is reserved for recovery of an existing release.
+1. Dispatch **Native Release** at the exact tag, with that same tag as the input:
+
+   ```bash
+   gh workflow run release.yml --ref vMAJOR.MINOR.PATCH -f release_tag=vMAJOR.MINOR.PATCH
+   ```
+
+   All candidate checkouts use the dispatch's immutable commit SHA. The tag,
+   workflow ref, checked-out source, and declared version must agree. Dispatching
+   a branch with a different `release_tag` is rejected.
+2. Wait for every native package, browser, runtime, catalog, and assembly gate.
+   The final job validates all fourteen assets and checksums, creates provenance
+   attestations, then creates or resumes a **draft** release using the committed
+   notes. It never publishes a release, overwrites an asset, or deletes a file.
+3. Require successful staging and independently confirm the draft contains all
+   fifteen files (fourteen assets plus `SHA256SUMS.txt`). Every remote file must
+   be uploaded and match the checked local size and SHA-256 digest. Verify the
+   tag still resolves to the rehearsed commit and provenance identifies it.
+4. Do not publish while any staging run is active. Workflow concurrency
+   serializes staging runs for a tag, but cannot lock out a maintainer publishing
+   from another session. After all checks pass, explicitly publish the complete
+   draft:
+
+   ```bash
+   gh release edit vMAJOR.MINOR.PATCH --draft=false --latest
+   ```
+
+   For prereleases, keep the prerelease flag and do not mark the release latest.
+   Publication does **not** trigger a rebuild or replace the verified files.
 
 ## 5. Verify before announcing
 
-1. Require the complete release workflow to pass, including all six native builds and the publish job.
+1. Require the complete release workflow to pass, including all six native builds and the draft-staging job.
 2. Confirm the release contains all of the following, plus `SHA256SUMS.txt`, with provenance attestations visible in GitHub:
 
    - `CyberSnapper-linux-x64.AppImage`, its `.zsync` sidecar, and `CyberSnapper-linux-x64.tar.gz`
@@ -51,10 +76,23 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 
 ## Recovery
 
-- For a transient runner or upload failure, rerun the failed release-workflow jobs against the same tag.
-- If valid packages were built but assets were not attached correctly, manually dispatch **Native Release** with the existing `release_tag`; verify the rebuilt assets and checksums again.
-- If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
-- Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
+- A failed build leaves the public release unchanged. Fix any source defect in a
+  new candidate commit and repeat CI and the full rehearsal before tagging.
+- For a transient draft-upload failure, rerun only the failed assembly/staging
+  job of the same workflow run. Its retained platform artifacts preserve the
+  exact bytes. Matching existing draft assets are retained and missing files
+  are uploaded; a full rebuild may produce different package bytes and is not
+  a substitute for resuming those artifacts.
+- A conflicting, incomplete (`starter`), zero-byte, duplicate, unexpected, or
+  digest-less remote asset blocks staging. Nothing is deleted automatically.
+  Inspect the draft and obtain explicit approval for any destructive cleanup;
+  never publish a partial draft to work around a failure.
+- Published releases are read-only to this workflow. If tagged source or a
+  published package is defective, document the issue and ship a corrected patch
+  version from a new commit and tag. Do not move a published `v*` tag or silently
+  overwrite its assets.
+- Keep workflow artifacts and validation evidence until public download and
+  provenance verification are complete. Never announce a release before that.
 
 ## v2.4.2
 

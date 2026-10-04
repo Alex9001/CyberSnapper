@@ -4,14 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to receive rebuilt packages (leave blank for a rehearsal)
+        description: Existing tag to stage as a verified draft (leave blank for a rehearsal)
         required: false
         type: string
-  release:
-    types: [published]
 
 permissions:
   contents: read
+
+# Never run two writers for the same draft concurrently. Publication is a
+# separate, explicit draft-to-public transition and does not trigger a build.
+concurrency:
+  group: native-release-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   browser-matrix:
@@ -22,7 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -75,7 +79,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -86,7 +90,7 @@ jobs:
       - name: Verify release version
         shell: bash
         env:
-          CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          CYBERSNAPPER_RELEASE_TAG: ${{ inputs.release_tag }}
         run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
 
       - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
@@ -213,7 +217,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -224,7 +228,7 @@ jobs:
       - name: Verify release version
         shell: bash
         env:
-          CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          CYBERSNAPPER_RELEASE_TAG: ${{ inputs.release_tag }}
         run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
 
       - uses: ilammy/msvc-dev-cmd@v1
@@ -340,7 +344,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -351,7 +355,7 @@ jobs:
       - name: Verify release version
         shell: bash
         env:
-          CYBERSNAPPER_RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          CYBERSNAPPER_RELEASE_TAG: ${{ inputs.release_tag }}
         run: node scripts/check-release-version.mjs "$CYBERSNAPPER_RELEASE_TAG"
 
       - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
@@ -477,7 +481,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: CyberSnapper-linux-x64
@@ -527,7 +531,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: CyberSnapper-linux-x64
@@ -577,7 +581,7 @@ jobs:
             xvfb.log
 
   publish:
-    name: Assemble, verify, and optionally publish
+    name: Assemble, verify, and optionally stage draft
     needs: [linux, windows, macos, appimage-compatibility, appimage-catalog]
     runs-on: ubuntu-latest
     permissions:
@@ -588,7 +592,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
@@ -599,26 +603,33 @@ jobs:
         run: python3 scripts/check-release-assets.py artifacts
 
       - name: Preserve verified release rehearsal
-        if: github.event_name == 'workflow_dispatch' && inputs.release_tag == ''
+        if: inputs.release_tag == ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CyberSnapper-release-rehearsal
           path: artifacts/*
           if-no-files-found: error
 
+      - name: Verify exact tag and draft before attesting
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: python3 scripts/stage-draft-release.py artifacts --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --check-only
+
       - name: Attest package provenance
-        if: github.event_name == 'release' || inputs.release_tag != ''
+        if: inputs.release_tag != ''
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: artifacts/*
 
-      - name: Publish packages to release
-        if: github.event_name == 'release' || inputs.release_tag != ''
-        shell: bash
+      - name: Stage complete verified draft without replacing assets
+        if: inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}"
-          gh release upload "$tag" artifacts/* --clobber
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: python3 scripts/stage-draft-release.py artifacts --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
