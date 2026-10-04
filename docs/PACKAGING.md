@@ -1,14 +1,15 @@
 # Packaging and publishing
 
 This document describes *how* CyberSnapper's release packages are built and
-published. For the step-by-step release *process* (rehearse → tag → publish →
-verify), see [RELEASE.md](../RELEASE.md). For local builds and the install
+published. For the step-by-step release *process* (rehearse → tag → stage →
+publish → verify), see [RELEASE.md](../RELEASE.md). For local builds and the install
 tree, see [BUILDING.md](BUILDING.md).
 
 Everything runs in one workflow: `.github/workflows/release.yml` ("Native
 Release"). Each package is produced on a GitHub Actions runner for its target
-platform, smoke-tested end to end, then attached to the GitHub release together
-with checksums and provenance attestations.
+platform, smoke-tested end to end, then staged on a draft GitHub release together
+with checksums and provenance attestations. Publication is a separate explicit
+action after the complete draft passes verification.
 
 ## Package matrix
 
@@ -34,20 +35,23 @@ The workflow has native package jobs and independent validation gates:
 - `macos` — matrix over x64 and arm64.
 - `appimage-compatibility` — audits the exact x64 AppImage and opens its GUI on Ubuntu 22.04 and 24.04 without a Qt SDK.
 - `appimage-catalog` — runs the pinned upstream AppImageHub worker on the exact x64 candidate.
-- `publish` — waits for every package and compatibility gate, validates the complete asset set, then preserves a rehearsal bundle or publishes an authorized release.
+- `publish` — waits for every package and compatibility gate, validates the complete asset set, then preserves a rehearsal bundle or stages an attested draft.
 
-Triggers:
+Trigger:
 
-- `release: [published]` — builds from the published release tag and attaches
-  the packages to that release. This is the normal publication path.
-- `workflow_dispatch` with an optional `release_tag` input — a blank tag is a
-  *rehearsal* (packages are uploaded as workflow artifacts, no release is
-  touched); a nonblank tag is the *recovery* path for rebuilding and
-  re-attaching an existing release.
+- `workflow_dispatch` with an optional `release_tag` input. A blank tag is a
+  rehearsal: packages are uploaded as workflow artifacts, no release is touched.
+- A nonblank tag stages packages on a draft only. Dispatch at that exact tag,
+  for example `gh workflow run release.yml --ref v2.4.2 -f release_tag=v2.4.2`.
+  The final job rejects a mismatched workflow ref, commit, tag, or version.
+- There is no `release: published` trigger. Publishing an already verified draft
+  neither rebuilds nor overwrites its assets.
 
-The `checkout` step selects `ref` from the release tag, the dispatch tag, or
-the branch — in that order. The workflow definition itself is loaded from the
-dispatched branch, while the built source comes from the selected ref.
+Every candidate checkout uses `github.sha`, including the independent runtime,
+catalog, and assembly gates. The catalog worker retains its separate pinned
+upstream commit. Staging runs for one tag are serialized without canceling an
+active run. Maintainers must wait for successful staging before publishing;
+GitHub has no atomic "upload only if still draft" operation.
 
 ## Common build steps
 
@@ -170,16 +174,27 @@ from the runner's full Qt install.
 Because this step runs before `upload-artifact`, a package that cannot actually
 launch Chromium never reaches the release.
 
-## Publishing
+## Draft staging and publication
 
 When all platform jobs succeed and a release tag is in play, the `publish` job:
 
-1. Downloads all uploaded artifacts (merged into one directory).
-2. Requires exactly twelve nonempty native packages plus two matching AppImage zsync sidecars, then writes `SHA256SUMS.txt` from all fourteen assets.
-3. Records a GitHub/Sigstore build-provenance attestation over the artifacts.
-4. Uploads everything to the release with
-   `gh release upload "$tag" artifacts/* --clobber`. The job has no checkout,
-   so it sets `GH_REPO` to point `gh` at the repository explicitly.
+1. Downloads the exact run's platform artifacts into one directory.
+2. Requires exactly twelve nonempty native packages plus two matching AppImage
+   zsync sidecars, then writes `SHA256SUMS.txt` from all fourteen assets.
+3. Verifies the exact dispatch ref/commit, source version, tag target, local
+   checksums and sidecars, and any existing draft assets before attesting.
+4. Records GitHub/Sigstore build-provenance attestations over all fifteen files.
+5. Runs `scripts/stage-draft-release.py` with the same tag and commit. The helper
+   creates or resumes a draft, uploads only missing files without `--clobber`,
+   and checks every remote name, state, size, and SHA-256 digest. It rechecks
+   draft status before each upload and after verification. It refuses published
+   releases, conflicting/incomplete assets, and a moved tag.
+
+The job retains its existing `contents: write`, `id-token: write`, and
+`attestations: write` permissions; it needs no additional secret or token scope.
+Nothing in the workflow publishes a release. A maintainer explicitly changes
+only the verified draft's publication state after the run succeeds; the same
+attested bytes then become public. See [RELEASE.md](../RELEASE.md).
 
 ## Signing
 
@@ -191,11 +206,13 @@ download. No paid signing identity is required.
 
 ## Recovery
 
-If a package job fails after a tag is already published, re-dispatch the
-workflow with the same nonblank `release_tag`; the build jobs check out that
-tag and the publish job re-attaches with `--clobber`. Do not move a published
-`v*` tag — ship a new patch version if tagged source needs a code change. See
-the Recovery section of [RELEASE.md](../RELEASE.md) for the full policy.
+Resume a failed draft-staging job within the same run to reuse its exact retained
+artifacts. Matching files are skipped; missing files are uploaded. A conflicting
+or incomplete remote asset fails safely without deletion, so any cleanup needs
+explicit review. Do not rerun packaging and assume its bytes will be identical,
+and do not publish while staging is active. Published assets cannot be changed
+by this workflow; use a new patch version for a defective public release. Never
+move a published `v*` tag. See [RELEASE.md](../RELEASE.md) for the full policy.
 
 ## AppImage updates and catalog submission
 
