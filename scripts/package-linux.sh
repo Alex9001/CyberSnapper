@@ -10,6 +10,9 @@ build_dir=$1
 output_dir=$2
 release_arch=$3
 version=${4#v}
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
+  echo "invalid release version: $version" >&2; exit 2;
+}
 
 : "${LINUXDEPLOY:?Set LINUXDEPLOY to the pinned linuxdeploy AppImage}"
 : "${APPIMAGETOOL:?Set APPIMAGETOOL to the pinned appimagetool AppImage}"
@@ -21,7 +24,7 @@ case "$release_arch" in
   *) echo "unsupported Linux release architecture: $release_arch" >&2; exit 2 ;;
 esac
 
-for executable in cmake file desktop-file-validate timeout; do
+for executable in cmake file desktop-file-validate appstreamcli node python3 zsync zsyncmake timeout; do
   command -v "$executable" >/dev/null 2>&1 || {
     echo "$executable is required" >&2
     exit 1
@@ -44,10 +47,13 @@ app_dir="$build_dir/AppDir"
 
 cmake -E remove_directory "$app_dir"
 DESTDIR="$app_dir" cmake --install "$build_dir" --prefix /usr --config Release
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+node "$script_dir/prune-worker-dependencies.mjs" "$app_dir/usr/share/cybersnapper/worker/node_modules"
 
 desktop_file="$app_dir/usr/share/applications/net.cyberbrand.CyberSnapper.desktop"
 icon_file="$app_dir/usr/share/pixmaps/net.cyberbrand.CyberSnapper.png"
 desktop-file-validate "$desktop_file"
+appstreamcli validate --no-net "$app_dir/usr/share/metainfo/net.cyberbrand.CyberSnapper.appdata.xml"
 [[ -s "$icon_file" ]] || { echo "Linux application icon is missing" >&2; exit 1; }
 
 qt_plugins=$("$real_qmake" -query QT_INSTALL_PLUGINS)
@@ -64,7 +70,6 @@ rm -f "$release_plugins"/sqldrivers/libqsqlmysql.so \
       "$release_plugins"/sqldrivers/libqsqlodbc.so \
       "$release_plugins"/sqldrivers/libqsqlpsql.so
 
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 qmake="$script_dir/release-qmake-wrapper.sh"
 export CYBERSNAPPER_REAL_QMAKE="$real_qmake"
 export CYBERSNAPPER_RELEASE_PLUGINS="$release_plugins"
@@ -149,9 +154,19 @@ for binary in "$app_dir/usr/bin/CyberSnapper" "$app_dir/usr/bin/cybersnapper-age
 done
 
 appimage="$output_dir/CyberSnapper-linux-$release_arch.AppImage"
+channel=latest
+[[ "$version" != *-* ]] || channel="v$version"
+update_information="gh-releases-zsync|Alex9001|CyberSnapper|$channel|CyberSnapper-linux-$release_arch.AppImage.zsync"
 ARCH="$appimage_arch" VERSION="$version" "$APPIMAGETOOL" \
-  --runtime-file "$APPIMAGE_RUNTIME" "$app_dir" "$appimage"
+  --runtime-file "$APPIMAGE_RUNTIME" \
+  --updateinformation "$update_information" "$app_dir" "$appimage"
+# appimagetool may write the sidecar into its working directory.
+sidecar="$(basename "$appimage").zsync"
+if [[ -f "$sidecar" && ! "$sidecar" -ef "$appimage.zsync" ]]; then
+  mv "$sidecar" "$appimage.zsync"
+fi
 chmod +x "$appimage"
+python3 "$script_dir/check-appimage-update.py" "$appimage" --expected-channel "$update_information"
 
 env -u APPIMAGE_EXTRACT_AND_RUN "$appimage" --appimage-offset | grep -Eq '^[0-9]+$'
 file "$appimage" | grep -Eq "$architecture_pattern"
@@ -183,4 +198,5 @@ archive="$output_dir/CyberSnapper-linux-$release_arch.tar.gz"
 tar -C "$app_dir/usr" -czf "$archive" .
 
 echo "Created $appimage"
+echo "Created $appimage.zsync"
 echo "Created $archive"

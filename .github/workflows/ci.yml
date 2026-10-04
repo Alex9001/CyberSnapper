@@ -6,13 +6,23 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pull requests, including Dependabot's, must work with a read-only token.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-commit-messages:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Block AI-tool attribution trailers
         shell: bash
         run: |
@@ -43,19 +53,79 @@ jobs:
           fi
           echo "No commit messages contain AI-tool attribution trailers."
 
+  packaging-checks:
+    name: Packaging and release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install packaging validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils appstream zsync
+      - name: Verify release version
+        run: node scripts/check-release-version.mjs
+      - name: Check packaging scripts
+        shell: bash
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script"
+          done
+          python3 -m unittest discover -s scripts -p 'test_*.py' -v
+          node --test scripts/test_*.mjs
+      - name: Validate Linux application metadata
+        run: |
+          desktop-file-validate native/packaging/net.cyberbrand.CyberSnapper.desktop
+          appstreamcli validate --no-net native/packaging/net.cyberbrand.CyberSnapper.metainfo.xml
+
+  minimum-node:
+    name: Worker on minimum Node.js
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CYBERSNAPPER_REQUIRED_BROWSERS: chromium
+      CYBERSNAPPER_SKIP_BROWSER_TESTS: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Keep this exact minimum in sync with package.json and the build docs.
+          node-version: '20.9.0'
+          cache: npm
+      - name: Verify dependency and worker compatibility
+        run: |
+          npm ci --engine-strict
+          git diff --exit-code -- package.json package-lock.json
+          npx playwright install --with-deps chromium
+          npm run typecheck:worker
+          npm run build:worker
+          npm run test:worker
+          npm run test:site
+
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2022, macos-15]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: '6.8.3'
           cache: true
@@ -64,11 +134,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
       - name: Worker checks
         shell: bash
+        env:
+          CYBERSNAPPER_REQUIRED_BROWSERS: ${{ runner.os == 'Linux' && 'chromium,firefox,webkit' || 'chromium' }}
+          CYBERSNAPPER_SKIP_BROWSER_TESTS: '0'
         run: |
-          npm ci
-          npx playwright install chromium
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            npx playwright install firefox webkit
+          npm ci --engine-strict
+          git diff --exit-code -- package.json package-lock.json
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            npx playwright install --with-deps chromium firefox webkit
+          else
+            npx playwright install chromium
           fi
           npm run typecheck:worker
           npm run build:worker

@@ -27,7 +27,7 @@ The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder
 
 ## Download
 
-CyberSnapper 2.4.1 makes Capture more comfortable on shorter screens, removes scrollbar-gutter white strips, and omits identical dark output files when capturing both themes. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings with visible progress and launch verification. See the [2.4.1 release notes](docs/releases/v2.4.1.md) and [latest published release](https://github.com/Alex9001/CyberSnapper/releases/latest) for downloads.
+CyberSnapper 2.4.2 adds AppImage update metadata and zsync sidecars, catalog-compatible application metadata, and stronger dependency and release checks. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings with visible progress and launch verification. See the [2.4.2 release notes](docs/releases/v2.4.2.md) and [latest published release](https://github.com/Alex9001/CyberSnapper/releases/latest) for downloads.
 
 | Platform | Recommended | Portable archive |
 | --- | --- | --- |
@@ -37,6 +37,8 @@ CyberSnapper 2.4.1 makes Capture more comfortable on shorter screens, removes sc
 | Windows · arm64 | [Setup](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-arm64-setup.exe) | [ZIP](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-windows-arm64-portable.zip) |
 | Linux · x64 | [AppImage](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-x64.AppImage) | [tar.gz](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-x64.tar.gz) |
 | Linux · arm64 | [AppImage](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-arm64.AppImage) | [tar.gz](https://github.com/Alex9001/CyberSnapper/releases/latest/download/CyberSnapper-linux-arm64.tar.gz) |
+
+Linux AppImages from 2.4.2 onward support external AppImageUpdate-compatible tools. Close CyberSnapper before updating; stable builds follow the architecture-specific latest release. Older images need a one-time manual download of 2.4.2 or newer. See the [AppImage update and catalog notes](docs/PACKAGING.md#appimage-updates-and-catalog-submission).
 
 Every release includes SHA-256 checksums and GitHub build-provenance attestations. macOS application bundles are ad-hoc signed but not notarized; Windows installers and Linux packages are currently unsigned. See the [packaging notes](docs/BUILDING.md#packages).
 
@@ -115,7 +117,7 @@ Read the deeper guides:
 
 ## Build from source
 
-You need CMake 3.24+, a C++20 compiler, Qt 6.8+ (`Core`, `Gui`, `Widgets`, `Network`, `Sql`, `Svg`, and `Test`), Node.js 20+, and npm.
+You need CMake 3.24+, a C++20 compiler, Qt 6.8+ (`Core`, `Gui`, `Widgets`, `Network`, `Sql`, `Svg`, and `Test`), Node.js 20.9.0+, and npm.
 
 ```bash
 npm install

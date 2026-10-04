@@ -6,7 +6,7 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 
 ## 1. Prepare the release
 
-1. Update the version in the top-level `CMakeLists.txt` and `package.json`; both values must match the intended `vMAJOR.MINOR.PATCH` tag.
+1. Update the version in `CMakeLists.txt`, `package.json`, `package-lock.json`, the desktop `X-AppImage-Version`, AppStream latest release, and website structured metadata. Run `node scripts/check-release-version.mjs vMAJOR.MINOR.PATCH`; every value must match.
 2. Update the matching file in `docs/releases/`, the changelog below, and the README download/status copy.
 3. Run every local check documented in `docs/BUILDING.md`.
 4. Confirm a real capture succeeds through the native CLI, appears in History, and produces its expected original and portfolio-styled files in the GUI.
@@ -15,8 +15,8 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 ## 2. Rehearse packaging
 
 1. From GitHub Actions, run **Native Release** on the final candidate commit with `release_tag` left blank.
-2. Wait for all six platform/architecture package jobs and their package smoke tests to pass. A blank `release_tag` uploads workflow artifacts but does not create or modify a GitHub release.
-3. Download every rehearsal artifact. Confirm all twelve package names, install or extract each package on its target platform, run the packaged CLI with `--version`, and inspect that the application, agent, worker, Node runtime, Qt runtime, and bundled Chromium are present.
+2. Wait for all six platform/architecture package jobs, packaged capture smoke tests, Ubuntu 22.04/24.04 runtime checks, the upstream AppImage catalog worker, and complete release assembly to pass. A blank `release_tag` uploads workflow artifacts but does not create or modify a GitHub release.
+3. Download every rehearsal artifact. Confirm all twelve package names and both `.AppImage.zsync` sidecars, install or extract each package on its target platform, run the packaged CLI with `--version`, and inspect that the application, agent, worker, Node runtime, Qt runtime, and bundled Chromium are present.
 4. Fix any problem in a new commit and repeat the full CI and rehearsal sequence. Do not tag a commit that has not passed rehearsal.
 
 ## 3. Freeze the final commit and tag
@@ -37,16 +37,17 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 1. Require the complete release workflow to pass, including all six native builds and the publish job.
 2. Confirm the release contains all of the following, plus `SHA256SUMS.txt`, with provenance attestations visible in GitHub:
 
-   - `CyberSnapper-linux-x64.AppImage` and `CyberSnapper-linux-x64.tar.gz`
-   - `CyberSnapper-linux-arm64.AppImage` and `CyberSnapper-linux-arm64.tar.gz`
+   - `CyberSnapper-linux-x64.AppImage`, its `.zsync` sidecar, and `CyberSnapper-linux-x64.tar.gz`
+   - `CyberSnapper-linux-arm64.AppImage`, its `.zsync` sidecar, and `CyberSnapper-linux-arm64.tar.gz`
    - `CyberSnapper-windows-x64-setup.exe` and `CyberSnapper-windows-x64-portable.zip`
    - `CyberSnapper-windows-arm64-setup.exe` and `CyberSnapper-windows-arm64-portable.zip`
    - `CyberSnapper-macos-x64.dmg` and `CyberSnapper-macos-x64.zip`
    - `CyberSnapper-macos-arm64.dmg` and `CyberSnapper-macos-arm64.zip`
 
 3. Download the published assets, verify every checksum, install or extract each package on its target platform, and repeat the packaged CLI `--version` smoke test.
-4. Confirm GitHub marks the release as latest and that the README and Pages download links resolve to these assets.
-5. Announce the release only after the release page, downloads, checksums, and website have all been verified.
+4. Run `python3 scripts/check-appimage-update.py <downloaded-AppImage>` on each native architecture. Confirm the embedded channel, sidecar content, and reconstruction, not just asset presence.
+5. Confirm GitHub marks the release as latest and that the README and Pages download links resolve to these assets.
+6. Announce the release only after the release page, downloads, checksums, and website have all been verified.
 
 ## Recovery
 
@@ -54,6 +55,13 @@ The workflow creates AppImage and tar.gz packages for Linux x64 and arm64, setup
 - If valid packages were built but assets were not attached correctly, manually dispatch **Native Release** with the existing `release_tag`; verify the rebuilt assets and checksums again.
 - If the tagged source or a packaged application is defective, do not move the tag or silently replace the release. Document the issue and publish a corrected patch release from a new commit and tag.
 - Keep an incomplete release unannounced until recovery succeeds. If downloads may be unsafe or misleading, mark the release as a prerelease while preparing the corrective release.
+
+## v2.4.2
+
+- **External AppImage updates**: Stable architecture-specific channels and validated zsync sidecars for x64 and arm64; existing download filenames remain unchanged.
+- **Catalog metadata**: Versioned desktop/AppStream metadata and a compatible installed appdata filename.
+- **Release gates**: Ubuntu 22.04/24.04 x64 ELF/startup audit, exact-candidate upstream catalog worker, and complete fourteen-asset checksum validation.
+- **Dependency updates**: Separate security/runtime/development groups, individual major updates, strict engine and minimum-Node coverage, and required browser/native CI checks.
 
 ## v2.4.1
 

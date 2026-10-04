@@ -4,11 +4,12 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import sharp from 'sharp';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
+// Keep documentation tooling compatible with the advertised Node.js minimum.
+const sharp = require('sharp');
 const runtimeRoot = path.join(root, 'build', 'test-runtime', 'docs-screenshots');
 const buildRoot = path.resolve(process.env.CYBERSNAPPER_NATIVE_BUILD || path.join(root, 'build', 'native'));
 const requestedOutput = process.argv.indexOf('--output');
