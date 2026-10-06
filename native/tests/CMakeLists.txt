@@ -4,6 +4,7 @@ add_test(NAME cybersnapper-core-tests COMMAND cybersnapper-core-tests)
 
 qt_add_executable(cybersnapper-gui-tests
   TestGui.cpp
+  ../src/gui/Appearance.cpp
   ../src/gui/MainWindow.cpp
   ../src/gui/ContentBlockingDialog.cpp
   ../resources/native.qrc
@@ -20,3 +21,12 @@ set_tests_properties(cybersnapper-cli-version PROPERTIES
   PASS_REGULAR_EXPRESSION "cybersnapper-cli ${PROJECT_VERSION}"
   TIMEOUT 15
 )
+
+qt_add_executable(cybersnapper-appearance-tests
+  TestAppearance.cpp
+  ../src/gui/Appearance.cpp
+)
+target_include_directories(cybersnapper-appearance-tests PRIVATE ../src)
+target_link_libraries(cybersnapper-appearance-tests PRIVATE Qt6::Test Qt6::Widgets)
+add_test(NAME cybersnapper-appearance-tests COMMAND cybersnapper-appearance-tests)
+set_tests_properties(cybersnapper-appearance-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

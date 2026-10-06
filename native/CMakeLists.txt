@@ -39,6 +39,7 @@ endif()
 
 qt_add_executable(CyberSnapper
   src/gui/main.cpp
+  src/gui/Appearance.cpp
   src/gui/MainWindow.cpp
   src/gui/ContentBlockingDialog.cpp
   resources/native.qrc

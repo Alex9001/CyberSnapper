@@ -1,4 +1,5 @@
 #include "gui/MainWindow.h"
+#include "gui/Appearance.h"
 
 #include <QAction>
 #include <QComboBox>
@@ -20,7 +21,10 @@ using namespace CyberSnapper;
 class TestGui final : public QObject {
   Q_OBJECT
 private slots:
-  void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
+  void initTestCase() {
+    QStandardPaths::setTestModeEnabled(true);
+    Appearance::apply(*qApp, true);
+  }
   void primaryNavigationAndWorkspaces();
   void captureThemeAndProgress();
   void compactCaptureLayout();

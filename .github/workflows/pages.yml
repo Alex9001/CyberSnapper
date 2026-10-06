@@ -1,16 +1,7 @@
 name: GitHub Pages
 
+# Run checks and deployments only when explicitly requested.
 on:
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/pages.yml'
-      - 'assets/logo.png'
-      - 'docs/images/**'
-      - 'scripts/build-site.mjs'
-      - 'site/**'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:

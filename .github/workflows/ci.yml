@@ -1,12 +1,10 @@
 name: CI
 
+# Run checks and deployments only when explicitly requested.
 on:
-  push:
-    branches: [master, main]
-  pull_request:
   workflow_dispatch:
 
-# Pull requests, including Dependabot's, must work with a read-only token.
+# Manual checks use a read-only token.
 permissions:
   contents: read
 

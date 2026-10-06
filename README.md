@@ -94,6 +94,8 @@ The application and output images above are generated automatically by `npm run 
 
 The Dashboard and Schedules pages summarize background activity for people who use those optional workflows; neither is required to capture a portfolio.
 
+The native application screenshots were refreshed on 2026-10-06 at 2× display scale, using the current native buttons and repository-owned demonstration project data. [Screenshot provenance](docs/SCREENSHOTS.md).
+
 The screenshots above are generated automatically from a deterministic project built around committed captures of the public CYBER BRAND homepage. `npm run screenshots:docs` never contacts the live site. Run `npm run screenshots:sources` only when intentionally refreshing those source captures, then regenerate the docs after building the native test targets.
 
 ## How it fits together

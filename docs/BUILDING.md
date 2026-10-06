@@ -33,7 +33,7 @@ To intentionally refresh the six committed CYBER BRAND desktop/tablet/mobile sou
 
 On Linux, the screenshot command uses Qt's offscreen platform automatically. If the host applies a local-socket sandbox, grant the command permission to create its isolated IPC socket while keeping its filesystem state inside the repository.
 
-GitHub Pages deploys `build/pages/` through `.github/workflows/pages.yml`. The site intentionally has no framework or remote runtime dependencies; only its release-download resolver calls the public GitHub Releases API.
+GitHub Pages deploys `build/pages/` through `.github/workflows/pages.yml` only when manually dispatched. CI, Pages, and release workflows require an explicit `workflow_dispatch`; pushes, pull requests, and tags do not start them automatically. The site intentionally has no framework or remote runtime dependencies; only its release-download resolver calls the public GitHub Releases API.
 
 ## Install tree
 
@@ -84,7 +84,7 @@ Dependabot checks the root npm lockfile and GitHub Actions monthly. Security
 updates and production/development patch/minor updates have separate groups;
 major updates remain individual for review. No automatic merge is configured.
 
-PR CI runs with read-only permissions and no repository secrets: strict npm
+The manually dispatched CI workflow runs with read-only permissions and no repository secrets: strict npm
 engine/lockfile installation, worker typechecking and tests, all three browser
 engines on Linux, native Linux/Windows/macOS tests, packaging regression and
 metadata checks, deterministic docs screenshots, and a worker check on the

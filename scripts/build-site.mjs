@@ -2,6 +2,7 @@ import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/pro
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isAppScreenshot, isPresentationScreenshot } from './screenshot-dimensions.mjs';
 // Sharp's ESM entry uses import attributes newer than our Node.js minimum.
 // Use its supported CommonJS export, as the bundled worker does.
 const require = createRequire(import.meta.url);
@@ -29,8 +30,8 @@ const screenshots = ['capture', 'targets', 'history', 'review'];
 for (const name of screenshots) {
   const input = path.join(screenshotSource, `app-${name}.png`);
   const metadata = await sharp(input).metadata();
-  if (metadata.width !== 1280 || metadata.height !== 800) {
-    throw new Error(`Documentation screenshot app-${name}.png must be 1280x800`);
+  if (!isAppScreenshot(metadata)) {
+    throw new Error(`Documentation screenshot app-${name}.png must be native 1280x800 or 2560x1600`);
   }
   await cp(input, path.join(outputScreenshots, `app-${name}.png`));
   await sharp(input).webp({ quality: 84, effort: 5 }).toFile(path.join(outputScreenshots, `app-${name}.webp`));
@@ -46,8 +47,7 @@ await sharp(portfolioExample).webp({ quality: 86, effort: 5 })
   .toFile(path.join(outputScreenshots, 'portfolio-aurora-browser.webp'));
 const presentationUi = path.join(screenshotSource, 'app-presentation.png');
 const presentationUiMetadata = await sharp(presentationUi).metadata();
-if ((presentationUiMetadata.width ?? 0) < 700 || (presentationUiMetadata.height ?? 0) < 400 ||
-    (presentationUiMetadata.height ?? 0) > 560) {
+if (!isPresentationScreenshot(presentationUiMetadata)) {
   throw new Error('Presentation settings screenshot dimensions are outside the expected range');
 }
 await cp(presentationUi, path.join(outputScreenshots, 'app-presentation.png'));
