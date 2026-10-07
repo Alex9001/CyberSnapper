@@ -25,6 +25,12 @@ CyberSnapper is a local-first, cross-platform website screenshot tool for design
 
 The finished files are normal PNG, WebP, AVIF, or PDF files in a portable folder you control. It is not a web UI wrapped in a desktop shell: the interface is native Qt Widgets, and a private Playwright worker exists only to render and capture your pages.
 
+## Agency portfolio demo
+
+[Watch the 14-second portfolio demo](docs/media/cybersnapper-agency-portfolio-14s.mp4): from client URLs to matching desktop, tablet and phone images.
+
+[Video provenance and music license](docs/media/README.md).
+
 ## Download
 
 CyberSnapper 2.4.2 adds AppImage update metadata and zsync sidecars, catalog-compatible application metadata, and stronger dependency and release checks. Every package bundles the application, Qt runtime, Node runtime, capture worker, and Chromium. Firefox and WebKit can be installed on demand from Settings with visible progress and launch verification. See the [2.4.2 release notes](docs/releases/v2.4.2.md) and [latest published release](https://github.com/Alex9001/CyberSnapper/releases/latest) for downloads.
