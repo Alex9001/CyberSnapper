@@ -38,9 +38,9 @@
   "homepage": "https://alex9001.github.io/CyberSnapper/",
   "bugs": "https://github.com/Alex9001/CyberSnapper/issues",
   "dependencies": {
-    "@ghostery/adblocker": "^2.18.2",
-    "playwright": "^1.61.1",
-    "sharp": "^0.35.4"
+    "@ghostery/adblocker": "^2.20.3",
+    "playwright": "^1.64.1",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
